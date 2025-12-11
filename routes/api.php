@@ -1,14 +1,16 @@
 <?php
 
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClockController;
+use App\Http\Controllers\Api\EmployeeController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
     // LOGIN (public)
     Route::post('/login/authenticate', [AuthController::class, 'authenticate']);
 
-    // APIs protegidas por Sanctum + verificación de expiración
+    // APIs protegidas por Sanctum + verificaciÓn de expiraciÓn
     Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         // clock-catalog
         Route::get('/time-and-assistance/clock-catalog', [ClockController::class, 'index']);
@@ -25,4 +27,18 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
         // shift-profile
         // Route::get('/time-and-assistance/shift-profile/get-by-company', [...]);
     });
+});
+
+Route::prefix('employees')->group(function () {
+    Route::get('/', [EmployeeController::class, 'index']);
+    Route::get('{employee}', [EmployeeController::class, 'show']);
+    Route::post('sync-fortia', [EmployeeController::class, 'syncFromFortia']);
+    Route::patch('{employee}/status', [EmployeeController::class, 'updateStatus']);
+    Route::delete('{employee}/fingerprints', [EmployeeController::class, 'deleteFingerprint']);
+});
+
+Route::prefix('attendance')->group(function () {
+    Route::post('from-device', [AttendanceController::class, 'storeFromDevice']);
+    Route::get('employee/{employee}', [AttendanceController::class, 'listByEmployee']);
+    Route::post('send-to-fortia', [AttendanceController::class, 'sendToFortia']);
 });

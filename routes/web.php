@@ -29,6 +29,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/clocks/import', ClockImportController::class)->name('clocks.import');
     Route::get('/clocks/{clock}/logs', [ClockLogController::class, 'index'])->name('clocks.logs');
 
+    Route::get('/employees', function () {
+        return Inertia::render('Employees/EmployeesCatalog');
+    })->name('employees.index');
+
     Route::get('/units', UnitCatalogController::class)->name('units.index');
     Route::get('/units/list', [UnitController::class, 'index'])->name('units.list');
     Route::post('/units', [UnitController::class, 'store'])->name('units.store');

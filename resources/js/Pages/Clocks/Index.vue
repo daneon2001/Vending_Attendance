@@ -151,7 +151,7 @@ const totalOffline = computed(
 );
 
 const formatRelative = (timestamp) => {
-    if (!timestamp) return 'Sin latido registrado';
+    if (!timestamp) return 'Sin beat registrado';
     const diffMs = Date.now() - Date.parse(timestamp);
     const diffMinutes = Math.round(diffMs / 60000);
     if (diffMinutes <= 1) return 'Hace instantes';
@@ -405,7 +405,7 @@ const resetLogsFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ totalWarning }}
                     </p>
-                    <p class="text-sm text-slate-500">Latidos tardíos o firmas pendientes</p>
+                    <p class="text-sm text-slate-500">Beats tardíos o firmas pendientes</p>
                 </article>
                 <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-rose-50 to-white p-4">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">

@@ -52,8 +52,7 @@ class ClockSeeder extends Seeder
                 'program_status' => 'standby',
             ],
         );
-    }
-}
+
         Clock::updateOrCreate(
             ['serial_number' => 'FT-CHK-003'],
             [
@@ -70,3 +69,5 @@ class ClockSeeder extends Seeder
                 'program_status' => 'offline',
             ],
         );
+    }
+}

@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Employee extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'fortia_employee_id',
+        'company_id',
+        'company_name',
+        'base_location_id',
+        'base_location_name',
+        'department_id',
+        'department_name',
+        'name',
+        'last_name',
+        'second_last_name',
+        'full_name',
+        'status',
+        'rfc',
+        'imss_number',
+        'curp',
+        'has_fingerprint',
+    ];
+
+    protected $casts = [
+        'has_fingerprint' => 'boolean',
+    ];
+
+    protected $appends = [
+        'fingerprint_status',
+    ];
+
+    public function attendanceLogs()
+    {
+        return $this->hasMany(AttendanceLog::class);
+    }
+
+    public function fingerprints()
+    {
+        return $this->hasMany(EmployeeFingerprint::class);
+    }
+
+    public function getFingerprintStatusAttribute(): string
+    {
+        $fingerprints = $this->relationLoaded('fingerprints')
+            ? $this->fingerprints
+            : $this->fingerprints()->get();
+
+        if ($fingerprints->firstWhere('status', 'enrolled')) {
+            return 'enrolled';
+        }
+
+        if ($fingerprints->firstWhere('status', 'pending_delete')) {
+            return 'pending_delete';
+        }
+
+        return 'none';
+    }
+
+    public function refreshFingerprintFlag(): void
+    {
+        $hasFingerprint = $this->fingerprints()
+            ->where('status', 'enrolled')
+            ->exists();
+
+        if ($this->has_fingerprint !== $hasFingerprint) {
+            $this->forceFill(['has_fingerprint' => $hasFingerprint])->saveQuietly();
+        }
+    }
+}

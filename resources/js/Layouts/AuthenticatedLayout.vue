@@ -22,6 +22,12 @@ const navItems = [
         icon: 'clocks',
     },
     {
+        label: 'Catálogo de empleados',
+        description: 'Estado y huellas',
+        routeName: 'employees.index',
+        icon: 'users',
+    },
+    {
         label: 'Catálogo Sucursales',
         description: 'Adminitración de sucursales',
         routeName: 'units.index',
@@ -48,6 +54,12 @@ const iconPaths = {
         'M12 4L5 10v8a2 2 0 002 2h3v-5h4v5h3a2 2 0 002-2v-8l-7-6z',
         'M9 21V9.5',
         'M15 21V9.5',
+    ],
+    users: [
+        'M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11z',
+        'M8 11c1.657 0 3-1.567 3-3.5S9.657 4 8 4 5 5.567 5 7.5 6.343 11 8 11z',
+        'M3 20v-1c0-2.761 2.239-5 5-5h0c2.761 0 5 2.239 5 5v1',
+        'M13 20v-1c0-2.075 1.567-4 3.5-4H17c1.933 0 3.5 1.925 3.5 4v1',
     ],
 };
 
