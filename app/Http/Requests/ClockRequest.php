@@ -25,6 +25,7 @@ class ClockRequest extends FormRequest
             'last_heartbeat_at' => ['nullable', 'date'],
             'last_status_message' => ['nullable', 'string', 'max:255'],
             'monitoring_status' => ['nullable', 'in:online,offline,warning'],
+            'program_status' => ['nullable', 'string', 'max:30'],
         ];
     }
 }

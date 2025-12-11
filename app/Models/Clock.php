@@ -22,10 +22,12 @@ class Clock extends Model
         'last_heartbeat_at',
         'last_status_message',
         'monitoring_status',
+        'program_status',
     ];
 
     protected $casts = [
         'last_heartbeat_at' => 'datetime',
+        'status' => 'integer',
     ];
 
     protected $appends = ['is_online'];
@@ -38,6 +40,11 @@ class Clock extends Model
     public function location()
     {
         return $this->belongsTo(Location::class);
+    }
+
+    public function logs()
+    {
+        return $this->hasMany(ClockLog::class);
     }
 
     public function getIsOnlineAttribute(): bool

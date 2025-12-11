@@ -25,6 +25,7 @@ class ClockResource extends JsonResource
             'status_label' => $this->status ? 'Activo' : 'Inactivo',
             'monitoring_status' => $this->monitoring_status ?? 'offline',
             'monitoring_message' => $this->last_status_message,
+            'program_status' => $this->program_status ?? ($this->is_online ? 'online' : 'offline'),
             'is_online' => $this->is_online,
             'last_heartbeat_at' => optional($this->last_heartbeat_at)?->toIso8601String(),
             'company' => [

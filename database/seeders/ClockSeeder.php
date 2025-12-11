@@ -32,6 +32,7 @@ class ClockSeeder extends Seeder
                 'last_heartbeat_at' => Carbon::now()->subMinutes(1),
                 'last_status_message' => 'Operando normalmente',
                 'monitoring_status' => 'online',
+                'program_status' => 'online',
             ],
         );
 
@@ -48,6 +49,7 @@ class ClockSeeder extends Seeder
                 'last_heartbeat_at' => Carbon::now()->subMinutes(12),
                 'last_status_message' => 'Sincronizando con Fortia',
                 'monitoring_status' => 'warning',
+                'program_status' => 'standby',
             ],
         );
     }
