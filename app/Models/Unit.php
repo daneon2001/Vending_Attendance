@@ -5,23 +5,29 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Location extends Model
+class Unit extends Model
 {
     use HasFactory;
 
+    protected $table = 'locations';
+
     protected $fillable = [
         'company_id',
-        'name',
         'code',
+        'name',
         'description',
         'city',
         'state',
         'country',
-        'timezone',
         'address',
+        'timezone',
         'latitude',
         'longitude',
         'status',
+    ];
+
+    protected $casts = [
+        'status' => 'integer',
     ];
 
     public function company()
@@ -31,6 +37,6 @@ class Location extends Model
 
     public function clocks()
     {
-        return $this->hasMany(Clock::class);
+        return $this->hasMany(Clock::class, 'location_id');
     }
 }

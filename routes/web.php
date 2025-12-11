@@ -5,6 +5,8 @@ use App\Http\Controllers\ClockController;
 use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\UnitCatalogController;
+use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -26,6 +28,13 @@ Route::middleware('auth')->group(function () {
     Route::put('/clocks/{clock}/assign-unit', [ClockController::class, 'assignUnit'])->name('clocks.assign-unit');
     Route::post('/clocks/import', ClockImportController::class)->name('clocks.import');
     Route::get('/clocks/{clock}/logs', [ClockLogController::class, 'index'])->name('clocks.logs');
+
+    Route::get('/units', UnitCatalogController::class)->name('units.index');
+    Route::get('/units/list', [UnitController::class, 'index'])->name('units.list');
+    Route::post('/units', [UnitController::class, 'store'])->name('units.store');
+    Route::get('/units/{unit}', [UnitController::class, 'show'])->name('units.show');
+    Route::put('/units/{unit}', [UnitController::class, 'update'])->name('units.update');
+    Route::put('/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])->name('units.toggle-status');
 });
 
 require __DIR__.'/auth.php';

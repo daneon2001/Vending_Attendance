@@ -24,7 +24,7 @@ const navItems = [
     {
         label: 'Catálogo Sucursales',
         description: 'Adminitración de sucursales',
-        routeName: null,
+        routeName: 'units.index',
         icon: 'branches',
     },
 ];
