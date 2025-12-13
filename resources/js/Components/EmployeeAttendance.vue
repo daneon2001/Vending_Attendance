@@ -35,16 +35,16 @@ const search = async () => {
 </script>
 
 <template>
-    <section class="space-y-4 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Asistencias</h2>
+    <section class="card space-y-4 p-4">
+        <h2 class="text-app text-lg font-semibold">Asistencias</h2>
         <div class="flex flex-wrap gap-3 text-sm">
             <label class="flex flex-col">
-                <span class="text-xs font-semibold text-slate-500 uppercase">Desde</span>
-                <input v-model="from" type="date" class="rounded-2xl border px-3 py-2" />
+                <span class="text-xs font-semibold uppercase text-soft">Desde</span>
+                <input v-model="from" type="date" class="rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900" />
             </label>
             <label class="flex flex-col">
-                <span class="text-xs font-semibold text-slate-500 uppercase">Hasta</span>
-                <input v-model="to" type="date" class="rounded-2xl border px-3 py-2" />
+                <span class="text-xs font-semibold uppercase text-soft">Hasta</span>
+                <input v-model="to" type="date" class="rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900" />
             </label>
             <button
                 class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
@@ -56,9 +56,9 @@ const search = async () => {
 
         <p v-if="errorMessage" class="text-sm text-rose-600">{{ errorMessage }}</p>
 
-        <div class="rounded-2xl border border-slate-100">
+        <div class="overflow-hidden rounded-2xl border border-app">
             <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
                     <tr>
                         <th class="px-3 py-2">Fecha/hora</th>
                         <th class="px-3 py-2">Reloj</th>
@@ -67,15 +67,15 @@ const search = async () => {
                 </thead>
                 <tbody>
                     <tr v-if="loading">
-                        <td colspan="3" class="px-3 py-4 text-center text-slate-500">Cargando...</td>
+                        <td colspan="3" class="px-3 py-4 text-center text-soft">Cargando...</td>
                     </tr>
-                    <tr v-for="log in logs" :key="log.id" class="border-t text-slate-600">
+                    <tr v-for="log in logs" :key="log.id" class="border-t border-app text-muted">
                         <td class="px-3 py-2">{{ log.log_date }}</td>
                         <td class="px-3 py-2">{{ log.device_id ?? '-' }}</td>
                         <td class="px-3 py-2">{{ log.log_type }}</td>
                     </tr>
                     <tr v-if="!loading && !logs.length">
-                        <td colspan="3" class="px-3 py-4 text-center text-slate-500">Sin registros.</td>
+                        <td colspan="3" class="px-3 py-4 text-center text-soft">Sin registros.</td>
                     </tr>
                 </tbody>
             </table>

@@ -378,7 +378,7 @@ const resetLogsFilters = () => {
     <AuthenticatedLayout>
         <template #header>
             <div>
-                <h1 class="mt-1 text-2xl font-semibold text-slate-900">
+                <h1 class="text-app text-xl font-semibold leading-tight">
                     Relojes biométricos
                 </h1>
                 <p class="text-sm text-slate-500">
@@ -420,7 +420,7 @@ const resetLogsFilters = () => {
 
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-lg font-semibold text-slate-900">
+                    <h2 class="text-app text-xl font-semibold leading-tight">
                         Catálogo
                         <span class="text-sm font-medium text-slate-400">({{ clocks.length }} checadores)</span>
                     </h2>

@@ -50,7 +50,7 @@ const toggleStatus = async (employee) => {
 };
 
 const deleteFingerprint = async (employee) => {
-    if (!confirm('¿Seguro que deseas borrar la huella de este empleado en todos los relojes?')) {
+    if (!confirm('Â¿Seguro que deseas borrar la huella de este empleado en todos los relojes?')) {
         return;
     }
 
@@ -77,19 +77,19 @@ onMounted(loadEmployees);
 
 <template>
     <AuthenticatedLayout>
-        <Head title="Catálogo de empleados" />
+        <Head title="Catalogo de empleados" />
 
         <template #header>
             <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Recursos humanos</p>
-                <h1 class="text-2xl font-semibold text-slate-900">Catálogo de trabajadores</h1>
+                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Recursos humanos</p>
+                <h1 class="text-app text-2xl font-semibold">Catalogo de trabajadores</h1>
             </div>
         </template>
 
         <section class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
-                <p class="text-sm text-slate-500">Control de estados y huellas biométricas.</p>
+                <p class="text-sm text-muted">Control de estados y huellas biometricas.</p>
             </div>
             <button
                 class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
@@ -99,43 +99,43 @@ onMounted(loadEmployees);
             </button>
         </div>
 
-        <div class="flex flex-wrap gap-3 rounded-3xl border border-slate-100 bg-white px-4 py-3 text-sm shadow-sm">
+        <div class="card flex flex-wrap gap-3 px-4 py-3 text-sm">
             <label class="flex flex-col">
-                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Buscar</span>
+                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Buscar</span>
                 <input
                     v-model="filters.search"
                     type="text"
                     placeholder="Nombre, RFC, IMSS..."
-                    class="rounded-2xl border border-slate-200 px-4 py-2"
+                    class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                     @keyup.enter="loadEmployees"
                 />
             </label>
             <label class="flex flex-col">
-                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Estado</span>
-                <select v-model="filters.status" class="rounded-2xl border border-slate-200 px-4 py-2" @change="loadEmployees">
+                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Estado</span>
+                <select v-model="filters.status" class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900" @change="loadEmployees">
                     <option value="">Todos</option>
                     <option value="active">Activos</option>
                     <option value="inactive">Baja</option>
                 </select>
             </label>
             <button
-                class="self-end rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 hover:text-slate-900"
+                class="self-end rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app"
                 @click="loadEmployees"
             >
                 Aplicar
             </button>
         </div>
 
-        <p v-if="syncMessage" class="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+        <p v-if="syncMessage" class="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
             {{ syncMessage }}
         </p>
-        <p v-if="message" class="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-slate-700">
+        <p v-if="message" class="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-app dark:bg-slate-900/40">
             {{ message }}
         </p>
 
-        <div class="rounded-3xl border border-slate-100 bg-white shadow-sm">
-            <table class="w-full divide-y divide-slate-100 text-sm">
-                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+        <div class="card overflow-hidden">
+            <table class="w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
                     <tr>
                         <th class="px-4 py-3">Nombre</th>
                         <th class="px-4 py-3">Empresa</th>
@@ -146,11 +146,11 @@ onMounted(loadEmployees);
                 </thead>
                 <tbody>
                     <tr v-if="loading">
-                        <td colspan="5" class="px-4 py-4 text-center text-slate-500">Cargando...</td>
+                        <td colspan="5" class="px-4 py-4 text-center text-muted">Cargando...</td>
                     </tr>
-                    <tr v-for="employee in employees" :key="employee.id" class="hover:bg-slate-50">
-                        <td class="px-4 py-3 font-semibold text-slate-900">{{ employee.full_name ?? employee.name }}</td>
-                        <td class="px-4 py-3 text-slate-600">{{ employee.company_name }}</td>
+                    <tr v-for="employee in employees" :key="employee.id" class="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                        <td class="px-4 py-3 font-semibold text-app">{{ employee.full_name ?? employee.name }}</td>
+                        <td class="px-4 py-3 text-muted">{{ employee.company_name }}</td>
                         <td class="px-4 py-3">
                             <button
                                 class="rounded-full px-3 py-1 text-xs font-semibold"
@@ -166,7 +166,7 @@ onMounted(loadEmployees);
                                 :class="{
                                     'bg-emerald-50 text-emerald-700': employee.fingerprint_status === 'enrolled',
                                     'bg-amber-50 text-amber-700': employee.fingerprint_status === 'pending_delete',
-                                    'bg-slate-100 text-slate-500': employee.fingerprint_status === 'none',
+                                    'bg-slate-100 text-soft dark:bg-slate-800': employee.fingerprint_status === 'none',
                                 }"
                             >
                                 {{
@@ -180,11 +180,11 @@ onMounted(loadEmployees);
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex flex-wrap gap-2 text-xs font-semibold">
-                                <button class="rounded-2xl border border-slate-200 px-3 py-1" @click="showAttendance(employee.id)">
+                                <button class="rounded-2xl border border-app px-3 py-1" @click="showAttendance(employee.id)">
                                     Ver asistencias
                                 </button>
                                 <button
-                                    class="rounded-2xl border border-slate-200 px-3 py-1 text-rose-600"
+                                    class="rounded-2xl border border-app px-3 py-1 text-rose-600"
                                     @click="deleteFingerprint(employee)"
                                 >
                                     Borrar huella
@@ -193,7 +193,7 @@ onMounted(loadEmployees);
                         </td>
                     </tr>
                     <tr v-if="!loading && !employees.length">
-                        <td colspan="5" class="px-4 py-4 text-center text-slate-500">Sin empleados aún.</td>
+                        <td colspan="5" class="px-4 py-4 text-center text-muted">Sin empleados aun.</td>
                     </tr>
                 </tbody>
             </table>

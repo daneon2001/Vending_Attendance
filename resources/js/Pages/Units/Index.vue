@@ -201,7 +201,7 @@ const clearFilters = () => {
     <AuthenticatedLayout>
         <template #header>
             <div>
-                <h1 class="mt-1 text-2xl font-semibold text-slate-900">
+                <h1 class="text-app text-xl font-semibold leading-tight">
                     Catálogo de sucursales
                 </h1>
                 <p class="text-sm text-slate-500">
