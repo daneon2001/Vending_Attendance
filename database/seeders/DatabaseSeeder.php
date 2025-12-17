@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             LocationSeeder::class,
             ClockSeeder::class,
             ClockLogSeeder::class,
+            FortiaMockEmployeeSeeder::class,
         ]);
     }
 }

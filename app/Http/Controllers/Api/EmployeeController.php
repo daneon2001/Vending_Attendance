@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Services\FortiaMock\FortiaMockSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,24 @@ class EmployeeController extends Controller
         return response()->json([
             'message' => 'Sync from Fortia scheduled/TODO',
         ], 202);
+    }
+
+    public function syncFortiaMock(Request $request, FortiaMockSyncService $syncService): JsonResponse
+    {
+        $filters = [];
+        if ($request->filled('company_id')) {
+            $filters['company_id'] = (int) $request->input('company_id');
+        }
+
+        $summary = $syncService->syncIncremental($filters);
+
+        return response()->json([
+            'created_count' => $summary['new'] ?? 0,
+            'updated_count' => $summary['updated'] ?? 0,
+            'unchanged_count' => $summary['unchanged'] ?? 0,
+            'status_changed_count' => $summary['status_changed'] ?? 0,
+            'status_changed' => $summary['changed'] ?? [],
+        ]);
     }
 
     public function updateStatus(Employee $employee, Request $request): JsonResponse

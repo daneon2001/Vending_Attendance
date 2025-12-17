@@ -13,7 +13,12 @@ const logoMap = {
     short: '/images/medical-life-logo_short.png',
 };
 
-const logoSrc = computed(() => logoMap[props.variant] ?? logoMap.full);
+const assetVersion = import.meta.env.VITE_ASSET_VERSION ? `?v=${import.meta.env.VITE_ASSET_VERSION}` : '';
+
+const logoSrc = computed(() => {
+    const base = logoMap[props.variant] ?? logoMap.full;
+    return `${base}${assetVersion}`;
+});
 </script>
 
 <template>

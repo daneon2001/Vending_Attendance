@@ -26,6 +26,7 @@ class Employee extends Model
         'imss_number',
         'curp',
         'has_fingerprint',
+        'email_company',
     ];
 
     protected $casts = [

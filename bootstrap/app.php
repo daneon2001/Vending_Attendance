@@ -17,6 +17,8 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 
 // (Solo lo usarías si tuvieras SPA con cookies, para tokens Bearer no es necesario)
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+use App\Console\Commands\FortiaMockAddEmployee;
+use App\Console\Commands\FortiaMockSyncEmployees;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         api: __DIR__.'/../routes/api.php', // por si no estaba
     )
+    ->withCommands([
+        FortiaMockAddEmployee::class,
+        FortiaMockSyncEmployees::class,
+    ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)
         $middleware->web(append: [

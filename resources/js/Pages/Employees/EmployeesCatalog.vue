@@ -7,7 +7,10 @@ import { onMounted, ref } from 'vue';
 
 const employees = ref([]);
 const loading = ref(false);
+const syncing = ref(false);
 const syncMessage = ref('');
+const syncError = ref('');
+const statusChanges = ref([]);
 const filters = ref({
     status: '',
     search: '',
@@ -28,10 +31,20 @@ const loadEmployees = async () => {
 };
 
 const syncNow = async () => {
+    syncing.value = true;
     syncMessage.value = '';
-    const { data } = await axios.post('/api/employees/sync-fortia');
-    syncMessage.value = data.message;
-    await loadEmployees();
+    syncError.value = '';
+    statusChanges.value = [];
+    try {
+        const { data } = await axios.post('/api/employees/sync-fortia-mock');
+        syncMessage.value = `Nuevos: ${data.created_count}, Actualizados: ${data.updated_count}, Sin cambios: ${data.unchanged_count}, Cambios de estatus: ${data.status_changed_count}`;
+        statusChanges.value = data.status_changed || [];
+        await loadEmployees();
+    } catch (error) {
+        syncError.value = error?.response?.data?.message || 'No se pudo sincronizar.';
+    } finally {
+        syncing.value = false;
+    }
 };
 
 const toggleStatus = async (employee) => {
@@ -81,8 +94,10 @@ onMounted(loadEmployees);
 
         <template #header>
             <div>
+                <h1 class="text-app text-xl font-semibold leading-tight">
+                    Catálogo de trabajadores
+                </h1>
                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Recursos humanos</p>
-                <h1 class="text-app text-2xl font-semibold">Catalogo de trabajadores</h1>
             </div>
         </template>
 
@@ -92,10 +107,12 @@ onMounted(loadEmployees);
                 <p class="text-sm text-muted">Control de estados y huellas biometricas.</p>
             </div>
             <button
-                class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
+                class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="syncing"
                 @click="syncNow"
             >
-                Sincronizar con Fortia
+                <span v-if="syncing">Sincronizando...</span>
+                <span v-else>Sincronizar con Sistema de Nomina</span>
             </button>
         </div>
 
@@ -129,6 +146,20 @@ onMounted(loadEmployees);
         <p v-if="syncMessage" class="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
             {{ syncMessage }}
         </p>
+        <p v-if="syncError" class="rounded-2xl bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:bg-rose-500/20 dark:text-rose-200">
+            {{ syncError }}
+        </p>
+        <div v-if="statusChanges.length" class="rounded-2xl border border-app bg-white px-4 py-3 text-sm shadow-sm dark:bg-slate-900">
+            <p class="text-muted font-semibold">Cambios de estatus recientes:</p>
+            <ul class="mt-2 space-y-1 text-sm text-app">
+                <li v-for="item in statusChanges.slice(0, 5)" :key="`${item.company_id}-${item.fortia_employee_id}-${item.changed_at}`">
+                    <span class="font-semibold">{{ item.full_name }}</span> ({{ item.fortia_employee_id }}) - {{ item.old_status }} → {{ item.new_status }}
+                </li>
+                <li v-if="statusChanges.length > 5" class="text-muted text-xs">
+                    ...y {{ statusChanges.length - 5 }} más
+                </li>
+            </ul>
+        </div>
         <p v-if="message" class="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-app dark:bg-slate-900/40">
             {{ message }}
         </p>

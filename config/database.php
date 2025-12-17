@@ -62,6 +62,25 @@ return [
             ]) : [],
         ],
 
+        'fortia_mock' => [
+            'driver' => 'mysql',
+            'host' => env('FORTIA_MOCK_DB_HOST', '127.0.0.1'),
+            'port' => env('FORTIA_MOCK_DB_PORT', '3306'),
+            'database' => env('FORTIA_MOCK_DB_DATABASE', 'fortia_mock'),
+            'username' => env('FORTIA_MOCK_DB_USERNAME', 'root'),
+            'password' => env('FORTIA_MOCK_DB_PASSWORD', ''),
+            'unix_socket' => env('FORTIA_MOCK_DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
             'fortia' => [
                 'driver' => 'mysql',
                 'host' => env('FORTIA_DB_HOST', '127.0.0.1'),
