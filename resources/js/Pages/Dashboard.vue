@@ -13,6 +13,73 @@ const props = defineProps({
     },
 });
 
+const padNumber = (value) => String(value).padStart(2, '0');
+const formatInputDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
+const formatRequestDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())} ${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`;
+const startOfDayDate = (date) => {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+};
+const endOfDayDate = (date) => {
+    const copy = new Date(date);
+    copy.setHours(23, 59, 59, 999);
+    return copy;
+};
+const addDaysToDate = (date, days) => {
+    const copy = new Date(date);
+    copy.setDate(copy.getDate() + days);
+    return copy;
+};
+const parseDateInputValue = (value) => {
+    if (!value) {
+        return null;
+    }
+    const parts = value.split('-').map(Number);
+    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+        return null;
+    }
+    const [year, month, day] = parts;
+    return new Date(year, month - 1, day);
+};
+const normalizeRange = (rangeKey, fromInput = '', toInput = '') => {
+    const today = new Date();
+    let start;
+    let end;
+
+    if (rangeKey === 'custom') {
+        const startCandidate = parseDateInputValue(fromInput) ?? parseDateInputValue(toInput) ?? today;
+        const endCandidate = parseDateInputValue(toInput) ?? parseDateInputValue(fromInput) ?? today;
+        start = startOfDayDate(startCandidate);
+        end = endOfDayDate(endCandidate);
+
+        if (start.getTime() > end.getTime()) {
+            const fixedStart = startOfDayDate(endCandidate);
+            const fixedEnd = endOfDayDate(startCandidate);
+            start = fixedStart;
+            end = fixedEnd;
+        }
+    } else if (rangeKey === '30d') {
+        start = startOfDayDate(addDaysToDate(today, -29));
+        end = endOfDayDate(today);
+    } else if (rangeKey === 'today') {
+        start = startOfDayDate(today);
+        end = endOfDayDate(today);
+    } else {
+        start = startOfDayDate(addDaysToDate(today, -6));
+        end = endOfDayDate(today);
+    }
+
+    return {
+        from: formatRequestDateValue(start),
+        to: formatRequestDateValue(end),
+        startDate: start,
+        endDate: end,
+        startInput: formatInputDateValue(start),
+        endInput: formatInputDateValue(end),
+    };
+};
+
 const rangeOptions = [
     { value: 'today', label: 'Hoy' },
     { value: '7d', label: 'Últimos 7 días' },
@@ -21,11 +88,18 @@ const rangeOptions = [
 ];
 
 const filters = reactive({
-    range: '7d',
+    range: 'today',
     from: '',
     to: '',
     location_id: null,
 });
+
+const ensureRangeInputs = (rangeKey) => {
+    const normalized = normalizeRange(rangeKey, filters.from, filters.to);
+    filters.from = normalized.startInput;
+    filters.to = normalized.endInput;
+    return normalized;
+};
 
 const summary = ref(null);
 const loading = ref(false);
@@ -129,68 +203,18 @@ const formatDateTime = (value) => {
 };
 
 const buildSummaryParams = () => {
+    const normalized = normalizeRange(filters.range, filters.from, filters.to);
     const params = {
         range: filters.range,
+        from: normalized.from,
+        to: normalized.to,
     };
 
     if (normalizedLocationId.value) {
         params.location_id = normalizedLocationId.value;
     }
 
-    if (filters.range === 'custom' && filters.from && filters.to) {
-        params.from = filters.from;
-        params.to = filters.to;
-    }
-
-    return params;
-};
-
-const buildCacheKey = () => {
-    const params = buildSummaryParams();
-    const resolved = resolveRangePreview();
-
-    return JSON.stringify({
-        ...params,
-        resolved_from: resolved.from,
-        resolved_to: resolved.to,
-    });
-};
-
-const resolveRangePreview = () => {
-    if (filters.range === 'custom' && filters.from && filters.to) {
-        return {
-            from: filters.from,
-            to: filters.to,
-        };
-    }
-
-    const now = new Date();
-    const end = new Date(now);
-    const start = new Date(now);
-
-    switch (filters.range) {
-        case 'today':
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            break;
-        case '30d':
-            start.setDate(start.getDate() - 29);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            break;
-        default:
-            start.setDate(start.getDate() - 6);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            break;
-    }
-
-    const format = (date) => date.toISOString().split('T')[0];
-
-    return {
-        from: format(start),
-        to: format(end),
-    };
+    return { params, normalized };
 };
 
 const fetchSummary = async ({ force = false } = {}) => {
@@ -203,7 +227,13 @@ const fetchSummary = async ({ force = false } = {}) => {
         return;
     }
 
-    const cacheKey = buildCacheKey();
+    const { params, normalized } = buildSummaryParams();
+    const cacheKey = JSON.stringify({
+        range: filters.range,
+        location_id: params.location_id ?? null,
+        from: normalized.from,
+        to: normalized.to,
+    });
 
     if (!force && summaryCache.has(cacheKey)) {
         summary.value = summaryCache.get(cacheKey);
@@ -214,7 +244,7 @@ const fetchSummary = async ({ force = false } = {}) => {
     loading.value = true;
     try {
         const { data } = await axios.get(route('dashboard.summary'), {
-            params: buildSummaryParams(),
+            params,
         });
 
         summaryCache.set(cacheKey, data);
@@ -234,6 +264,7 @@ const fetchSummary = async ({ force = false } = {}) => {
 const refreshSummary = () => fetchSummary({ force: true });
 
 onMounted(() => {
+    ensureRangeInputs(filters.range);
     isMounted.value = true;
     fetchSummary();
 });
@@ -242,8 +273,11 @@ watch(
     () => filters.range,
     (value, previous) => {
         if (value !== 'custom') {
-            filters.from = '';
-            filters.to = '';
+            ensureRangeInputs(value);
+        } else if (!filters.from || !filters.to) {
+            const normalizedToday = normalizeRange('today');
+            filters.from = normalizedToday.startInput;
+            filters.to = normalizedToday.endInput;
         }
 
         if (isMounted.value && value !== 'custom') {

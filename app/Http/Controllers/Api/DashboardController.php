@@ -99,9 +99,12 @@ class DashboardController extends Controller
     {
         $now = now();
 
-        if ($range === 'custom' && $fromInput && $toInput) {
-            $from = Carbon::parse($fromInput)->startOfDay();
-            $to = Carbon::parse($toInput)->endOfDay();
+        if ($range === 'custom' && ($fromInput || $toInput)) {
+            $startReference = $fromInput ?? $toInput;
+            $endReference = $toInput ?? $fromInput ?? $startReference;
+
+            $from = Carbon::parse($startReference)->startOfDay();
+            $to = Carbon::parse($endReference)->endOfDay();
 
             if ($from->greaterThan($to)) {
                 [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];

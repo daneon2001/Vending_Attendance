@@ -639,7 +639,7 @@ const resetLogsFilters = () => {
                                     Registros por página
                                     <select
                                         v-model.number="perPage"
-                                        class="rounded-2xl border border-slate-200 px-3 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                                        class="rounded-2xl border border-slate-200 px-6 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
                                     >
                                         <option v-for="option in perPageOptions" :key="option" :value="option">
                                             {{ option }}
