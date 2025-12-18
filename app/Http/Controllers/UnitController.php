@@ -46,6 +46,8 @@ class UnitController extends Controller
                 'total' => $units->total(),
                 'next_page_url' => $units->nextPageUrl(),
                 'prev_page_url' => $units->previousPageUrl(),
+                'from' => $units->firstItem(),
+                'to' => $units->lastItem(),
             ],
         ]);
     }

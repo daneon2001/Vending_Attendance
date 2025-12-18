@@ -10,6 +10,7 @@ class AttendanceLog extends Model
     use HasFactory;
 
     protected $fillable = [
+        'log_id',
         'employee_id',
         'fortia_employee_id',
         'company_id',
@@ -22,6 +23,8 @@ class AttendanceLog extends Model
         'sent_to_fortia_at',
         'fortia_status',
         'fortia_response_payload',
+        'status',
+        'raw_payload',
     ];
 
     protected $casts = [

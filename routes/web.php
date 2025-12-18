@@ -7,6 +7,7 @@ use App\Http\Controllers\ClockLogController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UnitCatalogController;
 use App\Http\Controllers\UnitController;
+use App\Models\Location;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -15,7 +16,14 @@ Route::get('/', function () {
 });
 
 Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
+    $locations = Location::query()
+        ->select('id', 'name', 'code')
+        ->orderBy('name')
+        ->get();
+
+    return Inertia::render('Dashboard', [
+        'locations' => $locations,
+    ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
@@ -23,6 +31,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/clocks', [ClockCatalogController::class, 'index'])->name('clocks.index');
+    Route::get('/clocks/list', [ClockController::class, 'index'])->name('clocks.list');
     Route::post('/clocks', [ClockController::class, 'store'])->name('clocks.store');
     Route::put('/clocks/{clock}', [ClockController::class, 'update'])->name('clocks.update');
     Route::put('/clocks/{clock}/assign-unit', [ClockController::class, 'assignUnit'])->name('clocks.assign-unit');

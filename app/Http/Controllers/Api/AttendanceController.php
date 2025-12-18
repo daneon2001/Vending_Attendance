@@ -22,7 +22,10 @@ class AttendanceController extends Controller
 
         $employee = Employee::find($validated['employee_id']);
 
+        $nextLogId = (AttendanceLog::max('log_id') ?? 0) + 1;
+
         AttendanceLog::create([
+            'log_id' => $nextLogId,
             'employee_id' => $employee->id,
             'fortia_employee_id' => $employee->fortia_employee_id,
             'company_id' => $employee->company_id,
@@ -45,14 +48,29 @@ class AttendanceController extends Controller
         $query = $employee->attendanceLogs()->latest('log_date');
 
         if ($request->filled('from')) {
-            $query->where('log_date', '>=', $request->date('from'));
+            $fromInput = $request->input('from');
+            $from = $this->normalizeDateBoundary($fromInput, true);
+            $query->where('log_date', '>=', $from);
         }
 
         if ($request->filled('to')) {
-            $query->where('log_date', '<=', $request->date('to'));
+            $toInput = $request->input('to');
+            $to = $this->normalizeDateBoundary($toInput, false);
+            $query->where('log_date', '<=', $to);
         }
 
         return response()->json($query->paginate(20));
+    }
+
+    private function normalizeDateBoundary(string $value, bool $isStart): Carbon
+    {
+        $date = Carbon::parse($value);
+
+        if (! str_contains($value, ':')) {
+            return $isStart ? $date->copy()->startOfDay() : $date->copy()->endOfDay();
+        }
+
+        return $isStart ? $date->copy() : $date->copy();
     }
 
     public function sendToFortia(): JsonResponse

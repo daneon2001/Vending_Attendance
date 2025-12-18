@@ -1,0 +1,167 @@
+<script setup>
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import Chart from 'chart.js/auto';
+
+const props = defineProps({
+    title: {
+        type: String,
+        default: '',
+    },
+    description: {
+        type: String,
+        default: '',
+    },
+    type: {
+        type: String,
+        default: 'line',
+    },
+    dataset: {
+        type: Object,
+        default: () => ({}),
+    },
+    options: {
+        type: Object,
+        default: () => ({}),
+    },
+    loading: {
+        type: Boolean,
+        default: false,
+    },
+    emptyText: {
+        type: String,
+        default: 'Sin informaci\u00f3n disponible',
+    },
+});
+
+const emit = defineEmits(['point-click']);
+
+const canvasRef = ref(null);
+let chartInstance = null;
+
+const destroyChart = () => {
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+};
+
+const buildOptions = () => {
+    const isDark = document.documentElement.classList.contains('dark');
+    const axisColor = isDark ? '#cbd5f5' : '#475569';
+    const gridColor = isDark ? 'rgba(148, 163, 184, 0.2)' : 'rgba(148, 163, 184, 0.3)';
+
+    const baseOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            intersect: false,
+            mode: 'index',
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    color: axisColor,
+                },
+            },
+            tooltip: {
+                enabled: true,
+            },
+        },
+        onClick: (event, elements) => {
+            if (!elements?.length || !chartInstance) return;
+            const [{ datasetIndex, index }] = elements;
+            const dataset = chartInstance.data.datasets[datasetIndex];
+            const point = {
+                datasetIndex,
+                index,
+                label: chartInstance.data.labels?.[index] ?? '',
+                value: dataset?.data?.[index] ?? 0,
+                datasetLabel: dataset?.label ?? '',
+            };
+            emit('point-click', point);
+        },
+        ...props.options,
+    };
+
+    if (!['doughnut', 'pie', 'polarArea'].includes(props.type)) {
+        baseOptions.scales = {
+            x: {
+                ticks: { color: axisColor },
+                grid: { color: gridColor },
+            },
+            y: {
+                ticks: { color: axisColor },
+                grid: { color: gridColor },
+            },
+        };
+    }
+
+    return baseOptions;
+};
+
+const renderChart = () => {
+    destroyChart();
+
+    if (!canvasRef.value || props.loading) return;
+    if (!props.dataset?.labels || !props.dataset.labels.length) return;
+
+    const config = {
+        type: props.type,
+        data: props.dataset,
+        options: buildOptions(),
+    };
+
+    chartInstance = new Chart(canvasRef.value, config);
+};
+
+watch(
+    () => [props.dataset, props.type, props.options, props.loading],
+    () => {
+        renderChart();
+    },
+    { deep: true },
+);
+
+onMounted(() => {
+    renderChart();
+});
+
+onBeforeUnmount(() => {
+    destroyChart();
+});
+</script>
+
+<template>
+    <article class="card flex h-full flex-col">
+        <div class="flex-1 p-6">
+            <header class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        {{ description }}
+                    </p>
+                    <h3 class="text-lg font-semibold text-app">
+                        {{ title }}
+                    </h3>
+                </div>
+            </header>
+
+            <div class="mt-6 h-64">
+                <div
+                    v-if="loading"
+                    class="h-full rounded-2xl bg-slate-100/70 animate-pulse dark:bg-slate-800/60"
+                />
+                <div
+                    v-else-if="!dataset?.labels?.length"
+                    class="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm text-muted dark:border-slate-700"
+                >
+                    {{ emptyText }}
+                </div>
+                <canvas
+                    v-else
+                    ref="canvasRef"
+                    class="h-full w-full"
+                />
+            </div>
+        </div>
+    </article>
+</template>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ClockLogFilterRequest;
 use App\Http\Resources\ClockLogResource;
 use App\Models\Clock;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
 class ClockLogController extends Controller
@@ -22,11 +23,19 @@ class ClockLogController extends Controller
         }
 
         if ($request->filled('date_from')) {
-            $query->whereDate('occurred_at', '>=', $request->date_from);
+            $from = Carbon::parse($request->input('date_from'));
+            if (! str_contains($request->input('date_from'), ':')) {
+                $from->startOfDay();
+            }
+            $query->where('occurred_at', '>=', $from);
         }
 
         if ($request->filled('date_to')) {
-            $query->whereDate('occurred_at', '<=', $request->date_to);
+            $to = Carbon::parse($request->input('date_to'));
+            if (! str_contains($request->input('date_to'), ':')) {
+                $to->endOfDay();
+            }
+            $query->where('occurred_at', '<=', $to);
         }
 
         $logs = $query->paginate($request->integer('per_page', 10));

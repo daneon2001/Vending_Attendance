@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClockController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
@@ -37,6 +38,7 @@ Route::prefix('employees')->group(function () {
     Route::post('sync-fortia', [EmployeeController::class, 'syncFromFortia']);
     Route::post('sync-fortia-mock', [EmployeeController::class, 'syncFortiaMock']);
     Route::patch('{employee}/status', [EmployeeController::class, 'updateStatus']);
+    Route::post('{employee}/fingerprints', [EmployeeController::class, 'storeFingerprint']);
     Route::delete('{employee}/fingerprints', [EmployeeController::class, 'deleteFingerprint']);
 });
 
@@ -52,3 +54,5 @@ Route::prefix('fortia-mock')->group(function () {
     Route::patch('employees/{employee}/status', [FortiaMockEmployeeController::class, 'updateStatus']);
     Route::post('sync-employees', [FortiaMockSyncController::class, 'sync']);
 });
+
+Route::get('dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');

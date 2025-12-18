@@ -13,16 +13,27 @@ class UnitCatalogController extends Controller
 {
     public function __invoke(Request $request): Response
     {
+        $perPage = $request->integer('per_page', 12);
+
         $units = Unit::with('company:id,name')
             ->withCount('clocks')
             ->orderBy('name')
-            ->take(12)
-            ->get();
+            ->paginate($perPage);
 
         $companies = Company::select('id', 'name')->orderBy('name')->get();
 
         return Inertia::render('Units/Index', [
-            'units' => UnitResource::collection($units)->resolve(),
+            'initialUnits' => [
+                'data' => UnitResource::collection($units)->resolve(),
+                'meta' => [
+                    'current_page' => $units->currentPage(),
+                    'last_page' => $units->lastPage(),
+                    'per_page' => $units->perPage(),
+                    'total' => $units->total(),
+                    'from' => $units->firstItem(),
+                    'to' => $units->lastItem(),
+                ],
+            ],
             'companies' => $companies,
         ]);
     }

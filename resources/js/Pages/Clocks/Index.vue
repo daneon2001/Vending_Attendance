@@ -5,9 +5,12 @@ import axios from 'axios';
 import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
-    clocks: {
-        type: Array,
-        default: () => [],
+    initialClocks: {
+        type: Object,
+        default: () => ({
+            data: [],
+            meta: null,
+        }),
     },
     locations: {
         type: Array,
@@ -19,11 +22,20 @@ const props = defineProps({
     },
 });
 
-const clockList = ref(props.clocks ?? []);
+const clockList = ref(props.initialClocks?.data ?? []);
+const pagination = ref(props.initialClocks?.meta ?? null);
+const perPage = ref(pagination.value?.per_page ?? 12);
+const listLoading = ref(false);
+const perPageOptions = [10, 12, 20, 50];
+
 watch(
-    () => props.clocks,
+    () => props.initialClocks,
     (value) => {
-        clockList.value = value ?? [];
+        clockList.value = value?.data ?? [];
+        pagination.value = value?.meta ?? null;
+        if (value?.meta?.per_page) {
+            perPage.value = value.meta.per_page;
+        }
     },
     { deep: true },
 );
@@ -120,6 +132,13 @@ const assignModal = reactive({
     errors: {},
 });
 
+const createEmptyLogFilters = () => ({
+    level: '',
+    event_type: '',
+    date_from: '',
+    date_to: '',
+});
+
 const logsDrawer = reactive({
     open: false,
     clock: null,
@@ -127,16 +146,34 @@ const logsDrawer = reactive({
     meta: null,
     loading: false,
     error: null,
-    filters: {
-        level: '',
-        event_type: '',
-        date_from: '',
-        date_to: '',
-    },
+    filters: createEmptyLogFilters(),
 });
+
+const formatDateInput = (date) => date.toISOString().split('T')[0];
+
+const setDefaultLogRange = () => {
+    const today = formatDateInput(new Date());
+    logsDrawer.filters.date_from = today;
+    logsDrawer.filters.date_to = today;
+};
+
+const normalizeDateTimeBoundary = (value, isStart) => {
+    if (!value) {
+        return undefined;
+    }
+
+    if (value.includes(':')) {
+        return value;
+    }
+
+    return `${value} ${isStart ? '00:00:00' : '23:59:59'}`;
+};
 
 const clocks = computed(() => clockList.value);
 const totalLocations = computed(() => locationOptions.value.length);
+const totalClocks = computed(() => pagination.value?.total ?? clockList.value.length);
+const currentPage = computed(() => pagination.value?.current_page ?? 1);
+const totalPages = computed(() => pagination.value?.last_page ?? 1);
 const totalOnline = computed(
     () => clockList.value.filter((clock) => clock.monitoring_status === 'online').length,
 );
@@ -149,6 +186,28 @@ const totalOffline = computed(
             (clock) => clock.monitoring_status === 'offline' || !clock.is_online,
         ).length,
 );
+const pageSummary = computed(() => {
+    const total = totalClocks.value;
+    if (!total) {
+        return { start: 0, end: 0, total: 0 };
+    }
+
+    if (!pagination.value) {
+        const end = clockList.value.length;
+        return {
+            start: end ? 1 : 0,
+            end,
+            total,
+        };
+    }
+
+    const length = clockList.value.length;
+    const start =
+        (pagination.value.current_page - 1) * pagination.value.per_page + (length ? 1 : 0);
+    const end = length ? Math.min(start + length - 1, total) : 0;
+
+    return { start, end, total };
+});
 
 const formatRelative = (timestamp) => {
     if (!timestamp) return 'Sin beat registrado';
@@ -166,6 +225,151 @@ const formatDateTime = (timestamp) => {
     if (!timestamp) return 'Sin registro';
     return new Date(timestamp).toLocaleString();
 };
+
+const collapseStorageKey = 'clock-card-collapsed';
+const collapsedMap = ref({});
+
+const loadCollapsedState = () => {
+    if (typeof window === 'undefined') {
+        collapsedMap.value = {};
+        return;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(collapseStorageKey);
+        collapsedMap.value = raw ? JSON.parse(raw) : {};
+    } catch (error) {
+        collapsedMap.value = {};
+    }
+};
+
+const persistCollapsedState = () => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+    window.localStorage.setItem(collapseStorageKey, JSON.stringify(collapsedMap.value));
+};
+
+loadCollapsedState();
+
+const defaultCollapsed = computed(() => clockList.value.length > 5);
+
+const isCollapsed = (clockId) => {
+    const key = String(clockId);
+    const state = collapsedMap.value?.[key];
+    if (typeof state === 'boolean') {
+        return state;
+    }
+    return defaultCollapsed.value;
+};
+
+const toggleClockCollapse = (clockId) => {
+    const key = String(clockId);
+    collapsedMap.value = {
+        ...collapsedMap.value,
+        [key]: !isCollapsed(clockId),
+    };
+    persistCollapsedState();
+};
+
+const setCollapseStateForAll = (collapsed) => {
+    const next = { ...collapsedMap.value };
+    clocks.value.forEach((clock) => {
+        next[String(clock.id)] = collapsed;
+    });
+    collapsedMap.value = next;
+    persistCollapsedState();
+};
+
+const collapseAll = () => setCollapseStateForAll(true);
+const expandAll = () => setCollapseStateForAll(false);
+const allCollapsed = computed(
+    () => clocks.value.length > 0 && clocks.value.every((clock) => isCollapsed(clock.id)),
+);
+const collapseToggleLabel = computed(() =>
+    allCollapsed.value ? 'Desplegar todas' : 'Colapsar todas',
+);
+const canToggleAll = computed(() => clocks.value.length > 0);
+const toggleAll = () => {
+    if (!clocks.value.length) {
+        return;
+    }
+
+    if (allCollapsed.value) {
+        expandAll();
+    } else {
+        collapseAll();
+    }
+};
+
+watch(
+    clockList,
+    (list) => {
+        const ids = new Set(list.map((clock) => String(clock.id)));
+        const updated = { ...collapsedMap.value };
+        let changed = false;
+
+        Object.keys(updated).forEach((key) => {
+            if (!ids.has(key)) {
+                delete updated[key];
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            collapsedMap.value = updated;
+            persistCollapsedState();
+        }
+    },
+    { deep: true },
+);
+
+const fetchClocks = async (page = currentPage.value) => {
+    listLoading.value = true;
+    try {
+        const { data } = await axios.get(route('clocks.list'), {
+            params: {
+                page,
+                per_page: perPage.value,
+            },
+        });
+
+        clockList.value = data.data ?? [];
+        pagination.value = data.meta ?? null;
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('No se pudo actualizar el catálogo de relojes', error);
+    } finally {
+        listLoading.value = false;
+    }
+};
+
+const changePage = (page) => {
+    if (!pagination.value) {
+        return;
+    }
+
+    if (page < 1 || page > (pagination.value?.last_page ?? 1) || page === pagination.value?.current_page) {
+        return;
+    }
+
+    fetchClocks(page);
+};
+
+const goToPrevPage = () => {
+    changePage(currentPage.value - 1);
+};
+
+const goToNextPage = () => {
+    changePage(currentPage.value + 1);
+};
+
+watch(
+    perPage,
+    () => {
+        fetchClocks(1);
+    },
+);
 
 const triggerAction = (action, clock) => {
     switch (action) {
@@ -325,6 +529,8 @@ const openLogsDrawer = (clock) => {
     logsDrawer.entries = [];
     logsDrawer.meta = null;
     logsDrawer.error = null;
+    Object.assign(logsDrawer.filters, createEmptyLogFilters());
+    setDefaultLogRange();
     logsDrawer.open = true;
     fetchLogs();
 };
@@ -343,8 +549,8 @@ const fetchLogs = async (url = null, append = false) => {
             config.params = {
                 level: logsDrawer.filters.level || undefined,
                 event_type: logsDrawer.filters.event_type || undefined,
-                date_from: logsDrawer.filters.date_from || undefined,
-                date_to: logsDrawer.filters.date_to || undefined,
+                date_from: normalizeDateTimeBoundary(logsDrawer.filters.date_from, true),
+                date_to: normalizeDateTimeBoundary(logsDrawer.filters.date_to, false),
             };
         }
 
@@ -362,12 +568,7 @@ const fetchLogs = async (url = null, append = false) => {
 };
 
 const resetLogsFilters = () => {
-    logsDrawer.filters = {
-        level: '',
-        event_type: '',
-        date_from: '',
-        date_to: '',
-    };
+    Object.assign(logsDrawer.filters, createEmptyLogFilters());
     fetchLogs();
 };
 </script>
@@ -416,13 +617,77 @@ const resetLogsFilters = () => {
                     </p>
                     <p class="text-sm text-slate-500">Programas on-prem fuera de línea</p>
                 </article>
+
+                <div
+                    v-if="totalClocks > 0 || clocks.length"
+                    class="sm:col-span-3"
+                >
+                    <div
+                        class="flex flex-col gap-4 rounded-3xl border border-slate-100 bg-white/80 p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:bg-slate-900/60"
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-3 lg:flex-nowrap">
+                            <div class="min-w-[220px]">
+                                <p class="text-sm font-semibold text-app dark:text-slate-100">
+                                    <span v-if="pageSummary.total">
+                                        Mostrando {{ pageSummary.start }}–{{ pageSummary.end }} de {{ pageSummary.total }}
+                                    </span>
+                                    <span v-else>Sin checadores registrados</span>
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                                    Registros por página
+                                    <select
+                                        v-model.number="perPage"
+                                        class="rounded-2xl border border-slate-200 px-3 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                                    >
+                                        <option v-for="option in perPageOptions" :key="option" :value="option">
+                                            {{ option }}
+                                        </option>
+                                    </select>
+                                </label>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    :disabled="!canToggleAll"
+                                    @click="toggleAll"
+                                >
+                                    {{ collapseToggleLabel }}
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    :aria-label="'Página anterior'"
+                                    :disabled="listLoading || currentPage <= 1"
+                                    @click="goToPrevPage"
+                                >
+                                    Anterior
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    :aria-label="'Página siguiente'"
+                                    :disabled="listLoading || currentPage >= totalPages"
+                                    @click="goToNextPage"
+                                >
+                                    Siguiente
+                                </button>
+                                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                                    Página {{ pageSummary.total ? `${currentPage} de ${totalPages}` : '—' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 class="text-app text-xl font-semibold leading-tight">
                         Catálogo
-                        <span class="text-sm font-medium text-slate-400">({{ clocks.length }} checadores)</span>
+                        <span class="text-sm font-medium text-slate-400">({{ totalClocks }} checadores)</span>
                     </h2>
                     <p class="text-sm text-slate-500">
                         Asigna cada equipo a unidades y mantén visibilidad.
@@ -457,23 +722,38 @@ const resetLogsFilters = () => {
             </div>
 
             <div class="space-y-4">
+                <p
+                    v-if="listLoading"
+                    class="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-2 text-sm font-semibold text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/30 dark:text-indigo-200"
+                >
+                    Actualizando catálogo de relojes...
+                </p>
                 <article
                     v-for="clock in clocks"
                     :key="clock.id"
                     class="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition hover:border-indigo-100 hover:ring-indigo-50"
                 >
                     <header class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
+                        <div class="min-w-[12rem] flex-1">
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                                 {{ clock.company?.name ?? 'Compañía' }}
                             </p>
                             <h3 class="text-xl font-semibold text-slate-900">
                                 {{ clock.clock_name }}
                             </h3>
-                            <p class="text-sm text-slate-500">
+                            <p
+                                v-if="!isCollapsed(clock.id)"
+                                class="text-sm text-slate-500"
+                            >
                                 Serie {{ clock.serial_number ?? 'sin registrar' }} • Firmware {{ clock.firmware_version ?? 'pendiente' }}
                             </p>
                         </div>
+                        <p
+                            v-if="isCollapsed(clock.id)"
+                            class="text-xs font-semibold text-slate-500 sm:text-right"
+                        >
+                            Último latido: {{ formatRelative(clock.last_heartbeat_at) }}
+                        </p>
                         <div class="flex flex-wrap items-center gap-2">
                             <span
                                 class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
@@ -491,80 +771,102 @@ const resetLogsFilters = () => {
                             >
                                 {{ clock.status ? 'Activo' : 'Inactivo' }}
                             </span>
+                            <button
+                                type="button"
+                                class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
+                                :aria-label="isCollapsed(clock.id) ? 'Desplegar checador' : 'Colapsar checador'"
+                                :aria-expanded="!isCollapsed(clock.id)"
+                                @click="toggleClockCollapse(clock.id)"
+                            >
+                                <svg
+                                    class="h-4 w-4 transition-transform duration-150"
+                                    :class="{ 'rotate-180': !isCollapsed(clock.id) }"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                    stroke="currentColor"
+                                >
+                                    <path d="M6 8l4 4 4-4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
                         </div>
                     </header>
 
-                    <div class="mt-4 grid gap-4 md:grid-cols-4">
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm">
-                            <dt class="text-xs uppercase tracking-wide text-slate-400">
-                                IP local
-                            </dt>
-                            <dd class="mt-1 font-semibold text-slate-900">
-                                {{ clock.ip_address ?? 'No asignada' }}
-                            </dd>
-                            <dd class="text-xs text-slate-500">{{ clock.type_inout ?? 'Modo no definido' }}</dd>
-                        </dl>
+                    <div v-if="!isCollapsed(clock.id)">
+                        <div class="mt-4 grid gap-4 md:grid-cols-4">
+                            <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+                                <dt class="text-xs uppercase tracking-wide text-slate-400">
+                                    IP local
+                                </dt>
+                                <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                                    {{ clock.ip_address ?? 'No asignada' }}
+                                </dd>
+                                <dd class="text-xs text-slate-500">{{ clock.type_inout ?? 'Modo no definido' }}</dd>
+                            </dl>
 
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm">
-                            <dt class="text-xs uppercase tracking-wide text-slate-400">
-                                Último latido
-                            </dt>
-                            <dd class="mt-1 font-semibold text-slate-900">
-                                {{ formatRelative(clock.last_heartbeat_at) }}
-                            </dd>
-                            <dd class="text-xs text-slate-500">
-                                {{ clock.monitoring_message ?? 'Sin bitácora' }}
-                            </dd>
-                        </dl>
+                            <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+                                <dt class="text-xs uppercase tracking-wide text-slate-400">
+                                    Último latido
+                                </dt>
+                                <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                                    {{ formatRelative(clock.last_heartbeat_at) }}
+                                </dd>
+                                <dd class="text-xs text-slate-500">
+                                    {{ clock.monitoring_message ?? 'Sin bitácora' }}
+                                </dd>
+                            </dl>
 
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm">
-                            <dt class="text-xs uppercase tracking-wide text-slate-400">
-                                Unidad asignada
-                            </dt>
-                            <dd class="mt-1 font-semibold text-slate-900">
-                                {{ clock.location?.name ?? 'Sin asignar' }}
-                            </dd>
-                            <dd class="text-xs text-slate-500">
-                                Código {{ clock.location?.code ?? 'N/A' }}
-                            </dd>
-                        </dl>
+                            <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+                                <dt class="text-xs uppercase tracking-wide text-slate-400">
+                                    Unidad asignada
+                                </dt>
+                                <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                                    {{ clock.location?.name ?? 'Sin asignar' }}
+                                </dd>
+                                <dd class="text-xs text-slate-500">
+                                    Código {{ clock.location?.code ?? 'N/A' }}
+                                </dd>
+                            </dl>
 
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm">
-                            <dt class="text-xs uppercase tracking-wide text-slate-400">
-                                Programa on-prem
-                            </dt>
-                            <dd class="mt-1 font-semibold text-slate-900">
-                                {{
-                                    programStatusLabels[clock.program_status || 'offline']?.label
-                                }}
-                            </dd>
-                            <dd class="text-xs text-slate-500">
-                                {{
-                                    programStatusLabels[clock.program_status || 'offline']?.detail
-                                }}
-                            </dd>
-                        </dl>
-                    </div>
+                            <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+                                <dt class="text-xs uppercase tracking-wide text-slate-400">
+                                    Programa on-prem
+                                </dt>
+                                <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                                    {{
+                                        programStatusLabels[clock.program_status || 'offline']?.label
+                                    }}
+                                </dd>
+                                <dd class="text-xs text-slate-500">
+                                    {{
+                                        programStatusLabels[clock.program_status || 'offline']?.detail
+                                    }}
+                                </dd>
+                            </dl>
+                        </div>
 
-                    <div class="mt-5 flex flex-wrap gap-2 text-sm font-medium text-slate-600">
-                        <button
-                            class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900"
-                            @click="triggerAction('view', clock)"
-                        >
-                            Consultar bitácora
-                        </button>
-                        <button
-                            class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900"
-                            @click="triggerAction('assign', clock)"
-                        >
-                            Asignar a unidad
-                        </button>
-                        <button
-                            class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900"
-                            @click="triggerAction('edit', clock)"
-                        >
-                            Editar configuración
-                        </button>
+                        <div class="mt-5 flex flex-wrap gap-2 text-sm font-medium text-slate-600">
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                @click="triggerAction('view', clock)"
+                            >
+                                Consultar bitácora
+                            </button>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                @click="triggerAction('assign', clock)"
+                            >
+                                Asignar a unidad
+                            </button>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                @click="triggerAction('edit', clock)"
+                            >
+                                Editar configuración
+                            </button>
+                        </div>
                     </div>
                 </article>
             </div>

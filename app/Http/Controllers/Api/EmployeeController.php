@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeFingerprint;
 use App\Services\FortiaMock\FortiaMockSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -124,6 +125,27 @@ class EmployeeController extends Controller
             'has_fingerprint' => $employee->has_fingerprint,
             'fingerprint_status' => $employee->fingerprint_status,
         ]);
+    }
+
+    public function storeFingerprint(Employee $employee, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'clock_id' => ['required', 'integer', 'exists:clocks,id'],
+        ]);
+
+        $fingerprint = EmployeeFingerprint::create([
+            'employee_id' => $employee->id,
+            'clock_id' => $validated['clock_id'],
+            'status' => 'enrolled',
+            'enrolled_at' => now(),
+        ]);
+
+        $employee->refreshFingerprintFlag();
+
+        return response()->json([
+            'message' => 'Huella registrada correctamente.',
+            'fingerprint' => $fingerprint,
+        ], 201);
     }
 
     private function normalizeStatus(string $status): string

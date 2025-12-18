@@ -1,22 +1,52 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import EmployeeAttendance from '@/Components/EmployeeAttendance.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import Toast from '@/Components/Toast.vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
-import { onMounted, ref } from 'vue';
+import { nextTick, onMounted, reactive, ref } from 'vue';
 
 const employees = ref([]);
 const loading = ref(false);
 const syncing = ref(false);
-const syncMessage = ref('');
-const syncError = ref('');
 const statusChanges = ref([]);
 const filters = ref({
     status: '',
     search: '',
 });
 const activeEmployeeId = ref(null);
-const message = ref('');
+const toast = reactive({
+    show: false,
+    type: 'success',
+    title: '',
+    message: '',
+    duration: 5000,
+});
+
+const showToast = ({ type = 'success', title = '', message = '', duration }) => {
+    toast.show = false;
+    toast.type = type;
+    toast.title = title;
+    toast.message = message;
+    toast.duration = duration ?? (type === 'error' ? 9000 : 5000);
+    nextTick(() => {
+        toast.show = true;
+    });
+};
+
+const modalDefaults = {
+    show: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirmar',
+    cancelLabel: 'Cancelar',
+    loading: false,
+    action: null,
+    context: null,
+};
+
+const modalState = ref({ ...modalDefaults });
 
 const loadEmployees = async () => {
     loading.value = true;
@@ -32,57 +62,112 @@ const loadEmployees = async () => {
 
 const syncNow = async () => {
     syncing.value = true;
-    syncMessage.value = '';
-    syncError.value = '';
     statusChanges.value = [];
     try {
         const { data } = await axios.post('/api/employees/sync-fortia-mock');
-        syncMessage.value = `Nuevos: ${data.created_count}, Actualizados: ${data.updated_count}, Sin cambios: ${data.unchanged_count}, Cambios de estatus: ${data.status_changed_count}`;
         statusChanges.value = data.status_changed || [];
         await loadEmployees();
+        showToast({
+            type: 'success',
+            title: 'Sincronización lista',
+            message: `Nuevos: ${data.created_count}, Actualizados: ${data.updated_count}, Sin cambios: ${data.unchanged_count}, Cambios de estatus: ${data.status_changed_count}`,
+        });
     } catch (error) {
-        syncError.value = error?.response?.data?.message || 'No se pudo sincronizar.';
+        showToast({
+            type: 'error',
+            title: 'Sincronización fallida',
+            message: error?.response?.data?.message || 'No se pudo sincronizar.',
+        });
     } finally {
         syncing.value = false;
     }
 };
 
-const toggleStatus = async (employee) => {
-    const nextStatus = employee.status === 'A' ? 'inactive' : 'active';
-    try {
-        const { data } = await axios.patch(`/api/employees/${employee.id}/status`, {
-            status: nextStatus,
-        });
-        const index = employees.value.findIndex((item) => item.id === employee.id);
-        if (index !== -1) {
-            employees.value[index] = data;
-        }
-    } catch (error) {
-        message.value = 'No se pudo actualizar el estado del empleado.';
+const updateEmployeeInList = (updatedData) => {
+    const index = employees.value.findIndex((item) => item.id === updatedData.id);
+    if (index !== -1) {
+        employees.value[index] = { ...employees.value[index], ...updatedData };
     }
 };
 
-const deleteFingerprint = async (employee) => {
-    if (!confirm('Â¿Seguro que deseas borrar la huella de este empleado en todos los relojes?')) {
+const resetModal = () => {
+    modalState.value = { ...modalDefaults };
+};
+
+const openStatusModal = (employee) => {
+    const nextStatus = employee.status === 'A' ? 'inactive' : 'active';
+    modalState.value = {
+        ...modalDefaults,
+        show: true,
+        title: nextStatus === 'inactive' ? 'Desactivar empleado' : 'Activar empleado',
+        message: `¿Seguro que deseas ${nextStatus === 'inactive' ? 'desactivar' : 'activar'} a ${
+            employee.full_name ?? employee.name
+        }?`,
+        confirmLabel: nextStatus === 'inactive' ? 'Desactivar' : 'Activar',
+        action: 'status',
+        context: { employee, nextStatus },
+    };
+};
+
+const openFingerprintModal = (employee) => {
+    modalState.value = {
+        ...modalDefaults,
+        show: true,
+        title: 'Borrar huella',
+        message:
+            'Esto marcará la huella como pendiente de eliminación y notificará al sistema on-premise cuando esté disponible.',
+        confirmLabel: 'Borrar huella',
+        action: 'fingerprint',
+        context: { employee },
+    };
+};
+
+const executeModalAction = async () => {
+    const { action, context } = modalState.value;
+    if (!action || !context) {
         return;
     }
 
-    try {
-        const { data } = await axios.delete(`/api/employees/${employee.id}/fingerprints`);
+    modalState.value.loading = true;
 
-        const index = employees.value.findIndex((item) => item.id === employee.id);
-        if (index !== -1) {
-            employees.value[index].has_fingerprint = data.has_fingerprint;
-            employees.value[index].fingerprint_status = data.fingerprint_status;
+    try {
+        if (action === 'status') {
+            const { data } = await axios.patch(`/api/employees/${context.employee.id}/status`, {
+                status: context.nextStatus,
+            });
+            updateEmployeeInList(data);
+            showToast({
+                type: 'success',
+                title: 'Empleado actualizado',
+                message: `Estado de ${data.full_name ?? data.name} actualizado correctamente.`,
+            });
+        } else if (action === 'fingerprint') {
+            const { data } = await axios.delete(`/api/employees/${context.employee.id}/fingerprints`);
+            updateEmployeeInList({
+                id: context.employee.id,
+                has_fingerprint: data.has_fingerprint,
+                fingerprint_status: data.fingerprint_status,
+            });
+            showToast({
+                type: 'success',
+                title: 'Huella actualizada',
+                message: data.message,
+            });
         }
-        message.value = data.message;
+        resetModal();
     } catch (error) {
-        message.value = 'No se pudo iniciar el borrado de huellas.';
+        showToast({
+            type: 'error',
+            title: 'Acción no completada',
+            message: error?.response?.data?.message || 'No se pudo completar la acción.',
+        });
+    } finally {
+        modalState.value.loading = false;
     }
 };
 
-const showAttendance = (employeeId) => {
-    activeEmployeeId.value = employeeId;
+const toggleAttendance = (employeeId) => {
+    activeEmployeeId.value = activeEmployeeId.value === employeeId ? null : employeeId;
 };
 
 onMounted(loadEmployees);
@@ -143,12 +228,6 @@ onMounted(loadEmployees);
             </button>
         </div>
 
-        <p v-if="syncMessage" class="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-            {{ syncMessage }}
-        </p>
-        <p v-if="syncError" class="rounded-2xl bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:bg-rose-500/20 dark:text-rose-200">
-            {{ syncError }}
-        </p>
         <div v-if="statusChanges.length" class="rounded-2xl border border-app bg-white px-4 py-3 text-sm shadow-sm dark:bg-slate-900">
             <p class="text-muted font-semibold">Cambios de estatus recientes:</p>
             <ul class="mt-2 space-y-1 text-sm text-app">
@@ -160,9 +239,6 @@ onMounted(loadEmployees);
                 </li>
             </ul>
         </div>
-        <p v-if="message" class="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-app dark:bg-slate-900/40">
-            {{ message }}
-        </p>
 
         <div class="card overflow-hidden">
             <table class="w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
@@ -186,7 +262,7 @@ onMounted(loadEmployees);
                             <button
                                 class="rounded-full px-3 py-1 text-xs font-semibold"
                                 :class="employee.status === 'A' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
-                                @click="toggleStatus(employee)"
+                                @click="openStatusModal(employee)"
                             >
                                 {{ employee.status === 'A' ? 'Activo' : 'Baja' }}
                             </button>
@@ -211,12 +287,12 @@ onMounted(loadEmployees);
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex flex-wrap gap-2 text-xs font-semibold">
-                                <button class="rounded-2xl border border-app px-3 py-1" @click="showAttendance(employee.id)">
-                                    Ver asistencias
+                                <button class="rounded-2xl border border-app px-3 py-1" @click="toggleAttendance(employee.id)">
+                                    {{ activeEmployeeId === employee.id ? 'Ocultar asistencias' : 'Ver asistencias' }}
                                 </button>
                                 <button
                                     class="rounded-2xl border border-app px-3 py-1 text-rose-600"
-                                    @click="deleteFingerprint(employee)"
+                                    @click="openFingerprintModal(employee)"
                                 >
                                     Borrar huella
                                 </button>
@@ -231,6 +307,24 @@ onMounted(loadEmployees);
         </div>
 
         <EmployeeAttendance v-if="activeEmployeeId" :employee-id="activeEmployeeId" />
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-label="modalState.confirmLabel"
+            :cancel-label="modalState.cancelLabel"
+            :loading="modalState.loading"
+            @cancel="resetModal"
+            @confirm="executeModalAction"
+        />
+        <Toast
+            :show="toast.show"
+            :type="toast.type"
+            :title="toast.title"
+            :message="toast.message"
+            :duration="toast.duration"
+            @close="toast.show = false"
+        />
     </section>
     </AuthenticatedLayout>
 </template>

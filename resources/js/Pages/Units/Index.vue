@@ -1,16 +1,20 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Toast from '@/Components/Toast.vue';
 import UnitCard from './Partials/UnitCard.vue';
 import UnitFormModal from './Partials/UnitFormModal.vue';
 import UnitDetailDrawer from './Partials/UnitDetailDrawer.vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
-    units: {
-        type: Array,
-        default: () => [],
+    initialUnits: {
+        type: Object,
+        default: () => ({
+            data: [],
+            meta: null,
+        }),
     },
     companies: {
         type: Array,
@@ -18,11 +22,10 @@ const props = defineProps({
     },
 });
 
-const units = ref(props.units ?? []);
-const meta = ref({
-    total: units.value.length,
-    next_page_url: null,
-});
+const units = ref(props.initialUnits?.data ?? []);
+const pagination = ref(props.initialUnits?.meta ?? null);
+const perPage = ref(pagination.value?.per_page ?? 12);
+const perPageOptions = [10, 12, 20, 50];
 const listLoading = ref(false);
 const listError = ref('');
 
@@ -33,6 +36,200 @@ const filters = reactive({
 });
 
 const filtersReady = ref(false);
+
+const toast = reactive({
+    show: false,
+    type: 'success',
+    title: '',
+    message: '',
+    duration: 5000,
+});
+
+const showToast = ({ type = 'success', title = '', message = '', duration }) => {
+    toast.show = false;
+    toast.type = type;
+    toast.title = title;
+    toast.message = message;
+    toast.duration = duration ?? (type === 'error' ? 9000 : 5000);
+    nextTick(() => {
+        toast.show = true;
+    });
+};
+
+const totalActive = computed(() => units.value.filter((unit) => unit.status === 1).length);
+const totalInactive = computed(() => units.value.filter((unit) => unit.status === 0).length);
+
+const pageSummary = computed(() => {
+    const total = pagination.value?.total ?? units.value.length;
+    if (!total) {
+        return { start: 0, end: 0, total: 0 };
+    }
+
+    if (pagination.value?.from != null && pagination.value?.to != null) {
+        return {
+            start: pagination.value.from,
+            end: pagination.value.to,
+            total,
+        };
+    }
+
+    const length = units.value.length;
+    const start = length ? 1 : 0;
+    const end = length;
+    return { start, end, total };
+});
+
+const currentPage = computed(() => pagination.value?.current_page ?? 1);
+const totalPages = computed(() => pagination.value?.last_page ?? 1);
+
+const collapseStorageKey = 'unit-card-collapsed';
+const collapsedMap = ref({});
+
+const loadCollapsedState = () => {
+    if (typeof window === 'undefined') {
+        collapsedMap.value = {};
+        return;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(collapseStorageKey);
+        collapsedMap.value = raw ? JSON.parse(raw) : {};
+    } catch {
+        collapsedMap.value = {};
+    }
+};
+
+const persistCollapsedState = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(collapseStorageKey, JSON.stringify(collapsedMap.value));
+};
+
+loadCollapsedState();
+
+const defaultCollapsed = computed(() => units.value.length > 5);
+
+const isCollapsed = (unitId) => {
+    const key = String(unitId);
+    if (Object.prototype.hasOwnProperty.call(collapsedMap.value, key)) {
+        return collapsedMap.value[key];
+    }
+    return defaultCollapsed.value;
+};
+
+const toggleUnitCollapse = (unit) => {
+    const key = String(unit.id);
+    collapsedMap.value = {
+        ...collapsedMap.value,
+        [key]: !isCollapsed(unit.id),
+    };
+    persistCollapsedState();
+};
+
+const setCollapseStateForAll = (collapsed) => {
+    const next = { ...collapsedMap.value };
+    units.value.forEach((unit) => {
+        next[String(unit.id)] = collapsed;
+    });
+    collapsedMap.value = next;
+    persistCollapsedState();
+};
+
+const collapseAll = () => setCollapseStateForAll(true);
+const expandAll = () => setCollapseStateForAll(false);
+const allCollapsed = computed(
+    () => units.value.length > 0 && units.value.every((unit) => isCollapsed(unit.id)),
+);
+const collapseToggleLabel = computed(() =>
+    allCollapsed.value ? 'Desplegar todas' : 'Colapsar todas',
+);
+const canToggleAll = computed(() => units.value.length > 0);
+const toggleAll = () => {
+    if (!units.value.length) return;
+    if (allCollapsed.value) {
+        expandAll();
+    } else {
+        collapseAll();
+    }
+};
+
+watch(
+    units,
+    (list) => {
+        const ids = new Set(list.map((unit) => String(unit.id)));
+        const next = { ...collapsedMap.value };
+        let changed = false;
+
+        Object.keys(next).forEach((key) => {
+            if (!ids.has(key)) {
+                delete next[key];
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            collapsedMap.value = next;
+            persistCollapsedState();
+        }
+    },
+    { deep: true },
+);
+
+const fetchUnits = async (page = currentPage.value) => {
+    listLoading.value = true;
+    listError.value = '';
+
+    try {
+        const { data } = await axios.get(route('units.list'), {
+            params: {
+                search: filters.search || undefined,
+                company_id: filters.company_id || undefined,
+                status: filters.status !== '' ? filters.status : undefined,
+                page,
+                per_page: perPage.value,
+            },
+        });
+        units.value = data.data ?? [];
+        pagination.value = data.meta ?? pagination.value;
+    } catch (error) {
+        listError.value = error.response?.data?.message ?? 'No se pudo cargar el catálogo.';
+        showToast({
+            type: 'error',
+            title: 'Error al cargar',
+            message: listError.value,
+        });
+    } finally {
+        listLoading.value = false;
+    }
+};
+
+onMounted(() => {
+    filtersReady.value = true;
+});
+
+watch(
+    () => ({ ...filters }),
+    () => {
+        if (!filtersReady.value) return;
+        fetchUnits(1);
+    },
+    { deep: true },
+);
+
+watch(
+    perPage,
+    () => {
+        if (!filtersReady.value) return;
+        fetchUnits(1);
+    },
+);
+
+const changePage = (page) => {
+    if (page < 1 || page > totalPages.value || page === currentPage.value) return;
+    fetchUnits(page);
+};
+
+const goToPrevPage = () => changePage(currentPage.value - 1);
+const goToNextPage = () => changePage(currentPage.value + 1);
 
 const defaultForm = (unit = null) => ({
     id: unit?.id ?? null,
@@ -69,48 +266,6 @@ const confirmState = reactive({
     loading: false,
 });
 
-const totalActive = computed(() => units.value.filter((unit) => unit.status === 1).length);
-const totalInactive = computed(() => units.value.filter((unit) => unit.status === 0).length);
-
-const fetchUnits = async (url = null, append = false) => {
-    listLoading.value = true;
-    listError.value = '';
-
-    try {
-        const endpoint = url ?? route('units.list');
-        const config = {};
-        if (!url) {
-            config.params = {
-                search: filters.search || undefined,
-                company_id: filters.company_id || undefined,
-                status: filters.status !== '' ? filters.status : undefined,
-            };
-        }
-
-        const { data } = await axios.get(endpoint, config);
-        units.value = append ? [...units.value, ...(data.data ?? [])] : data.data ?? [];
-        meta.value = data.meta ?? meta.value;
-    } catch (error) {
-        listError.value = error.response?.data?.message ?? 'No se pudo cargar el catálogo.';
-    } finally {
-        listLoading.value = false;
-    }
-};
-
-onMounted(async () => {
-    await fetchUnits();
-    filtersReady.value = true;
-});
-
-watch(
-    () => ({ ...filters }),
-    () => {
-        if (!filtersReady.value) return;
-        fetchUnits();
-    },
-    { deep: true },
-);
-
 const openCreateForm = () => {
     formState.mode = 'create';
     formState.form = defaultForm();
@@ -131,16 +286,28 @@ const submitForm = async () => {
 
     try {
         const payload = { ...formState.form };
+        let response;
         if (formState.mode === 'create') {
-            await axios.post(route('units.store'), payload);
+            response = await axios.post(route('units.store'), payload);
         } else {
-            await axios.put(route('units.update', payload.id), payload);
+            response = await axios.put(route('units.update', payload.id), payload);
         }
         formState.open = false;
+        showToast({
+            type: 'success',
+            title: 'Sucursal guardada',
+            message: response?.data?.message ?? 'La sucursal se guardó correctamente.',
+        });
         await fetchUnits();
     } catch (error) {
         if (error.response?.status === 422) {
             formState.errors = error.response.data.errors ?? {};
+        } else {
+            showToast({
+                type: 'error',
+                title: 'Error al guardar',
+                message: error.response?.data?.message ?? 'No se pudo guardar la sucursal.',
+            });
         }
     } finally {
         formState.loading = false;
@@ -173,18 +340,23 @@ const toggleStatus = async () => {
 
     confirmState.loading = true;
     try {
-        await axios.put(route('units.toggle-status', confirmState.unit.id));
+        const { data } = await axios.put(route('units.toggle-status', confirmState.unit.id));
         confirmState.open = false;
         confirmState.unit = null;
+        showToast({
+            type: 'success',
+            title: 'Estado actualizado',
+            message: data.message ?? 'La sucursal cambió de estado.',
+        });
         await fetchUnits();
+    } catch (error) {
+        showToast({
+            type: 'error',
+            title: 'Error al actualizar',
+            message: error.response?.data?.message ?? 'No se pudo cambiar el estado.',
+        });
     } finally {
         confirmState.loading = false;
-    }
-};
-
-const loadMore = () => {
-    if (meta.value?.next_page_url) {
-        fetchUnits(meta.value.next_page_url, true);
     }
 };
 
@@ -217,7 +389,7 @@ const clearFilters = () => {
                         Total
                     </p>
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
-                        {{ meta.total ?? units.length }}
+                        {{ pageSummary.total }}
                     </p>
                     <p class="text-sm text-slate-500">Sucursales registradas</p>
                 </article>
@@ -239,6 +411,65 @@ const clearFilters = () => {
                     </p>
                     <p class="text-sm text-slate-500">En mantenimiento o pausa</p>
                 </article>
+
+                <div
+                    v-if="pageSummary.total"
+                    class="sm:col-span-3"
+                >
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60 lg:flex-nowrap"
+                    >
+                        <div class="min-w-[220px]">
+                            <p class="text-sm font-semibold text-app dark:text-slate-100">
+                                Mostrando {{ pageSummary.start }}–{{ pageSummary.end }} de {{ pageSummary.total }}
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                                Registros por página
+                                <select
+                                    v-model.number="perPage"
+                                    class="rounded-2xl border border-slate-200 px-3 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                                >
+                                    <option v-for="option in perPageOptions" :key="option" :value="option">
+                                        {{ option }}
+                                    </option>
+                                </select>
+                            </label>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                :disabled="!canToggleAll"
+                                @click="toggleAll"
+                            >
+                                {{ collapseToggleLabel }}
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                :disabled="listLoading || currentPage <= 1"
+                                :aria-label="'Página anterior'"
+                                @click="goToPrevPage"
+                            >
+                                Anterior
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                :disabled="listLoading || currentPage >= totalPages"
+                                :aria-label="'Página siguiente'"
+                                @click="goToNextPage"
+                            >
+                                Siguiente
+                            </button>
+                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                                Página {{ currentPage }} de {{ totalPages }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
@@ -314,6 +545,8 @@ const clearFilters = () => {
                     v-for="unit in units"
                     :key="unit.id"
                     :unit="unit"
+                    :collapsed="isCollapsed(unit.id)"
+                    @collapse-toggle="toggleUnitCollapse"
                     @view="viewDetail"
                     @edit="openEditForm"
                     @toggle="requestToggle"
@@ -322,16 +555,6 @@ const clearFilters = () => {
                 <p v-if="!units.length && !listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500">
                     No se encontraron sucursales con los filtros seleccionados.
                 </p>
-
-                <button
-                    v-if="meta?.next_page_url"
-                    type="button"
-                    class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-60"
-                    :disabled="listLoading"
-                    @click="loadMore"
-                >
-                    {{ listLoading ? 'Cargando...' : 'Ver más' }}
-                </button>
             </div>
         </section>
 
@@ -389,5 +612,14 @@ const clearFilters = () => {
                 </div>
             </div>
         </div>
+
+        <Toast
+            :show="toast.show"
+            :type="toast.type"
+            :title="toast.title"
+            :message="toast.message"
+            :duration="toast.duration"
+            @close="toast.show = false"
+        />
     </AuthenticatedLayout>
 </template>
