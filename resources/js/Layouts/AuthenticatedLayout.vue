@@ -1,9 +1,9 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { useTheme } from '@/composables/useTheme';
 import { useSidebar } from '@/composables/useSidebar';
 
@@ -11,7 +11,14 @@ const mobileSidebarOpen = ref(false);
 const { theme, toggleTheme } = useTheme();
 const { isCollapsed, collapseSidebar, expandSidebar } = useSidebar();
 
-const navItems = [
+const page = usePage();
+const permissions = computed(() => page.props.auth.permissions ?? {});
+const can = (module, action = 'view') => {
+    const actions = permissions.value?.[module] ?? [];
+    return actions.includes(action) || actions.includes('manage');
+};
+
+const baseNavItems = [
     {
         label: 'Panel general',
         description: 'KPI diarios y alertas',
@@ -36,6 +43,34 @@ const navItems = [
         routeName: 'units.index',
         icon: 'branches',
     },
+    {
+        label: 'Configuración',
+        description: 'Centro de ajustes y seguridad',
+        routeName: 'settings.index',
+        icon: 'settings',
+        requiredPermission: { module: 'settings', action: 'view' },
+    },
+    {
+        label: 'Roles y permisos',
+        description: 'Configuración y seguridad',
+        routeName: 'settings.roles.page',
+        icon: 'settings',
+        requiredPermission: { module: 'settings', action: 'view' },
+    },
+    {
+        label: 'Usuarios del sistema',
+        description: 'Gestión de cuentas internas',
+        routeName: 'settings.users.page',
+        icon: 'users',
+        requiredPermission: { module: 'users', action: 'view' },
+    },
+    {
+        label: 'Bitácora',
+        description: 'Audit trail del sistema',
+        routeName: 'settings.audit.page',
+        icon: 'audit',
+        requiredPermission: { module: 'audit', action: 'view' },
+    },
 ];
 
 const iconPaths = {
@@ -58,10 +93,35 @@ const iconPaths = {
         'M3 20v-1c0-2.761 2.239-5 5-5c2.761 0 5 2.239 5 5v1',
         'M13 20v-1c0-2.075 1.567-4 3.5-4H17c1.933 0 3.5 1.925 3.5 4v1',
     ],
+    settings: [
+        'M12 8a4 4 0 100 8 4 4 0 000-8z',
+        'M4.93 6.37l1.42 1.42',
+        'M17.66 19.07l1.42 1.42',
+        'M3 12h2',
+        'M19 12h2',
+        'M4.93 17.63l1.42-1.42',
+        'M17.66 4.93l1.42-1.42',
+        'M12 3v2',
+        'M12 19v2',
+    ],
+    audit: [
+        'M5 5h14v14H5z',
+        'M9 9h6v6H9z',
+        'M5 12h4',
+        'M15 12h4',
+        'M12 5v4',
+        'M12 15v4',
+    ],
 };
 
 const currentYear = new Date().getFullYear();
 const isActive = (routeName) => (routeName ? route().current(routeName) : false);
+const navItems = computed(() =>
+    baseNavItems.filter((item) => {
+        if (!item.requiredPermission) return true;
+        return can(item.requiredPermission.module, item.requiredPermission.action);
+    }),
+);
 </script>
 
 <template>
@@ -146,14 +206,6 @@ const isActive = (routeName) => (routeName ? route().current(routeName) : false)
                     </Link>
                 </nav>
 
-                <div
-                    v-if="!isCollapsed"
-                    class="mt-6 rounded-3xl border border-app bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4 text-sm text-muted  dark:from-indigo-900/40 dark:via-slate-900 dark:to-purple-900/40 "
-                >
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-indigo-500">Clima laboral</p>
-                    <p class="mt-2 text-lg font-semibold text-app">+92% satisfaccion</p>
-                    <p class="mt-1 text-xs text-soft">Datos obtenidos de la ultima campana de pulso.</p>
-                </div>
             </aside>
 
             <div class="flex flex-1 flex-col">

@@ -44,6 +44,55 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'estatus' => 'boolean',
         ];
+    }
+
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class)->withTimestamps();
+    }
+
+    public function allPermissions()
+    {
+        $roles = $this->relationLoaded('roles')
+            ? $this->roles->loadMissing('permissions')
+            : $this->roles()->with('permissions')->get();
+
+        return $roles
+            ->pluck('permissions')
+            ->flatten()
+            ->unique(fn ($permission) => $permission->module.'-'.$permission->action);
+    }
+
+    public function hasPermission(string $module, string $action): bool
+    {
+        $permissions = $this->relationLoaded('roles')
+            ? $this->roles->loadMissing('permissions')
+            : $this->roles()->with('permissions')->get();
+
+        foreach ($permissions as $role) {
+            foreach ($role->permissions as $permission) {
+                if ($permission->module === $module && ($permission->action === $action || $permission->action === 'manage')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public function permissionsMatrix(): array
+    {
+        $matrix = [];
+        $permissions = $this->allPermissions();
+
+        foreach ($permissions as $permission) {
+            $matrix[$permission->module][] = $permission->action;
+        }
+
+        return collect($matrix)
+            ->map(fn ($actions) => array_values(array_unique($actions)))
+            ->toArray();
     }
 }

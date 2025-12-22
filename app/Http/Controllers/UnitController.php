@@ -7,8 +7,10 @@ use App\Http\Requests\UpdateUnitRequest;
 use App\Http\Resources\UnitDetailResource;
 use App\Http\Resources\UnitResource;
 use App\Models\Unit;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class UnitController extends Controller
 {
@@ -56,6 +58,15 @@ class UnitController extends Controller
     {
         $unit = Unit::create($request->validated());
 
+        AuditLogger::log(
+            'units.created',
+            $unit,
+            'Sucursal creada',
+            [
+                'attributes' => $request->validated(),
+            ]
+        );
+
         return response()->json([
             'message' => 'Sucursal creada correctamente',
             'data' => UnitResource::make($unit->load('company'))->resolve(),
@@ -75,7 +86,18 @@ class UnitController extends Controller
 
     public function update(UpdateUnitRequest $request, Unit $unit): JsonResponse
     {
+        $before = $unit->only(array_keys($request->validated()));
         $unit->update($request->validated());
+
+        AuditLogger::log(
+            'units.updated',
+            $unit,
+            'Sucursal actualizada',
+            [
+                'before' => $before,
+                'after' => Arr::only($unit->toArray(), array_keys($request->validated())),
+            ]
+        );
 
         return response()->json([
             'message' => 'Sucursal actualizada',
@@ -85,9 +107,20 @@ class UnitController extends Controller
 
     public function toggleStatus(Unit $unit): JsonResponse
     {
+        $previous = $unit->status;
         $unit->update([
             'status' => $unit->status ? 0 : 1,
         ]);
+
+        AuditLogger::log(
+            'units.status_changed',
+            $unit,
+            $unit->status ? 'Sucursal desactivada' : 'Sucursal activada',
+            [
+                'before' => $previous ? 'activa' : 'inactiva',
+                'after' => $unit->status ? 'activa' : 'inactiva',
+            ]
+        );
 
         return response()->json([
             'message' => $unit->status ? 'Sucursal activada' : 'Sucursal desactivada',

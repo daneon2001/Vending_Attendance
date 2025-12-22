@@ -13,6 +13,14 @@ const props = defineProps({
     },
 });
 
+const isDev = import.meta.env.DEV;
+const debugLog = (...args) => {
+    if (isDev) {
+        // eslint-disable-next-line no-console
+        console.log('%c[Dashboard]', 'color:#6366f1;font-weight:bold;', ...args);
+    }
+};
+
 const padNumber = (value) => String(value).padStart(2, '0');
 const formatInputDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
 const formatRequestDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())} ${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`;
@@ -228,6 +236,11 @@ const fetchSummary = async ({ force = false } = {}) => {
     }
 
     const { params, normalized } = buildSummaryParams();
+    debugLog('Fetch summary start', {
+        range: filters.range,
+        normalizedRange: normalized,
+        params,
+    });
     const cacheKey = JSON.stringify({
         range: filters.range,
         location_id: params.location_id ?? null,
@@ -249,6 +262,10 @@ const fetchSummary = async ({ force = false } = {}) => {
 
         summaryCache.set(cacheKey, data);
         summary.value = data;
+        debugLog('Fetch summary success', {
+            resolved_range: data?.resolved_range,
+            top_branches: data?.top_branches,
+        });
         detailHighlight.value = null;
     } catch (error) {
         showToast({
@@ -390,6 +407,18 @@ const branchChartData = computed(() => ({
     ],
 }));
 
+watch(
+    branchChartData,
+    (value) => {
+        if (!isDev) return;
+        debugLog('branchChartData update', {
+            labels: value.labels,
+            data: value.datasets?.[0]?.data,
+        });
+    },
+    { deep: true },
+);
+
 const branchChartOptions = computed(() => ({
     indexAxis: 'y',
 }));
@@ -464,102 +493,101 @@ const clearDetail = () => {
             </div>
         </template>
 
-        <section class="bg-app py-10">
-            <div class="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
-                <div class="flex flex-col gap-4 rounded-3xl border-app bg-white/80 p-4 shadow-sm ring-1 ring-transparent dark:bg-slate-900/70">
-                    <div class="flex flex-wrap items-center gap-4 lg:flex-nowrap">
-                        <div class="flex flex-1 flex-wrap items-center gap-3 text-sm">
-                            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                                Rango
-                                <select
-                                    v-model="filters.range"
-                                    class="rounded-2xl border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                >
-                                    <option
-                                        v-for="option in rangeOptions"
-                                        :key="option.value"
-                                        :value="option.value"
-                                    >
-                                        {{ option.label }}
-                                    </option>
-                                </select>
-                            </label>
-                            <div
-                                v-if="hasCustomRange"
-                                class="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+        <section class="space-y-6">
+            <div class="card flex flex-col gap-4 px-4 py-4 sm:px-6">
+                <div class="flex flex-wrap items-center gap-4 lg:flex-nowrap">
+                    <div class="flex flex-1 flex-wrap items-center gap-3 text-sm">
+                        <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                            Rango
+                            <select
+                                v-model="filters.range"
+                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
                             >
-                                <label class="flex items-center gap-2">
-                                    Desde
-                                    <input
-                                        v-model="filters.from"
-                                        type="date"
-                                        class="rounded-2xl border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                    />
-                                </label>
-                                <label class="flex items-center gap-2">
-                                    Hasta
-                                    <input
-                                        v-model="filters.to"
-                                        type="date"
-                                        class="rounded-2xl border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                    />
-                                </label>
-                                <button
-                                    type="button"
-                                    class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
-                                    :disabled="loading"
-                                    @click="fetchSummary"
+                                <option
+                                    v-for="option in rangeOptions"
+                                    :key="option.value"
+                                    :value="option.value"
                                 >
-                                    Aplicar filtros
-                                </button>
-                            </div>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                            <label class="flex items-center gap-2">
-                                Sucursal
-                                <select
-                                    v-model="filters.location_id"
-                                    class="rounded-2xl border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                >
-                                    <option value="">Todas</option>
-                                    <option
-                                        v-for="location in locationOptions"
-                                        :key="location.id"
-                                        :value="location.id"
-                                    >
-                                        {{ location.name }} {{ location.code ? `(${location.code})` : '' }}
-                                    </option>
-                                </select>
-                            </label>
-                        </div>
-                        <button
-                            type="button"
-                            class="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
-                            :disabled="loading"
-                            @click="refreshSummary"
+                                    {{ option.label }}
+                                </option>
+                            </select>
+                        </label>
+                        <div
+                            v-if="hasCustomRange"
+                            class="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
                         >
-                            <span v-if="loading">Actualizando…</span>
-                            <span v-else>Actualizar</span>
-                            <span aria-hidden="true">↻</span>
-                        </button>
-                        <div class="min-w-[200px] flex-1 space-y-1 text-right lg:text-left">
-                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                                Última actualización
-                            </p>
-                            <p class="text-app text-base font-semibold">
-                                {{ lastUpdatedLabel }}
-                            </p>
-                            <p class="text-xs text-muted">
-                                {{ selectedLocationLabel }}
-                            </p>
+                            <label class="flex items-center gap-2">
+                                Desde
+                                <input
+                                    v-model="filters.from"
+                                    type="date"
+                                    class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                />
+                            </label>
+                            <label class="flex items-center gap-2">
+                                Hasta
+                                <input
+                                    v-model="filters.to"
+                                    type="date"
+                                    class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
+                                :disabled="loading"
+                                @click="fetchSummary"
+                            >
+                                Aplicar filtros
+                            </button>
                         </div>
                     </div>
+                    <div class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        <label class="flex items-center gap-2">
+                            Sucursal
+                            <select
+                                v-model="filters.location_id"
+                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                            >
+                                <option value="">Todas</option>
+                                <option
+                                    v-for="location in locationOptions"
+                                    :key="location.id"
+                                    :value="location.id"
+                                >
+                                    {{ location.name }} {{ location.code ? `(${location.code})` : '' }}
+                                </option>
+                            </select>
+                        </label>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+                        :disabled="loading"
+                        @click="refreshSummary"
+                    >
+                        <span v-if="loading">Actualizando…</span>
+                        <span v-else>Actualizar</span>
+                        <span aria-hidden="true">↻</span>
+                    </button>
+                    <div class="min-w-[200px] flex-1 space-y-1 text-right lg:text-left">
+                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                            Última actualización
+                        </p>
+                        <p class="text-app text-base font-semibold">
+                            {{ lastUpdatedLabel }}
+                        </p>
+                        <p class="text-xs text-muted">
+                            {{ selectedLocationLabel }}
+                        </p>
+                    </div>
                 </div>
+            </div>
 
-                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <article
-                        v-for="card in kpiCards"
-                        :key="card.id"
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <article
+                    v-for="card in kpiCards"
+                    :key="card.id"
                         class="rounded-3xl border border-white/50 bg-gradient-to-br p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:text-slate-100"
                         :class="card.accent"
                     >
@@ -661,7 +689,6 @@ const clearDetail = () => {
                         </ul>
                     </article>
                 </div>
-            </div>
         </section>
 
         <Toast

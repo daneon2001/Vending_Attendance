@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
+use App\Services\Audit\AuditLogger;
 use App\Services\FortiaMock\FortiaMockSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
@@ -61,6 +63,13 @@ class EmployeeController extends Controller
 
         $summary = $syncService->syncIncremental($filters);
 
+        AuditLogger::log(
+            'employees.sync_mock',
+            null,
+            'Sincronización con Fortia Mock',
+            $summary
+        );
+
         return response()->json([
             'created_count' => $summary['new'] ?? 0,
             'updated_count' => $summary['updated'] ?? 0,
@@ -77,7 +86,18 @@ class EmployeeController extends Controller
         ]);
 
         $normalized = $this->normalizeStatus($validated['status']);
+        $before = $employee->status;
         $employee->update(['status' => $normalized]);
+
+        AuditLogger::log(
+            'employees.status_changed',
+            $employee,
+            'Cambio de estado de empleado',
+            [
+                'before' => $before,
+                'after' => $normalized,
+            ]
+        );
 
         return response()->json($employee->refresh());
     }
@@ -119,6 +139,16 @@ class EmployeeController extends Controller
 
         $employee->refreshFingerprintFlag();
 
+        AuditLogger::log(
+            'employees.fingerprint_deleted',
+            $employee,
+            'Borrado de huella',
+            [
+                'clock_id' => $validated['clock_id'] ?? null,
+                'affected' => $affected,
+            ]
+        );
+
         return response()->json([
             'message' => 'Borrado de huella en proceso.',
             'affected' => $affected,
@@ -141,6 +171,16 @@ class EmployeeController extends Controller
         ]);
 
         $employee->refreshFingerprintFlag();
+
+        AuditLogger::log(
+            'employees.fingerprint_registered',
+            $employee,
+            'Huella registrada',
+            [
+                'clock_id' => $validated['clock_id'],
+                'fingerprint_id' => $fingerprint->id,
+            ]
+        );
 
         return response()->json([
             'message' => 'Huella registrada correctamente.',

@@ -5,6 +5,14 @@ use App\Http\Controllers\ClockController;
 use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\UserController as ApiUserController;
+use App\Http\Controllers\Settings\AuditPageController;
+use App\Http\Controllers\Settings\RoleAssignmentController;
+use App\Http\Controllers\Settings\RoleController as SettingsRoleController;
+use App\Http\Controllers\Settings\RolePageController;
+use App\Http\Controllers\Settings\SettingsIndexController;
+use App\Http\Controllers\Settings\UserPageController;
 use App\Http\Controllers\UnitCatalogController;
 use App\Http\Controllers\UnitController;
 use App\Models\Location;
@@ -48,6 +56,60 @@ Route::middleware('auth')->group(function () {
     Route::get('/units/{unit}', [UnitController::class, 'show'])->name('units.show');
     Route::put('/units/{unit}', [UnitController::class, 'update'])->name('units.update');
     Route::put('/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])->name('units.toggle-status');
+
+    Route::prefix('settings')->name('settings.')->group(function () {
+        Route::get('/', SettingsIndexController::class)
+            ->middleware('perm:settings,view')
+            ->name('index');
+
+        Route::get('/roles', RolePageController::class)
+            ->middleware('perm:settings,view')
+            ->name('roles.page');
+
+        Route::get('/roles/list', [SettingsRoleController::class, 'index'])
+            ->middleware('perm:settings,view')
+            ->name('roles.index');
+
+        Route::post('/roles', [SettingsRoleController::class, 'store'])
+            ->middleware('perm:settings,create')
+            ->name('roles.store');
+
+        Route::put('/roles/{role}', [SettingsRoleController::class, 'update'])
+            ->middleware('perm:settings,update')
+            ->name('roles.update');
+
+        Route::delete('/roles/{role}', [SettingsRoleController::class, 'destroy'])
+            ->middleware('perm:settings,delete')
+            ->name('roles.destroy');
+
+        Route::post('/roles/{role}/users', [RoleAssignmentController::class, 'store'])
+            ->middleware('perm:settings,update')
+            ->name('roles.users.store');
+
+        Route::delete('/roles/{role}/users/{user}', [RoleAssignmentController::class, 'destroy'])
+            ->middleware('perm:settings,update')
+            ->name('roles.users.destroy');
+
+        Route::get('/users', UserPageController::class)
+            ->middleware('perm:users,view')
+            ->name('users.page');
+
+        Route::get('/audit', AuditPageController::class)
+            ->middleware('perm:audit,view')
+            ->name('audit.page');
+    });
+
+    Route::prefix('api/users')->group(function () {
+        Route::get('/', [ApiUserController::class, 'index'])->middleware('perm:users,view');
+        Route::post('/', [ApiUserController::class, 'store'])->middleware('perm:users,create');
+        Route::put('{user}', [ApiUserController::class, 'update'])->middleware('perm:users,update');
+        Route::patch('{user}/status', [ApiUserController::class, 'updateStatus'])->middleware('perm:users,disable');
+    });
+
+    Route::prefix('api/audit-logs')->middleware('perm:audit,view')->group(function () {
+        Route::get('/', [AuditLogController::class, 'index']);
+        Route::get('{auditLog}', [AuditLogController::class, 'show']);
+    });
 });
 
 require __DIR__.'/auth.php';

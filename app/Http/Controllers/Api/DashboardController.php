@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -28,6 +29,17 @@ class DashboardController extends Controller
         $locationId = $request->integer('location_id');
 
         [$from, $to] = $this->resolveRange($range, $request->input('from'), $request->input('to'));
+
+        if (app()->environment('local')) {
+            Log::debug('[Dashboard] incoming summary request', [
+                'range' => $range,
+                'raw_from' => $request->input('from'),
+                'raw_to' => $request->input('to'),
+                'normalized_from' => $from->toDateTimeString(),
+                'normalized_to' => $to->toDateTimeString(),
+                'location_id' => $locationId,
+            ]);
+        }
 
         $attendanceBase = fn () => AttendanceLog::query()
             ->whereBetween('log_date', [$from, $to])
@@ -91,6 +103,14 @@ class DashboardController extends Controller
             'clock_status' => $this->formatClockDataset($clockStatus),
             'top_branches' => $topBranches,
         ];
+
+        if (app()->environment('local')) {
+            Log::debug('[Dashboard] response aggregates', [
+                'presence_points' => count($presenceSeries['labels']),
+                'top_branches_points' => count($topBranches['labels']),
+                'top_branches_mode' => $topBranches['mode'] ?? null,
+            ]);
+        }
 
         return response()->json($response);
     }
@@ -210,18 +230,27 @@ class DashboardController extends Controller
 
     protected function buildTopBranches(Carbon $from, Carbon $to, ?int $locationId = null): array
     {
-        $dailyCounts = AttendanceLog::query()
-            ->whereBetween('log_date', [$from, $to])
-            ->whereNotNull('location_id')
-            ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
-            ->selectRaw('location_id, DATE(log_date) as day, COUNT(*) as total')
-            ->groupBy('location_id', DB::raw('DATE(log_date)'));
+        $resolvedLocationExpression = "COALESCE(attendance_logs.location_id, employees.base_location_id)";
+
+        $baseQuery = function () use ($from, $to, $locationId, $resolvedLocationExpression) {
+            return AttendanceLog::query()
+                ->leftJoin('employees', 'employees.id', '=', 'attendance_logs.employee_id')
+                ->whereBetween('attendance_logs.log_date', [$from, $to])
+                ->whereRaw("$resolvedLocationExpression IS NOT NULL")
+                ->when($locationId, fn ($query) => $query->whereRaw("$resolvedLocationExpression = ?", [$locationId]));
+        };
+
+        $dailyCounts = $baseQuery()
+            ->selectRaw('DATE(attendance_logs.log_date) as day')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("$resolvedLocationExpression as resolved_location_id")
+            ->groupBy(DB::raw('DATE(attendance_logs.log_date)'), DB::raw($resolvedLocationExpression));
 
         $incidents = DB::query()
             ->fromSub($dailyCounts, 'daily')
-            ->leftJoin('locations', 'locations.id', '=', 'daily.location_id')
-            ->selectRaw("daily.location_id, COALESCE(locations.name, CONCAT('Unidad #', daily.location_id)) as location_name, SUM(CASE WHEN daily.total < 2 THEN 1 ELSE 0 END) as incidents, SUM(daily.total) as logs")
-            ->groupBy('daily.location_id', 'locations.name')
+            ->leftJoin('locations', 'locations.id', '=', 'daily.resolved_location_id')
+            ->selectRaw("daily.resolved_location_id as location_id, COALESCE(locations.name, CONCAT('Unidad #', daily.resolved_location_id)) as location_name, SUM(CASE WHEN daily.total < 2 THEN 1 ELSE 0 END) as incidents, SUM(daily.total) as logs")
+            ->groupBy('daily.resolved_location_id', 'locations.name')
             ->orderByDesc('incidents')
             ->limit(5)
             ->get();
@@ -231,14 +260,16 @@ class DashboardController extends Controller
         $values = $incidents->pluck('incidents')->map(fn ($value) => (int) $value)->toArray();
 
         if (! array_sum($values)) {
-            $fallback = AttendanceLog::query()
-                ->whereBetween('log_date', [$from, $to])
-                ->whereNotNull('attendance_logs.location_id')
-                ->when($locationId, fn ($query) => $query->where('attendance_logs.location_id', $locationId))
-                ->leftJoin('locations', 'locations.id', '=', 'attendance_logs.location_id')
-                ->selectRaw("attendance_logs.location_id, COALESCE(locations.name, CONCAT('Unidad #', attendance_logs.location_id)) as location_name, COUNT(*) as total")
-                ->groupBy('attendance_logs.location_id', 'locations.name')
-                ->orderByDesc('total')
+            $volumeSubquery = $baseQuery()
+                ->selectRaw("$resolvedLocationExpression as resolved_location_id")
+                ->selectRaw('COUNT(*) as total')
+                ->groupBy(DB::raw($resolvedLocationExpression));
+
+            $fallback = DB::query()
+                ->fromSub($volumeSubquery, 'volume')
+                ->leftJoin('locations', 'locations.id', '=', 'volume.resolved_location_id')
+                ->selectRaw("volume.resolved_location_id as location_id, COALESCE(locations.name, CONCAT('Unidad #', volume.resolved_location_id)) as location_name, volume.total")
+                ->orderByDesc('volume.total')
                 ->limit(5)
                 ->get();
 

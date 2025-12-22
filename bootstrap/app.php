@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
 // Middleware propios
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
@@ -17,6 +18,8 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 
 // (Solo lo usarías si tuvieras SPA con cookies, para tokens Bearer no es necesario)
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+use App\Console\Commands\EnsureAdminPermissions;
+use App\Console\Commands\MakeAdminSuperCommand;
 use App\Console\Commands\FortiaMockAddEmployee;
 use App\Console\Commands\FortiaMockSyncEmployees;
 
@@ -30,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withCommands([
         FortiaMockAddEmployee::class,
         FortiaMockSyncEmployees::class,
+        EnsureAdminPermissions::class,
+        MakeAdminSuperCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)
@@ -57,6 +62,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Nuestro middleware de expiración de token
             'token.expiration' => CheckTokenExpiration::class,
+            'perm'             => EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

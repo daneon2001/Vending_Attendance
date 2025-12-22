@@ -3,9 +3,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import EmployeeAttendance from '@/Components/EmployeeAttendance.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import Toast from '@/Components/Toast.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 
 const employees = ref([]);
 const loading = ref(false);
@@ -35,6 +35,17 @@ const showToast = ({ type = 'success', title = '', message = '', duration }) => 
     });
 };
 
+const page = usePage();
+const permissionMatrix = computed(() => page.props.auth.permissions ?? {});
+const can = (module, action = 'view') => {
+    const actions = permissionMatrix.value?.[module] ?? [];
+    return actions.includes(action) || actions.includes('manage');
+};
+const canSyncEmployees = computed(() => can('employees', 'sync'));
+const canDisableEmployees = computed(() => can('employees', 'disable'));
+const canUpdateEmployees = computed(() => can('employees', 'update'));
+const canViewAttendance = computed(() => can('attendance', 'view'));
+
 const modalDefaults = {
     show: false,
     title: '',
@@ -61,6 +72,7 @@ const loadEmployees = async () => {
 };
 
 const syncNow = async () => {
+    if (!canSyncEmployees.value) return;
     syncing.value = true;
     statusChanges.value = [];
     try {
@@ -167,6 +179,7 @@ const executeModalAction = async () => {
 };
 
 const toggleAttendance = (employeeId) => {
+    if (!canViewAttendance.value) return;
     activeEmployeeId.value = activeEmployeeId.value === employeeId ? null : employeeId;
 };
 
@@ -192,6 +205,7 @@ onMounted(loadEmployees);
                 <p class="text-sm text-muted">Control de estados y huellas biometricas.</p>
             </div>
             <button
+                v-if="canSyncEmployees"
                 class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="syncing"
                 @click="syncNow"
@@ -260,12 +274,19 @@ onMounted(loadEmployees);
                         <td class="px-4 py-3 text-muted">{{ employee.company_name }}</td>
                         <td class="px-4 py-3">
                             <button
+                                v-if="canDisableEmployees"
                                 class="rounded-full px-3 py-1 text-xs font-semibold"
                                 :class="employee.status === 'A' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
                                 @click="openStatusModal(employee)"
                             >
                                 {{ employee.status === 'A' ? 'Activo' : 'Baja' }}
                             </button>
+                            <span
+                                v-else
+                                class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-soft dark:bg-slate-800 dark:text-slate-300"
+                            >
+                                {{ employee.status === 'A' ? 'Activo' : 'Baja' }}
+                            </span>
                         </td>
                         <td class="px-4 py-3">
                             <span
@@ -287,10 +308,15 @@ onMounted(loadEmployees);
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex flex-wrap gap-2 text-xs font-semibold">
-                                <button class="rounded-2xl border border-app px-3 py-1" @click="toggleAttendance(employee.id)">
+                                <button
+                                    v-if="canViewAttendance"
+                                    class="rounded-2xl border border-app px-3 py-1"
+                                    @click="toggleAttendance(employee.id)"
+                                >
                                     {{ activeEmployeeId === employee.id ? 'Ocultar asistencias' : 'Ver asistencias' }}
                                 </button>
                                 <button
+                                    v-if="canUpdateEmployees"
                                     class="rounded-2xl border border-app px-3 py-1 text-rose-600"
                                     @click="openFingerprintModal(employee)"
                                 >
@@ -306,7 +332,7 @@ onMounted(loadEmployees);
             </table>
         </div>
 
-        <EmployeeAttendance v-if="activeEmployeeId" :employee-id="activeEmployeeId" />
+        <EmployeeAttendance v-if="activeEmployeeId && canViewAttendance" :employee-id="activeEmployeeId" />
         <ConfirmModal
             :show="modalState.show"
             :title="modalState.title"
