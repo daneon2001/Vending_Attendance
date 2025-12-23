@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import EmployeeAttendance from '@/Components/EmployeeAttendance.vue';
+import EmployeeAttendanceDrawer from '@/Components/EmployeeAttendanceDrawer.vue';
+import PaginationBar from '@/Components/PaginationBar.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import Toast from '@/Components/Toast.vue';
 import { Head, usePage } from '@inertiajs/vue3';
@@ -11,17 +12,30 @@ const employees = ref([]);
 const loading = ref(false);
 const syncing = ref(false);
 const statusChanges = ref([]);
-const filters = ref({
+const filters = reactive({
     status: '',
     search: '',
+    page: 1,
+    perPage: 15,
 });
-const activeEmployeeId = ref(null);
+const isAttendanceOpen = ref(false);
+const selectedEmployee = ref(null);
+const attendancePanelKey = ref(0);
 const toast = reactive({
     show: false,
     type: 'success',
     title: '',
     message: '',
     duration: 5000,
+});
+
+const meta = reactive({
+    current_page: 1,
+    last_page: 1,
+    from: 0,
+    to: 0,
+    total: 0,
+    per_page: filters.perPage,
 });
 
 const showToast = ({ type = 'success', title = '', message = '', duration }) => {
@@ -59,16 +73,49 @@ const modalDefaults = {
 
 const modalState = ref({ ...modalDefaults });
 
-const loadEmployees = async () => {
+const setMeta = (payload) => {
+    if (!payload) {
+        meta.current_page = 1;
+        meta.last_page = 1;
+        meta.from = 0;
+        meta.to = 0;
+        meta.total = employees.value.length;
+        meta.per_page = filters.perPage;
+        return;
+    }
+
+    meta.current_page = payload.current_page ?? 1;
+    meta.last_page = payload.last_page ?? 1;
+    meta.from = payload.from ?? 0;
+    meta.to = payload.to ?? 0;
+    meta.total = payload.total ?? 0;
+    meta.per_page = payload.per_page ?? filters.perPage;
+};
+
+const loadEmployees = async (pageNumber = filters.page) => {
     loading.value = true;
-    const { data } = await axios.get('/api/employees', {
-        params: {
-            status: filters.value.status || undefined,
-            search: filters.value.search || undefined,
-        },
-    });
-    employees.value = data.data ?? [];
-    loading.value = false;
+    filters.page = pageNumber;
+    try {
+        const { data } = await axios.get('/api/employees', {
+            params: {
+                status: filters.status || undefined,
+                search: filters.search || undefined,
+                page: filters.page,
+                per_page: filters.perPage,
+            },
+        });
+
+        employees.value = data.data ?? [];
+        setMeta(data.meta);
+    } catch (error) {
+        showToast({
+            type: 'error',
+            title: 'No se pudo cargar el catálogo',
+            message: error?.response?.data?.message ?? 'Intenta nuevamente.',
+        });
+    } finally {
+        loading.value = false;
+    }
 };
 
 const syncNow = async () => {
@@ -78,7 +125,7 @@ const syncNow = async () => {
     try {
         const { data } = await axios.post('/api/employees/sync-fortia-mock');
         statusChanges.value = data.status_changed || [];
-        await loadEmployees();
+        await loadEmployees(filters.page);
         showToast({
             type: 'success',
             title: 'Sincronización lista',
@@ -178,9 +225,30 @@ const executeModalAction = async () => {
     }
 };
 
-const toggleAttendance = (employeeId) => {
+const handlePageChange = (pageNumber) => {
+    if (loading.value) return;
+    const totalPages = meta.last_page || 1;
+    const target = Math.min(Math.max(pageNumber, 1), totalPages);
+    loadEmployees(target);
+};
+
+const handlePerPageChange = (perPage) => {
+    if (filters.perPage === perPage) return;
+    filters.perPage = perPage;
+};
+
+const openAttendance = (employee) => {
     if (!canViewAttendance.value) return;
-    activeEmployeeId.value = activeEmployeeId.value === employeeId ? null : employeeId;
+    if (!selectedEmployee.value || selectedEmployee.value.id !== employee.id) {
+        selectedEmployee.value = employee;
+        attendancePanelKey.value += 1;
+    }
+    isAttendanceOpen.value = true;
+};
+
+const closeAttendance = () => {
+    isAttendanceOpen.value = false;
+    selectedEmployee.value = null;
 };
 
 onMounted(loadEmployees);
@@ -254,6 +322,15 @@ onMounted(loadEmployees);
             </ul>
         </div>
 
+        <PaginationBar
+            v-if="meta.total > 0"
+            :meta="meta"
+            :disabled="loading"
+            class="card"
+            @update:page="handlePageChange"
+            @update:perPage="handlePerPageChange"
+        />
+
         <div class="card overflow-hidden">
             <table class="w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
@@ -311,9 +388,9 @@ onMounted(loadEmployees);
                                 <button
                                     v-if="canViewAttendance"
                                     class="rounded-2xl border border-app px-3 py-1"
-                                    @click="toggleAttendance(employee.id)"
+                                    @click="openAttendance(employee)"
                                 >
-                                    {{ activeEmployeeId === employee.id ? 'Ocultar asistencias' : 'Ver asistencias' }}
+                                    Ver asistencias
                                 </button>
                                 <button
                                     v-if="canUpdateEmployees"
@@ -332,7 +409,14 @@ onMounted(loadEmployees);
             </table>
         </div>
 
-        <EmployeeAttendance v-if="activeEmployeeId && canViewAttendance" :employee-id="activeEmployeeId" />
+
+        <EmployeeAttendanceDrawer
+            v-if="canViewAttendance"
+            :key="attendancePanelKey"
+            :open="isAttendanceOpen"
+            :employee="selectedEmployee"
+            @close="closeAttendance"
+        />
         <ConfirmModal
             :show="modalState.show"
             :title="modalState.title"

@@ -64,24 +64,31 @@ const showToast = ({ type = 'info', title = '', message = '', duration }) => {
 
 const pad = (value) => String(value).padStart(2, '0');
 
-const formatInputDateValue = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const formatDisplayDate = (date) => `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 
-const ensureRangeInputs = () => {
-    const today = new Date();
-    if (filters.range === 'today') {
-        filters.from = formatInputDateValue(today);
-        filters.to = formatInputDateValue(today);
-    } else if (filters.range === '7d') {
-        const from = new Date();
-        from.setDate(today.getDate() - 6);
-        filters.from = formatInputDateValue(from);
-        filters.to = formatInputDateValue(today);
-    } else if (filters.range === '30d') {
-        const from = new Date();
-        from.setDate(today.getDate() - 29);
-        filters.from = formatInputDateValue(from);
-        filters.to = formatInputDateValue(today);
+const parseDisplayDate = (value) => {
+    if (!value) return null;
+    const [day, month, year] = value.split('/');
+    if (!day || !month || !year) {
+        return null;
     }
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const ensureCustomRangeDefaults = () => {
+    const today = new Date();
+    if (!filters.from) {
+        filters.from = formatDisplayDate(today);
+    }
+    if (!filters.to) {
+        filters.to = formatDisplayDate(today);
+    }
+};
+
+const normalizeCustomInput = (field) => {
+    const parsed = parseDisplayDate(filters[field]);
+    filters[field] = parsed ? formatDisplayDate(parsed) : '';
 };
 
 const buildRequestParams = () => {
@@ -94,22 +101,41 @@ const buildRequestParams = () => {
         per_page: filters.perPage,
     };
 
-    if (filters.range === 'custom' && filters.from && filters.to) {
-        params.from = filters.from;
-        params.to = filters.to;
+    if (filters.range === 'custom') {
+        const fromDate = parseDisplayDate(filters.from);
+        const toDate = parseDisplayDate(filters.to);
+
+        if (fromDate && toDate) {
+            const [start, end] = fromDate <= toDate ? [fromDate, toDate] : [toDate, fromDate];
+            params.from = formatDisplayDate(start);
+            params.to = formatDisplayDate(end);
+        }
     }
 
     return params;
 };
 
 const loadLogs = async (pageNumber = filters.page) => {
-    if (filters.range === 'custom' && (!filters.from || !filters.to)) {
-        showToast({
-            type: 'error',
-            title: 'Selecciona el rango',
-            message: 'Debes elegir fecha inicial y final cuando usas Rango personalizado.',
-        });
-        return;
+    if (filters.range === 'custom') {
+        const fromDate = parseDisplayDate(filters.from);
+        const toDate = parseDisplayDate(filters.to);
+
+        if (!fromDate || !toDate) {
+            showToast({
+                type: 'error',
+                title: 'Selecciona el rango',
+                message: 'Debes capturar fechas validas (dd/mm/aaaa) al usar Rango personalizado.',
+            });
+            return;
+        }
+
+        if (fromDate > toDate) {
+            filters.from = formatDisplayDate(toDate);
+            filters.to = formatDisplayDate(fromDate);
+        } else {
+            filters.from = formatDisplayDate(fromDate);
+            filters.to = formatDisplayDate(toDate);
+        }
     }
 
     loading.value = true;
@@ -125,7 +151,7 @@ const loadLogs = async (pageNumber = filters.page) => {
     } catch (error) {
         showToast({
             type: 'error',
-            title: 'Error al cargar bitácora',
+            title: 'Error al cargar bitacora',
             message: error.response?.data?.message ?? 'Intenta nuevamente.',
         });
     } finally {
@@ -182,15 +208,23 @@ const formatDateTime = (value) => {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 };
 
+const formatAuditDate = (entry) => {
+    if (!entry) return '--';
+    if (entry.created_at_local) {
+        return entry.created_at_local;
+    }
+    return formatDateTime(entry.created_at);
+};
+
 const rangeLabel = computed(() => {
     switch (filters.range) {
         case '7d':
-            return 'Últimos 7 días';
+            return 'Ultimos 7 dias';
         case '30d':
-            return 'Últimos 30 días';
+            return 'Ultimos 30 dias';
         case 'custom':
             if (filters.from && filters.to) {
-                return `${filters.from} → ${filters.to}`;
+                return `${filters.from} al ${filters.to}`;
             }
             return 'Rango personalizado';
         default:
@@ -201,8 +235,9 @@ const rangeLabel = computed(() => {
 watch(
     () => filters.range,
     () => {
-        if (filters.range !== 'custom') {
-            ensureRangeInputs();
+        if (filters.range === 'custom') {
+            ensureCustomRangeDefaults();
+        } else {
             loadLogs(1);
         }
     },
@@ -214,20 +249,20 @@ watch(
 );
 
 onMounted(() => {
-    ensureRangeInputs();
+    ensureCustomRangeDefaults();
     loadLogs();
 });
 </script>
 
 <template>
-    <Head title="Bitácora de auditoría" />
+    <Head title="Bitacora de auditoria" />
 
     <AuthenticatedLayout>
         <template #header>
             <div>
-                <h1 class="text-app text-2xl font-semibold">Configuración · Bitácora</h1>
+                <h1 class="text-app text-2xl font-semibold">Configuracion  Bitacora</h1>
                 <p class="text-sm text-muted">
-                    Registra cada acción relevante realizada por los usuarios.
+                    Registra cada accion relevante realizada por los usuarios.
                 </p>
             </div>
         </template>
@@ -241,8 +276,8 @@ onMounted(() => {
                         class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                     >
                         <option value="today">Hoy</option>
-                        <option value="7d">Últimos 7 días</option>
-                        <option value="30d">Últimos 30 días</option>
+                        <option value="7d">Ultimos 7 dias</option>
+                        <option value="30d">Ultimos 30 dias</option>
                         <option value="custom">Personalizado</option>
                     </select>
                 </label>
@@ -254,8 +289,11 @@ onMounted(() => {
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Desde</span>
                     <input
                         v-model="filters.from"
-                        type="date"
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="dd/mm/aaaa"
                         class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        @blur="normalizeCustomInput('from')"
                     />
                 </label>
 
@@ -266,8 +304,11 @@ onMounted(() => {
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Hasta</span>
                     <input
                         v-model="filters.to"
-                        type="date"
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="dd/mm/aaaa"
                         class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        @blur="normalizeCustomInput('to')"
                     />
                 </label>
 
@@ -283,7 +324,7 @@ onMounted(() => {
                             :key="user.id"
                             :value="user.id"
                         >
-                            {{ user.name }} · {{ user.email }}
+                            {{ user.name }}  {{ user.email }}
                         </option>
                     </select>
                 </label>
@@ -293,7 +334,7 @@ onMounted(() => {
                     <input
                         v-model="filters.q"
                         type="text"
-                        placeholder="Acción, descripción..."
+                        placeholder="Accion, descripcion..."
                         class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                         @keyup.enter="applyFilters"
                     />
@@ -316,9 +357,9 @@ onMounted(() => {
                             <tr class="text-xs uppercase tracking-[0.3em] text-soft">
                                 <th class="px-4 py-3">Fecha</th>
                                 <th class="px-4 py-3">Usuario</th>
-                                <th class="px-4 py-3">Acción</th>
+                                <th class="px-4 py-3">Accion</th>
                                 <th class="px-4 py-3">Entidad</th>
-                                <th class="px-4 py-3">Descripción</th>
+                                <th class="px-4 py-3">Descripcion</th>
                                 <th class="px-4 py-3 text-right">Detalles</th>
                             </tr>
                         </thead>
@@ -329,11 +370,11 @@ onMounted(() => {
                                 class="border-b border-slate-100 last:border-b-0 dark:border-slate-800"
                             >
                                 <td class="px-4 py-3">
-                                    {{ formatDateTime(log.created_at) }}
+                                    {{ formatAuditDate(log) }}
                                 </td>
                                 <td class="px-4 py-3">
                                     <p class="font-semibold text-app">{{ log.user?.name ?? 'Sistema' }}</p>
-                                    <p class="text-xs text-muted">{{ log.user?.email ?? '—' }}</p>
+                                    <p class="text-xs text-muted">{{ log.user?.email ?? '' }}</p>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-soft dark:bg-slate-800">
@@ -342,12 +383,12 @@ onMounted(() => {
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="text-xs text-muted">
-                                        {{ log.auditable_type ?? '—' }}
+                                        {{ log.auditable_type ?? '' }}
                                         <template v-if="log.auditable_id">#{{ log.auditable_id }}</template>
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <p class="line-clamp-2 text-sm text-muted">{{ log.description ?? '—' }}</p>
+                                    <p class="line-clamp-2 text-sm text-muted">{{ log.description ?? '' }}</p>
                                 </td>
                                 <td class="px-4 py-3 text-right">
                                     <button
@@ -375,7 +416,7 @@ onMounted(() => {
                 <div>
                     <p class="text-xs uppercase tracking-[0.3em] text-soft">Mostrando</p>
                     <p class="text-app">
-                        {{ meta.from || 0 }} – {{ meta.to || 0 }} de {{ meta.total || 0 }}
+                        {{ meta.from || 0 }}  {{ meta.to || 0 }} de {{ meta.total || 0 }}
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -398,7 +439,7 @@ onMounted(() => {
                         Anterior
                     </button>
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                        Página {{ meta.current_page }} de {{ meta.last_page }}
+                        Pagina {{ meta.current_page }} de {{ meta.last_page }}
                     </span>
                     <button
                         class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:opacity-40"
@@ -443,22 +484,22 @@ onMounted(() => {
                     <template v-else-if="detailModal.metadata">
                         <p>
                             <strong class="text-app">Fecha:</strong>
-                            {{ formatDateTime(detailModal.metadata.created_at) }}
+                            {{ formatAuditDate(detailModal.metadata) }}
                         </p>
                         <p>
                             <strong class="text-app">Usuario:</strong>
-                            {{ detailModal.metadata.user?.name ?? 'Sistema' }} · {{ detailModal.metadata.user?.email ?? '—' }}
+                            {{ detailModal.metadata.user?.name ?? 'Sistema' }}  {{ detailModal.metadata.user?.email ?? '' }}
                         </p>
                         <p>
-                            <strong class="text-app">Descripción:</strong>
-                            {{ detailModal.metadata.description ?? '—' }}
+                            <strong class="text-app">Descripcion:</strong>
+                            {{ detailModal.metadata.description ?? '' }}
                         </p>
                         <p>
-                            <strong class="text-app">IP:</strong> {{ detailModal.metadata.ip_address ?? '—' }}
+                            <strong class="text-app">IP:</strong> {{ detailModal.metadata.ip_address ?? '' }}
                         </p>
                         <p>
                             <strong class="text-app">User Agent:</strong>
-                            <span class="break-words">{{ detailModal.metadata.user_agent ?? '—' }}</span>
+                            <span class="break-words">{{ detailModal.metadata.user_agent ?? '' }}</span>
                         </p>
                         <div>
                             <strong class="text-app">Metadata:</strong>
@@ -468,7 +509,7 @@ onMounted(() => {
                         </div>
                     </template>
                     <div v-else>
-                        No hay información adicional para este evento.
+                        No hay informacion adicional para este evento.
                     </div>
                 </section>
             </div>

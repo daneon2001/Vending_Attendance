@@ -34,7 +34,8 @@ class EmployeeController extends Controller
             });
         }
 
-        $employees = $query->orderBy('full_name')->paginate(15);
+        $perPage = $request->integer('per_page', 15);
+        $employees = $query->orderBy('full_name')->paginate($perPage);
 
         return response()->json($employees);
     }

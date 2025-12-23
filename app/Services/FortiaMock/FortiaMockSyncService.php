@@ -15,6 +15,16 @@ class FortiaMockSyncService
     public function syncIncremental(array $filters = []): array
     {
         $state = EmployeeSyncState::firstOrCreate(['source' => 'fortia_mock']);
+        $remoteConnection = FortiaMockEmployee::on('fortia_mock')->getModel()->getConnectionName();
+        $localConnection = (new Employee())->getConnectionName();
+        $stateConnection = (new EmployeeSyncState())->getConnectionName();
+
+        Log::info('Starting Fortia mock employee sync', [
+            'source' => 'fortia_mock',
+            'remote_connection' => $remoteConnection,
+            'local_connection' => $localConnection,
+            'state_connection' => $stateConnection,
+        ]);
 
         try {
             $query = FortiaMockEmployee::on('fortia_mock')->newQuery();
@@ -99,6 +109,12 @@ class FortiaMockSyncService
 
             $this->updateSyncStateSuccess($state, $maxUpdatedAt, $summary);
 
+            Log::info('Fortia mock employee sync completed', [
+                'source' => 'fortia_mock',
+                'summary' => $summary,
+                'last_cursor' => $maxUpdatedAt?->toDateTimeString(),
+            ]);
+
             return $summary;
         } catch (Throwable $e) {
             $this->updateSyncStateFailed($state, $e);
@@ -133,15 +149,18 @@ class FortiaMockSyncService
     protected function updateSyncStateSuccess(EmployeeSyncState $state, ?Carbon $maxUpdatedAt, array $summary): void
     {
         $state->fill([
+            'last_cursor' => $maxUpdatedAt?->toDateTimeString(),
             'last_synced_at' => $maxUpdatedAt ?? $state->last_synced_at ?? now(),
+            'last_success_at' => now(),
             'last_sync_status' => 'success',
-            'last_sync_message' => json_encode([
+            'last_error' => null,
+            'last_counts' => [
+                'total' => $summary['total'],
                 'new' => $summary['new'],
                 'updated' => $summary['updated'],
                 'unchanged' => $summary['unchanged'],
                 'status_changed' => $summary['status_changed'],
-                'timestamp' => now()->toDateTimeString(),
-            ]),
+            ],
         ])->save();
     }
 
@@ -149,8 +168,14 @@ class FortiaMockSyncService
     {
         $state->fill([
             'last_sync_status' => 'failed',
-            'last_sync_message' => $e->getMessage(),
+            'last_error' => $e->getMessage(),
+            'last_counts' => null,
         ])->save();
+
+        Log::error('Fortia mock employee sync failed', [
+            'source' => 'fortia_mock',
+            'error' => $e->getMessage(),
+        ]);
     }
 
     protected function maxTimestamp(?Carbon $current, ?Carbon $candidate): ?Carbon

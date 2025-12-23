@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClockController;
+use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
@@ -20,6 +21,8 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
         Route::post('/time-and-assistance/clock-catalog', [ClockController::class, 'store']);
         Route::put('/time-and-assistance/clock-catalog/{clock}', [ClockController::class, 'update']);
         Route::post('/time-and-assistance/clock-catalog/{clock}/assign', [ClockController::class, 'assign']);
+
+        Route::get('/dashboard/summary', DashboardSummaryController::class)->name('dashboard.summary');
 
         // employee
         // Route::get('/time-and-assistance/employee', [...]);

@@ -8,11 +8,17 @@ class AuditLogResource extends JsonResource
 {
     public function toArray($request): array
     {
+        $timezone = config('app.timezone', 'UTC');
+        $createdAt = $this->created_at ? $this->created_at->copy() : null;
+
         return [
             'id' => $this->id,
             'event' => $this->event,
             'description' => $this->description,
-            'created_at' => optional($this->created_at)->toISOString(),
+            'created_at' => optional($createdAt)->toISOString(),
+            'created_at_local' => optional($createdAt)
+                ? $createdAt->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')
+                : null,
             'user' => [
                 'id' => $this->user_id,
                 'name' => $this->user_name ?? optional($this->user)->name,

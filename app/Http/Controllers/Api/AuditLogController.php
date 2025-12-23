@@ -15,9 +15,9 @@ class AuditLogController extends Controller
     {
         [$from, $to] = $this->resolveRange($request);
 
-        $query = AuditLog::query()->with('user:id,name,email')
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to));
+        $query = AuditLog::query()
+            ->with('user:id,name,email')
+            ->when($from && $to, fn ($q) => $q->whereBetween('created_at', [$from, $to]));
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->integer('user_id'));
@@ -57,6 +57,8 @@ class AuditLogController extends Controller
     {
         $auditLog->load('user:id,name,email');
 
+        $timezone = config('app.timezone', 'UTC');
+
         return response()->json([
             'data' => [
                 'id' => $auditLog->id,
@@ -73,6 +75,9 @@ class AuditLogController extends Controller
                 'ip_address' => $auditLog->ip_address,
                 'user_agent' => $auditLog->user_agent,
                 'created_at' => optional($auditLog->created_at)->toISOString(),
+                'created_at_local' => optional($auditLog->created_at)
+                    ? $auditLog->created_at->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')
+                    : null,
             ],
         ]);
     }
@@ -80,27 +85,58 @@ class AuditLogController extends Controller
     protected function resolveRange(Request $request): array
     {
         $range = $request->string('range', 'today');
-        $today = now();
+        $timezone = config('app.timezone', 'UTC');
+        $now = now($timezone);
 
         if ($range === 'custom' && $request->filled(['from', 'to'])) {
-            $from = Carbon::parse($request->input('from'))->startOfDay();
-            $to = Carbon::parse($request->input('to'))->endOfDay();
+            $from = $this->parseLocalDate($request->input('from'), $timezone);
+            $to = $this->parseLocalDate($request->input('to'), $timezone);
 
-            if ($from->gt($to)) {
-                [$from, $to] = [$to->clone()->startOfDay(), $from->clone()->endOfDay()];
+            if ($from && $to) {
+                if ($from->gt($to)) {
+                    [$from, $to] = [$to, $from];
+                }
+
+                return [
+                    $from->copy()->startOfDay()->setTimezone('UTC'),
+                    $to->copy()->endOfDay()->setTimezone('UTC'),
+                ];
             }
-
-            return [$from, $to];
         }
 
         if ($range === '7d') {
-            return [$today->copy()->subDays(6)->startOfDay(), $today->copy()->endOfDay()];
+            $start = $now->copy()->subDays(6)->startOfDay();
+            $end = $now->copy()->endOfDay();
+        } elseif ($range === '30d') {
+            $start = $now->copy()->subDays(29)->startOfDay();
+            $end = $now->copy()->endOfDay();
+        } else {
+            $start = $now->copy()->startOfDay();
+            $end = $now->copy()->endOfDay();
         }
 
-        if ($range === '30d') {
-            return [$today->copy()->subDays(29)->startOfDay(), $today->copy()->endOfDay()];
+        return [
+            $start->setTimezone('UTC'),
+            $end->setTimezone('UTC'),
+        ];
+    }
+
+    protected function parseLocalDate(?string $value, string $timezone): ?Carbon
+    {
+        if (! $value) {
+            return null;
         }
 
-        return [$today->copy()->startOfDay(), $today->copy()->endOfDay()];
+        $formats = ['d/m/Y', 'Y-m-d'];
+
+        foreach ($formats as $format) {
+            try {
+                return Carbon::createFromFormat($format, $value, $timezone);
+            } catch (\Throwable $th) {
+                continue;
+            }
+        }
+
+        return null;
     }
 }

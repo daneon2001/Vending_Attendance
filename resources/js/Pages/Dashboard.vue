@@ -2,6 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ChartCard from '@/Components/ChartCard.vue';
 import Toast from '@/Components/Toast.vue';
+import { hasChartData } from '@/utils/chart';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -13,81 +14,6 @@ const props = defineProps({
     },
 });
 
-const isDev = import.meta.env.DEV;
-const debugLog = (...args) => {
-    if (isDev) {
-        // eslint-disable-next-line no-console
-        console.log('%c[Dashboard]', 'color:#6366f1;font-weight:bold;', ...args);
-    }
-};
-
-const padNumber = (value) => String(value).padStart(2, '0');
-const formatInputDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
-const formatRequestDateValue = (date) => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())} ${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`;
-const startOfDayDate = (date) => {
-    const copy = new Date(date);
-    copy.setHours(0, 0, 0, 0);
-    return copy;
-};
-const endOfDayDate = (date) => {
-    const copy = new Date(date);
-    copy.setHours(23, 59, 59, 999);
-    return copy;
-};
-const addDaysToDate = (date, days) => {
-    const copy = new Date(date);
-    copy.setDate(copy.getDate() + days);
-    return copy;
-};
-const parseDateInputValue = (value) => {
-    if (!value) {
-        return null;
-    }
-    const parts = value.split('-').map(Number);
-    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
-        return null;
-    }
-    const [year, month, day] = parts;
-    return new Date(year, month - 1, day);
-};
-const normalizeRange = (rangeKey, fromInput = '', toInput = '') => {
-    const today = new Date();
-    let start;
-    let end;
-
-    if (rangeKey === 'custom') {
-        const startCandidate = parseDateInputValue(fromInput) ?? parseDateInputValue(toInput) ?? today;
-        const endCandidate = parseDateInputValue(toInput) ?? parseDateInputValue(fromInput) ?? today;
-        start = startOfDayDate(startCandidate);
-        end = endOfDayDate(endCandidate);
-
-        if (start.getTime() > end.getTime()) {
-            const fixedStart = startOfDayDate(endCandidate);
-            const fixedEnd = endOfDayDate(startCandidate);
-            start = fixedStart;
-            end = fixedEnd;
-        }
-    } else if (rangeKey === '30d') {
-        start = startOfDayDate(addDaysToDate(today, -29));
-        end = endOfDayDate(today);
-    } else if (rangeKey === 'today') {
-        start = startOfDayDate(today);
-        end = endOfDayDate(today);
-    } else {
-        start = startOfDayDate(addDaysToDate(today, -6));
-        end = endOfDayDate(today);
-    }
-
-    return {
-        from: formatRequestDateValue(start),
-        to: formatRequestDateValue(end),
-        startDate: start,
-        endDate: end,
-        startInput: formatInputDateValue(start),
-        endInput: formatInputDateValue(end),
-    };
-};
-
 const rangeOptions = [
     { value: 'today', label: 'Hoy' },
     { value: '7d', label: 'Últimos 7 días' },
@@ -97,23 +23,16 @@ const rangeOptions = [
 
 const filters = reactive({
     range: 'today',
-    from: '',
-    to: '',
-    location_id: null,
+    from_date: '',
+    to_date: '',
+    unit_id: '',
 });
-
-const ensureRangeInputs = (rangeKey) => {
-    const normalized = normalizeRange(rangeKey, filters.from, filters.to);
-    filters.from = normalized.startInput;
-    filters.to = normalized.endInput;
-    return normalized;
-};
 
 const summary = ref(null);
 const loading = ref(false);
-const detailHighlight = ref(null);
-const summaryCache = new Map();
-const isMounted = ref(false);
+const errorMessage = ref('');
+const lastUpdated = ref('--');
+const requestCounter = ref(0);
 
 const toast = reactive({
     show: false,
@@ -124,50 +43,44 @@ const toast = reactive({
 });
 
 const locationOptions = computed(() => props.locations ?? []);
-
 const hasCustomRange = computed(() => filters.range === 'custom');
 
-const lastUpdatedLabel = computed(() => {
-    if (!summary.value?.refreshed_at) return '--';
-    return formatDateTime(summary.value.refreshed_at);
-});
+const formatInputValue = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
-const normalizedLocationId = computed(() => {
-    if (filters.location_id === null || filters.location_id === undefined || filters.location_id === '') {
-        return null;
+const formatRequestDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
+const applyRangeDefaults = (rangeValue) => {
+    const today = new Date();
+    let start = new Date(today);
+    let end = new Date(today);
+
+    if (rangeValue === '7d') {
+        start.setDate(start.getDate() - 6);
+    } else if (rangeValue === '30d') {
+        start.setDate(start.getDate() - 29);
     }
 
-    const parsed = Number(filters.location_id);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
 
-    if (Number.isNaN(parsed) || parsed <= 0) {
-        return null;
-    }
-
-    return parsed;
-});
-
-const selectedLocationLabel = computed(() => {
-    const currentId = normalizedLocationId.value;
-    if (!currentId) return 'Todas las sucursales';
-    const location = locationOptions.value.find((item) => item.id === currentId);
-    return location ? `${location.name}${location.code ? ` · ${location.code}` : ''}` : 'Sucursal seleccionada';
-});
-
-const selectedRangeLabel = computed(() => {
-    switch (filters.range) {
-        case 'today':
-            return 'Hoy';
-        case '30d':
-            return 'Últimos 30 días';
-        case 'custom':
-            if (filters.from && filters.to) {
-                return `${formatDate(filters.from)} – ${formatDate(filters.to)}`;
-            }
-            return 'Rango personalizado';
-        default:
-            return 'Últimos 7 días';
-    }
-});
+    filters.from_date = formatInputValue(start);
+    filters.to_date = formatInputValue(end);
+};
 
 const showToast = ({ type = 'info', title = '', message = '', duration }) => {
     toast.type = type;
@@ -181,305 +94,235 @@ const closeToast = () => {
     toast.show = false;
 };
 
-const formatNumber = (value) => {
-    if (value === null || value === undefined) {
-        return '0';
-    }
-    return new Intl.NumberFormat('es-MX').format(value);
-};
+const buildParams = () => {
+    const params = { range: filters.range };
 
-const formatDate = (value) => {
-    if (!value) return '--';
-    const date = new Date(value);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-};
-
-const formatDateTime = (value) => {
-    if (!value) return '--';
-    const date = new Date(value);
-    return date.toLocaleString('es-MX', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
-};
-
-const buildSummaryParams = () => {
-    const normalized = normalizeRange(filters.range, filters.from, filters.to);
-    const params = {
-        range: filters.range,
-        from: normalized.from,
-        to: normalized.to,
-    };
-
-    if (normalizedLocationId.value) {
-        params.location_id = normalizedLocationId.value;
+    if (filters.unit_id) {
+        params.unit_id = filters.unit_id;
     }
 
-    return { params, normalized };
+    if (filters.range === 'custom') {
+        const from = formatRequestDate(filters.from_date);
+        const to = formatRequestDate(filters.to_date);
+
+        if (!from || !to) {
+            throw new Error('Debes capturar fechas válidas (dd/mm/aaaa)');
+        }
+
+        params.from_date = from;
+        params.to_date = to;
+    }
+
+    return params;
 };
 
-const fetchSummary = async ({ force = false } = {}) => {
-    if (hasCustomRange.value && (!filters.from || !filters.to)) {
-        showToast({
-            type: 'error',
-            title: 'Selecciona el rango',
-            message: 'Debes elegir fecha inicio y fin para aplicar el filtro personalizado.',
-        });
-        return;
-    }
-
-    const { params, normalized } = buildSummaryParams();
-    debugLog('Fetch summary start', {
-        range: filters.range,
-        normalizedRange: normalized,
-        params,
-    });
-    const cacheKey = JSON.stringify({
-        range: filters.range,
-        location_id: params.location_id ?? null,
-        from: normalized.from,
-        to: normalized.to,
-    });
-
-    if (!force && summaryCache.has(cacheKey)) {
-        summary.value = summaryCache.get(cacheKey);
-        detailHighlight.value = null;
-        return;
-    }
-
-    loading.value = true;
+const fetchSummary = async () => {
+    let params;
     try {
-        const { data } = await axios.get(route('dashboard.summary'), {
-            params,
-        });
-
-        summaryCache.set(cacheKey, data);
-        summary.value = data;
-        debugLog('Fetch summary success', {
-            resolved_range: data?.resolved_range,
-            top_branches: data?.top_branches,
-        });
-        detailHighlight.value = null;
+        params = buildParams();
     } catch (error) {
         showToast({
             type: 'error',
+            title: 'Rango inválido',
+            message: error.message,
+        });
+        return;
+    }
+
+    const requestId = ++requestCounter.value;
+    loading.value = true;
+    errorMessage.value = '';
+
+    try {
+        const { data } = await axios.get(route('dashboard.summary'), { params });
+        if (requestId !== requestCounter.value) {
+            return;
+        }
+        summary.value = data;
+        lastUpdated.value = data.meta?.generated_at_local ?? '--';
+    } catch (error) {
+        if (requestId !== requestCounter.value) {
+            return;
+        }
+
+        errorMessage.value = error.response?.data?.message ?? 'Error al cargar la información.';
+        showToast({
+            type: 'error',
             title: 'No se pudo actualizar',
-            message: error.response?.data?.message ?? 'Intenta de nuevo en unos minutos.',
+            message: errorMessage.value,
         });
     } finally {
-        loading.value = false;
+        if (requestId === requestCounter.value) {
+            loading.value = false;
+        }
     }
 };
 
-const refreshSummary = () => fetchSummary({ force: true });
-
-onMounted(() => {
-    ensureRangeInputs(filters.range);
-    isMounted.value = true;
+const applyCustomRange = () => {
+    if (!filters.from_date || !filters.to_date) {
+        showToast({
+            type: 'error',
+            title: 'Selecciona el rango',
+            message: 'Debes elegir fecha inicial y final.',
+        });
+        return;
+    }
     fetchSummary();
-});
+};
 
 watch(
     () => filters.range,
-    (value, previous) => {
+    (value) => {
         if (value !== 'custom') {
-            ensureRangeInputs(value);
-        } else if (!filters.from || !filters.to) {
-            const normalizedToday = normalizeRange('today');
-            filters.from = normalizedToday.startInput;
-            filters.to = normalizedToday.endInput;
-        }
-
-        if (isMounted.value && value !== 'custom') {
+            applyRangeDefaults(value);
             fetchSummary();
-        }
-
-        if (previous === 'custom' && value !== 'custom') {
-            detailHighlight.value = null;
+        } else if (!filters.from_date || !filters.to_date) {
+            applyRangeDefaults('today');
         }
     },
 );
 
 watch(
-    () => normalizedLocationId.value,
+    () => filters.unit_id,
     () => {
-        if (isMounted.value) {
-            fetchSummary();
-        }
+        fetchSummary();
     },
 );
 
-const kpiCards = computed(() => {
-    const data = summary.value?.kpis ?? {};
+onMounted(() => {
+    applyRangeDefaults(filters.range);
+    fetchSummary();
+});
 
+const summaryData = computed(() => summary.value ?? { meta: null, kpis: {}, charts: {} });
+
+const kpiCards = computed(() => {
+    const kpis = summary.value?.kpis ?? {};
     return [
         {
-            id: 'attendance',
+            id: 'checkins',
             title: 'Checadas registradas',
-            value: formatNumber(data.attendance_total ?? 0),
-            hint: `Promedio ${data.attendance_average ?? 0} por día`,
-            accent: 'from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-900',
+            value: kpis.checkins_total ?? 0,
+            hint: 'Movimientos en el rango',
+            accent: 'from-indigo-50 to-white dark:from-indigo-900/30 dark:to-slate-900',
         },
         {
-            id: 'employees',
+            id: 'employees-active',
             title: 'Empleados activos',
-            value: formatNumber(data.employees_active ?? 0),
-            hint: `${formatNumber(data.employees_total ?? 0)} en el catálogo`,
-            accent: 'from-emerald-50 to-white dark:from-emerald-900/40 dark:to-slate-900',
+            value: kpis.employees_active ?? 0,
+            hint: 'Catálogo vivo',
+            accent: 'from-emerald-50 to-white dark:from-emerald-900/30 dark:to-slate-900',
         },
         {
-            id: 'warning',
+            id: 'clocks-warning',
             title: 'Relojes con alertas',
-            value: formatNumber(data.clocks_warning ?? 0),
-            hint: `${formatNumber(data.clocks_online ?? 0)} en línea`,
-            accent: 'from-amber-50 to-white dark:from-amber-900/40 dark:to-slate-900',
+            value: kpis.clocks_with_alerts ?? 0,
+            hint: 'Necesitan seguimiento',
+            accent: 'from-amber-50 to-white dark:from-amber-900/30 dark:to-slate-900',
         },
         {
-            id: 'offline',
+            id: 'clocks-offline',
             title: 'Relojes sin conexión',
-            value: formatNumber(data.clocks_offline ?? 0),
-            hint: 'Prioriza seguimiento con soporte',
-            accent: 'from-rose-50 to-white dark:from-rose-900/40 dark:to-slate-900',
+            value: kpis.clocks_offline ?? 0,
+            hint: 'Prioriza soporte',
+            accent: 'from-rose-50 to-white dark:from-rose-900/30 dark:to-slate-900',
         },
     ];
 });
 
-const presenceChartData = computed(() => ({
-    labels: summary.value?.presence_series?.labels ?? [],
+const peopleChartData = computed(() => ({
+    labels: summary.value?.charts?.people_present_by_day?.labels ?? [],
     datasets: [
         {
             label: 'Personas presentes',
-            data: summary.value?.presence_series?.values ?? [],
-            fill: true,
-            tension: 0.35,
+            data: summary.value?.charts?.people_present_by_day?.values ?? [],
             borderColor: '#6366f1',
             backgroundColor: 'rgba(99, 102, 241, 0.15)',
-            pointBackgroundColor: '#312e81',
+            tension: 0.35,
+            fill: true,
         },
     ],
 }));
 
-const donutColors = ['#22c55e', '#f97316', '#64748b', '#0ea5e9'];
-
 const employeeStatusData = computed(() => ({
-    labels: summary.value?.employee_status?.labels ?? [],
+    labels: summary.value?.charts?.employees_status?.labels ?? [],
     datasets: [
         {
             label: 'Colaboradores',
-            data: summary.value?.employee_status?.values ?? [],
-            backgroundColor: donutColors,
+            data: summary.value?.charts?.employees_status?.values ?? [],
+            backgroundColor: ['#22c55e', '#e11d48'],
             borderWidth: 0,
         },
     ],
 }));
 
-const clockStatusData = computed(() => ({
-    labels: summary.value?.clock_status?.labels ?? [],
+const clockHealthData = computed(() => ({
+    labels: summary.value?.charts?.clock_health?.labels ?? [],
     datasets: [
         {
             label: 'Relojes',
-            data: summary.value?.clock_status?.values ?? [],
+            data: summary.value?.charts?.clock_health?.values ?? [],
             backgroundColor: ['#22c55e', '#f97316', '#ef4444'],
             borderWidth: 0,
         },
     ],
 }));
 
-const branchChartData = computed(() => ({
-    labels: summary.value?.top_branches?.labels ?? [],
-    datasets: [
-        {
-            label:
-                summary.value?.top_branches?.mode === 'incidents'
-                    ? 'Incidencias'
-                    : 'Checadas',
-            data: summary.value?.top_branches?.values ?? [],
-            backgroundColor: 'rgba(13, 148, 136, 0.7)',
-            borderRadius: 12,
-        },
-    ],
-}));
-
-watch(
-    branchChartData,
-    (value) => {
-        if (!isDev) return;
-        debugLog('branchChartData update', {
-            labels: value.labels,
-            data: value.datasets?.[0]?.data,
-        });
-    },
-    { deep: true },
-);
-
-const branchChartOptions = computed(() => ({
-    indexAxis: 'y',
-}));
-
-const detailCard = computed(() => {
-    if (detailHighlight.value) {
-        return detailHighlight.value;
-    }
-
-    return {
-        title: 'Resumen del periodo',
-        subtitle: `${selectedRangeLabel.value} · ${selectedLocationLabel.value}`,
-        value: formatNumber(summary.value?.kpis?.attendance_total ?? 0),
-        context: 'Checadas totales',
-    };
+const chartKeys = reactive({
+    people: 0,
+    employeeStatus: 0,
+    clockHealth: 0,
 });
 
-const setPresenceDetail = (point) => {
-    if (!point?.label) return;
-    const amount = Number(point.value ?? 0);
-    detailHighlight.value = {
-        title: 'Detalle del día',
-        subtitle: point.label,
-        value: formatNumber(amount),
-        context: `${amount} persona(s) presentes`,
-    };
-};
+watch(peopleChartData, () => {
+    chartKeys.people += 1;
+}, { deep: true });
 
-const setStatusDetail = (point, title) => {
-    if (!point?.label) return;
-    const amount = Number(point.value ?? 0);
-    detailHighlight.value = {
-        title,
-        subtitle: point.label,
-        value: formatNumber(amount),
-        context: `${amount} registro(s)`,
-    };
-};
+watch(employeeStatusData, () => {
+    chartKeys.employeeStatus += 1;
+}, { deep: true });
 
-const setEmployeeStatusDetail = (point) => setStatusDetail(point, 'Estado de colaboradores');
-const setClockStatusDetail = (point) => setStatusDetail(point, 'Estado de relojes');
+watch(clockHealthData, () => {
+    chartKeys.clockHealth += 1;
+}, { deep: true });
 
-const setBranchDetail = (point) => {
-    if (!point?.label) return;
-    const mode = summary.value?.top_branches?.mode === 'incidents' ? 'incidencia(s)' : 'checada(s)';
-    const amount = Number(point.value ?? 0);
-    detailHighlight.value = {
-        title: 'Detalle sucursal',
-        subtitle: point.label,
-        value: formatNumber(amount),
-        context: `${amount} ${mode}`,
-    };
-};
+const presenceHasData = computed(() => hasChartData(peopleChartData.value));
+const employeeStatusHasData = computed(() => hasChartData(employeeStatusData.value));
+const clockHealthHasData = computed(() => hasChartData(clockHealthData.value));
 
-const clearDetail = () => {
-    detailHighlight.value = null;
-};
+const lastRangeLabel = computed(() => {
+    if (!summary.value?.meta) {
+        return 'Rango seleccionado';
+    }
+
+    const meta = summary.value.meta;
+    const from = meta.from ? new Date(meta.from) : null;
+    const to = meta.to ? new Date(meta.to) : null;
+
+    if (!from || !to) {
+        return 'Rango seleccionado';
+    }
+
+    const format = (date) =>
+        `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+
+    return `${format(from)} al ${format(to)}`;
+});
+
+const currentLocationLabel = computed(() => {
+    if (!filters.unit_id) {
+        return 'Todas las sucursales';
+    }
+    const location = locationOptions.value.find((loc) => String(loc.id) === String(filters.unit_id));
+    if (!location) return 'Sucursal seleccionada';
+    return `${location.name}${location.code ? ` (${location.code})` : ''}`;
+});
+
+const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0);
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head title="Panel general" />
 
     <AuthenticatedLayout>
         <template #header>
@@ -488,207 +331,188 @@ const clearDetail = () => {
                     Panel general
                 </h1>
                 <p class="text-sm text-muted">
-                    Seguimiento diario de checadas, dispositivos y catálogos.
+                    Seguimiento consolidado de asistencias y dispositivos.
                 </p>
             </div>
         </template>
 
         <section class="space-y-6">
             <div class="card flex flex-col gap-4 px-4 py-4 sm:px-6">
-                <div class="flex flex-wrap items-center gap-4 lg:flex-nowrap">
-                    <div class="flex flex-1 flex-wrap items-center gap-3 text-sm">
-                        <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                            Rango
-                            <select
-                                v-model="filters.range"
-                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                            >
-                                <option
-                                    v-for="option in rangeOptions"
-                                    :key="option.value"
-                                    :value="option.value"
-                                >
-                                    {{ option.label }}
-                                </option>
-                            </select>
-                        </label>
-                        <div
-                            v-if="hasCustomRange"
-                            class="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+                <div class="flex flex-wrap items-center gap-4">
+                    <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                        Rango
+                        <select
+                            v-model="filters.range"
+                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
                         >
-                            <label class="flex items-center gap-2">
-                                Desde
-                                <input
-                                    v-model="filters.from"
-                                    type="date"
-                                    class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                />
-                            </label>
-                            <label class="flex items-center gap-2">
-                                Hasta
-                                <input
-                                    v-model="filters.to"
-                                    type="date"
-                                    class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                                />
-                            </label>
-                            <button
-                                type="button"
-                                class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
-                                :disabled="loading"
-                                @click="fetchSummary"
+                            <option
+                                v-for="option in rangeOptions"
+                                :key="option.value"
+                                :value="option.value"
                             >
-                                Aplicar filtros
-                            </button>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <div
+                        v-if="hasCustomRange"
+                        class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft"
+                    >
                         <label class="flex items-center gap-2">
-                            Sucursal
-                            <select
-                                v-model="filters.location_id"
+                            Desde
+                            <input
+                                v-model="filters.from_date"
+                                type="date"
                                 class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
-                            >
-                                <option value="">Todas</option>
-                                <option
-                                    v-for="location in locationOptions"
-                                    :key="location.id"
-                                    :value="location.id"
-                                >
-                                    {{ location.name }} {{ location.code ? `(${location.code})` : '' }}
-                                </option>
-                            </select>
+                            />
                         </label>
+                        <label class="flex items-center gap-2">
+                            Hasta
+                            <input
+                                v-model="filters.to_date"
+                                type="date"
+                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500"
+                            :disabled="loading"
+                            @click="applyCustomRange"
+                        >
+                            Aplicar
+                        </button>
                     </div>
+
+                    <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                        Sucursal
+                        <select
+                            v-model="filters.unit_id"
+                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                        >
+                            <option value="">Todas</option>
+                            <option
+                                v-for="location in locationOptions"
+                                :key="location.id"
+                                :value="location.id"
+                            >
+                                {{ location.name }} {{ location.code ? `(${location.code})` : '' }}
+                            </option>
+                        </select>
+                    </label>
+
                     <button
                         type="button"
                         class="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
                         :disabled="loading"
-                        @click="refreshSummary"
+                        @click="fetchSummary"
                     >
                         <span v-if="loading">Actualizando…</span>
                         <span v-else>Actualizar</span>
                         <span aria-hidden="true">↻</span>
                     </button>
-                    <div class="min-w-[200px] flex-1 space-y-1 text-right lg:text-left">
-                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+
+                    <div class="min-w-[200px] flex-1 space-y-1 text-right">
+                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                             Última actualización
                         </p>
                         <p class="text-app text-base font-semibold">
-                            {{ lastUpdatedLabel }}
+                            {{ lastUpdated }}
                         </p>
                         <p class="text-xs text-muted">
-                            {{ selectedLocationLabel }}
+                            {{ currentLocationLabel }}
                         </p>
                     </div>
                 </div>
+                <p class="text-xs text-muted">
+                    Intervalo aplicado: {{ lastRangeLabel }}
+                </p>
+            </div>
+
+            <div v-if="errorMessage" class="card border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100">
+                {{ errorMessage }}
             </div>
 
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <article
                     v-for="card in kpiCards"
                     :key="card.id"
-                        class="rounded-3xl border border-white/50 bg-gradient-to-br p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:text-slate-100"
-                        :class="card.accent"
-                    >
-                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
-                            {{ card.title }}
-                        </p>
-                        <p class="mt-2 text-3xl font-semibold text-app">
-                            <span v-if="!loading">
-                                {{ card.value }}
-                            </span>
-                            <span v-else class="inline-block h-8 w-24 animate-pulse rounded-full bg-white/40 dark:bg-slate-800/80" />
-                        </p>
-                        <p class="text-sm text-muted">
-                            {{ card.hint }}
-                        </p>
-                    </article>
-                </div>
+                    class="rounded-3xl border border-white/50 bg-gradient-to-br p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800"
+                    :class="card.accent"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
+                        {{ card.title }}
+                    </p>
+                    <p class="mt-3 text-3xl font-semibold text-app">
+                        <span v-if="!loading">{{ formatNumber(card.value) }}</span>
+                        <span v-else class="inline-block h-8 w-24 animate-pulse rounded-full bg-white/40 dark:bg-slate-800/80" />
+                    </p>
+                    <p class="text-sm text-muted">
+                        {{ card.hint }}
+                    </p>
+                </article>
+            </div>
 
-                <div class="grid gap-6 lg:grid-cols-2">
-                    <ChartCard
-                        title="Asistencias por día"
-                        description="Colaboradores con al menos una checada"
-                        :dataset="presenceChartData"
-                        :loading="loading && !summary"
-                        @point-click="setPresenceDetail"
-                    />
-                    <ChartCard
-                        title="Estado de empleados"
-                        description="Activos vs bajas"
-                        type="doughnut"
-                        :dataset="employeeStatusData"
-                        :options="{ plugins: { legend: { position: 'bottom' } } }"
-                        :loading="loading && !summary"
-                        @point-click="setEmployeeStatusDetail"
-                    />
-                    <ChartCard
-                        title="Estado de relojes"
-                        description="Monitoreo en tiempo real"
-                        type="doughnut"
-                        :dataset="clockStatusData"
-                        :options="{ plugins: { legend: { position: 'bottom' } } }"
-                        :loading="loading && !summary"
-                        @point-click="setClockStatusDetail"
-                    />
-                    <ChartCard
-                        title="Top sucursales"
-                        :description="summary?.top_branches?.mode === 'incidents' ? 'Incidencias detectadas' : 'Volumen de checadas'"
-                        type="bar"
-                        :dataset="branchChartData"
-                        :options="branchChartOptions"
-                        :loading="loading && !summary"
-                        empty-text="Sin registros para el rango"
-                        @point-click="setBranchDetail"
-                    />
-                </div>
-
-                <div class="grid gap-6 lg:grid-cols-3">
-                    <article class="card flex items-center justify-between gap-6 px-6 py-5 lg:col-span-2">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                                {{ detailCard.title }}
-                            </p>
-                            <h3 class="text-2xl font-semibold text-app">
-                                {{ detailCard.value }}
-                            </h3>
-                            <p class="text-sm text-muted">
-                                {{ detailCard.subtitle }}
-                            </p>
-                            <p class="text-xs text-muted">
-                                {{ detailCard.context }}
-                            </p>
-                        </div>
-                        <button
-                            v-if="detailHighlight"
-                            type="button"
-                            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/70"
-                            @click="clearDetail"
-                        >
-                            Limpiar selección
-                        </button>
-                    </article>
-                    <article class="card px-6 py-5">
-                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <div class="grid gap-6 lg:grid-cols-2">
+                <ChartCard
+                    title="Personas presentes"
+                    description="Colaboradores con al menos una checada"
+                    :dataset="peopleChartData"
+                    :loading="loading && !summary"
+                    :error="errorMessage"
+                    :has-data="presenceHasData"
+                    :chart-key="chartKeys.people"
+                    empty-text="Sin datos para el rango seleccionado"
+                />
+                <ChartCard
+                    title="Estado de empleados"
+                    description="Activos vs bajas"
+                    type="doughnut"
+                    :options="{ plugins: { legend: { position: 'bottom' } } }"
+                    :dataset="employeeStatusData"
+                    :loading="loading && !summary"
+                    :error="errorMessage"
+                    :has-data="employeeStatusHasData"
+                    :chart-key="chartKeys.employeeStatus"
+                    empty-text="Sin datos para el rango seleccionado"
+                />
+                <ChartCard
+                    title="Salud de relojes"
+                    description="Monitoreo general"
+                    type="doughnut"
+                    :options="{ plugins: { legend: { position: 'bottom' } } }"
+                    :dataset="clockHealthData"
+                    :loading="loading && !summary"
+                    :error="errorMessage"
+                    :has-data="clockHealthHasData"
+                    :chart-key="chartKeys.clockHealth"
+                    empty-text="Sin datos para el rango seleccionado"
+                />
+                <article class="card flex flex-col justify-between px-6 py-5">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                             Contexto del periodo
                         </p>
-                        <ul class="mt-4 space-y-3 text-sm text-muted">
-                            <li class="flex items-center justify-between">
-                                <span>Rango aplicado</span>
-                                <strong class="text-app">{{ selectedRangeLabel }}</strong>
-                            </li>
-                            <li class="flex items-center justify-between">
-                                <span>Sucursal</span>
-                                <strong class="text-app">{{ selectedLocationLabel }}</strong>
-                            </li>
-                            <li class="flex items-center justify-between">
-                                <span>Última actualización</span>
-                                <strong class="text-app">{{ lastUpdatedLabel }}</strong>
-                            </li>
-                        </ul>
-                    </article>
-                </div>
+                        <p class="mt-2 text-lg font-semibold text-app">
+                            {{ lastRangeLabel }}
+                        </p>
+                        <p class="text-sm text-muted">
+                            {{ currentLocationLabel }}
+                        </p>
+                    </div>
+                    <div class="mt-4 space-y-2 text-sm text-muted">
+                        <p>
+                            <span class="font-semibold text-app">Checadas:</span>
+                            {{ formatNumber(summaryData.kpis?.checkins_total ?? 0) }}
+                        </p>
+                        <p>
+                            <span class="font-semibold text-app">Última actualización:</span>
+                            {{ lastUpdated }}
+                        </p>
+                    </div>
+                </article>
+            </div>
         </section>
 
         <Toast
