@@ -59,7 +59,19 @@ class AttendanceController extends Controller
             $query->where('log_date', '<=', $to);
         }
 
-        return response()->json($query->paginate(20));
+        $logs = $query->paginate($request->integer('per_page', 20))->withQueryString();
+
+        return response()->json([
+            'data' => $logs->items(),
+            'meta' => [
+                'current_page' => $logs->currentPage(),
+                'last_page' => $logs->lastPage(),
+                'per_page' => $logs->perPage(),
+                'total' => $logs->total(),
+                'from' => $logs->firstItem(),
+                'to' => $logs->lastItem(),
+            ],
+        ]);
     }
 
     private function normalizeDateBoundary(string $value, bool $isStart): Carbon

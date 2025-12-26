@@ -81,27 +81,34 @@ class DashboardController extends Controller
             'to' => $to->toIso8601String(),
         ];
 
-        $response = [
-            'refreshed_at' => now()->toIso8601String(),
-            'filters' => [
-                'range' => $range,
-                'location_id' => $locationId,
-            ],
-            'resolved_range' => $resolvedRange,
-            'kpis' => [
-                'attendance_total' => $totalLogs,
-                'attendance_average' => $this->calculateAverage($totalLogs, $from, $to),
-                'employees_total' => $totalEmployees,
-                'employees_active' => $this->extractStatusTotal($employeeStatus, ['A', 'active']),
-                'employees_inactive' => $this->extractStatusTotal($employeeStatus, ['B', 'inactive']),
-                'clocks_online' => $this->extractClockStatus($clockStatus, 'online'),
-                'clocks_warning' => $this->extractClockStatus($clockStatus, 'warning'),
-                'clocks_offline' => $this->extractClockStatus($clockStatus, 'offline'),
-            ],
-            'presence_series' => $presenceSeries,
-            'employee_status' => $this->formatStatusDataset($employeeStatus),
-            'clock_status' => $this->formatClockDataset($clockStatus),
+        $timezone = config('app.timezone', 'UTC');
+
+        $meta = [
+            'range' => $range,
+            'from' => $from->toIso8601String(),
+            'to' => $to->toIso8601String(),
+            'unit_id' => $locationId,
+            'generated_at_local' => now($timezone)->format('d/m/Y H:i:s'),
+        ];
+
+        $kpis = [
+            'checkins_total' => $totalLogs,
+            'employees_active' => $this->extractStatusTotal($employeeStatus, ['A', 'active']),
+            'clocks_with_alerts' => $this->extractClockStatus($clockStatus, 'warning'),
+            'clocks_offline' => $this->extractClockStatus($clockStatus, 'offline'),
+        ];
+
+        $charts = [
+            'people_present_by_day' => $presenceSeries,
+            'employees_status' => $this->formatStatusDataset($employeeStatus),
+            'clock_health' => $this->formatClockDataset($clockStatus),
             'top_branches' => $topBranches,
+        ];
+
+        $response = [
+            'meta' => $meta,
+            'kpis' => $kpis,
+            'charts' => $charts,
         ];
 
         if (app()->environment('local')) {

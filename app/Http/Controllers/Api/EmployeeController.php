@@ -34,10 +34,21 @@ class EmployeeController extends Controller
             });
         }
 
-        $perPage = $request->integer('per_page', 15);
-        $employees = $query->orderBy('full_name')->paginate($perPage);
+        $perPage = (int) $request->integer('per_page', 15);
+        $perPage = max(5, min($perPage, 100));
+        $employees = $query->orderBy('full_name')->paginate($perPage)->withQueryString();
 
-        return response()->json($employees);
+        return response()->json([
+            'data' => $employees->items(),
+            'meta' => [
+                'current_page' => $employees->currentPage(),
+                'last_page' => $employees->lastPage(),
+                'per_page' => $employees->perPage(),
+                'total' => $employees->total(),
+                'from' => $employees->firstItem(),
+                'to' => $employees->lastItem(),
+            ],
+        ]);
     }
 
     public function show(Employee $employee): JsonResponse

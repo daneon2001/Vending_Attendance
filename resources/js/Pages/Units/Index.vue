@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import PaginationBar from '@/Components/PaginationBar.vue';
 import Toast from '@/Components/Toast.vue';
 import UnitCard from './Partials/UnitCard.vue';
 import UnitFormModal from './Partials/UnitFormModal.vue';
@@ -81,6 +82,14 @@ const pageSummary = computed(() => {
 
 const currentPage = computed(() => pagination.value?.current_page ?? 1);
 const totalPages = computed(() => pagination.value?.last_page ?? 1);
+const paginationMeta = computed(() => ({
+    current_page: pagination.value?.current_page ?? 1,
+    last_page: pagination.value?.last_page ?? 1,
+    per_page: pagination.value?.per_page ?? perPage.value,
+    total: pagination.value?.total ?? units.value.length,
+    from: pagination.value?.from ?? pageSummary.value.start ?? 0,
+    to: pagination.value?.to ?? pageSummary.value.end ?? 0,
+}));
 
 const collapseStorageKey = 'unit-card-collapsed';
 const collapsedMap = ref({});
@@ -215,21 +224,17 @@ watch(
     { deep: true },
 );
 
-watch(
-    perPage,
-    () => {
-        if (!filtersReady.value) return;
-        fetchUnits(1);
-    },
-);
-
-const changePage = (page) => {
+const handlePageChange = (page) => {
     if (page < 1 || page > totalPages.value || page === currentPage.value) return;
     fetchUnits(page);
 };
 
-const goToPrevPage = () => changePage(currentPage.value - 1);
-const goToNextPage = () => changePage(currentPage.value + 1);
+const handlePerPageChange = (value) => {
+    if (perPage.value === value) return;
+    perPage.value = value;
+    fetchUnits(1);
+};
+
 
 const defaultForm = (unit = null) => ({
     id: unit?.id ?? null,
@@ -411,64 +416,29 @@ const clearFilters = () => {
                     </p>
                     <p class="text-sm text-slate-500">En mantenimiento o pausa</p>
                 </article>
-
                 <div
                     v-if="pageSummary.total"
-                    class="sm:col-span-3"
+                    class="sm:col-span-3 flex flex-col gap-3 lg:flex-row"
                 >
-                    <div
-                        class="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60 lg:flex-nowrap"
-                    >
-                        <div class="min-w-[220px]">
-                            <p class="text-sm font-semibold text-app dark:text-slate-100">
-                                Mostrando {{ pageSummary.start }}–{{ pageSummary.end }} de {{ pageSummary.total }}
-                            </p>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                                Registros por página
-                                <select
-                                    v-model.number="perPage"
-                                    class="rounded-2xl border border-slate-200 px-6 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
-                                >
-                                    <option v-for="option in perPageOptions" :key="option" :value="option">
-                                        {{ option }}
-                                    </option>
-                                </select>
-                            </label>
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
-                                :disabled="!canToggleAll"
-                                @click="toggleAll"
-                            >
-                                {{ collapseToggleLabel }}
-                            </button>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
-                                :disabled="listLoading || currentPage <= 1"
-                                :aria-label="'Página anterior'"
-                                @click="goToPrevPage"
-                            >
-                                Anterior
-                            </button>
-                            <button
-                                type="button"
-                                class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
-                                :disabled="listLoading || currentPage >= totalPages"
-                                :aria-label="'Página siguiente'"
-                                @click="goToNextPage"
-                            >
-                                Siguiente
-                            </button>
-                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                                Página {{ currentPage }} de {{ totalPages }}
-                            </span>
-                        </div>
+                    <PaginationBar
+                        class="flex-1 card"
+                        :meta="paginationMeta"
+                        :per-page-options="perPageOptions"
+                        :disabled="listLoading"
+                        @update:page="handlePageChange"
+                        @update:perPage="handlePerPageChange"
+                    />
+                    <div class="card flex items-center justify-center px-4 py-3 lg:w-auto">
+                        <button
+                            type="button"
+                            class="inline-flex items-center gap-2 rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="!canToggleAll"
+                            @click="toggleAll"
+                        >
+                            {{ collapseToggleLabel }}
+                        </button>
                     </div>
+                </div>
                 </div>
             </div>
 

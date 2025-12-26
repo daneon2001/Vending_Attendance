@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import PaginationBar from '@/Components/PaginationBar.vue';
 import Toast from '@/Components/Toast.vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -188,12 +189,15 @@ const closeDetail = () => {
 
 const applyFilters = () => loadLogs(1);
 
-const goToPage = (direction) => {
-    if (direction === 'prev' && meta.current_page > 1) {
-        loadLogs(meta.current_page - 1);
-    } else if (direction === 'next' && meta.current_page < meta.last_page) {
-        loadLogs(meta.current_page + 1);
-    }
+const handlePageChange = (pageNumber) => {
+    if (loading.value) return;
+    loadLogs(pageNumber);
+};
+
+const handlePerPageChange = (perPage) => {
+    if (filters.perPage === perPage) return;
+    filters.perPage = perPage;
+    loadLogs(1);
 };
 
 const formatDateTime = (value) => {
@@ -241,11 +245,6 @@ watch(
             loadLogs(1);
         }
     },
-);
-
-watch(
-    () => filters.perPage,
-    () => loadLogs(1),
 );
 
 onMounted(() => {
@@ -350,6 +349,15 @@ onMounted(() => {
                 </div>
             </div>
 
+            <PaginationBar
+                v-if="meta.total"
+                class="card"
+                :meta="meta"
+                :disabled="loading"
+                @update:page="handlePageChange"
+                @update:perPage="handlePerPageChange"
+            />
+
             <div class="card overflow-hidden p-0">
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-left text-sm">
@@ -412,44 +420,6 @@ onMounted(() => {
                 </div>
             </div>
 
-            <div class="card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-                <div>
-                    <p class="text-xs uppercase tracking-[0.3em] text-soft">Mostrando</p>
-                    <p class="text-app">
-                        {{ meta.from || 0 }}  {{ meta.to || 0 }} de {{ meta.total || 0 }}
-                    </p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label class="text-xs uppercase tracking-[0.3em] text-soft">Registros</label>
-                    <select
-                        v-model.number="filters.perPage"
-                        class="rounded-2xl border border-app bg-white px-6 py-2 text-sm dark:bg-slate-900"
-                    >
-                        <option :value="10">10</option>
-                        <option :value="15">15</option>
-                        <option :value="25">25</option>
-                    </select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button
-                        class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:opacity-40"
-                        :disabled="meta.current_page <= 1"
-                        @click="goToPage('prev')"
-                    >
-                        Anterior
-                    </button>
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                        Pagina {{ meta.current_page }} de {{ meta.last_page }}
-                    </span>
-                    <button
-                        class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:opacity-40"
-                        :disabled="meta.current_page >= meta.last_page"
-                        @click="goToPage('next')"
-                    >
-                        Siguiente
-                    </button>
-                </div>
-            </div>
         </section>
 
         <div
