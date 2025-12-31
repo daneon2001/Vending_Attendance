@@ -12,7 +12,7 @@ export function hasChartData(dataset) {
             Array.isArray(ds.data) &&
             ds.data.some((value) => {
                 const num = Number(value);
-                return Number.isFinite(num);
+                return Number.isFinite(num) && num > 0;
             }),
     );
 }

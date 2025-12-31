@@ -47,7 +47,7 @@ const changePerPage = (event) => {
 
 <template>
     <div
-        class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-app bg-white px-4 py-3 text-sm dark:bg-slate-900"
+        class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-app bg-white px-4 py-3 text-sm dark:bg-slate-900"
         :class="compact ? 'text-xs' : 'text-sm'"
     >
         <div class="min-w-[150px] text-soft">
@@ -62,7 +62,7 @@ const changePerPage = (event) => {
         <div class="flex flex-wrap items-center gap-2">
             <button
                 type="button"
-                class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+                class="rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="!canGoPrev || disabled"
                 aria-label="Pagina anterior"
                 @click="changePage(currentPage - 1)"
@@ -74,7 +74,7 @@ const changePerPage = (event) => {
             </span>
             <button
                 type="button"
-                class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+                class="rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="!canGoNext || disabled"
                 aria-label="Pagina siguiente"
                 @click="changePage(currentPage + 1)"
@@ -86,7 +86,7 @@ const changePerPage = (event) => {
         <div class="flex items-center gap-2 text-soft">
             <label class="text-xs uppercase tracking-[0.3em]">Registros</label>
             <select
-                class="rounded-2xl border border-app bg-white px-6 py-2 text-sm dark:bg-slate-900"
+                class="rounded-lg border border-app bg-white px-6 py-2 text-sm dark:bg-slate-900"
                 :value="props.meta?.per_page ?? perPageOptions[0]"
                 :disabled="disabled"
                 @change="changePerPage"

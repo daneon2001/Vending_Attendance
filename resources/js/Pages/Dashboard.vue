@@ -31,8 +31,10 @@ const filters = reactive({
 const summary = ref(null);
 const loading = ref(false);
 const errorMessage = ref('');
+const validationError = ref('');
 const lastUpdated = ref('--');
 const requestCounter = ref(0);
+const isDev = import.meta.env.DEV;
 
 const toast = reactive({
     show: false,
@@ -41,6 +43,13 @@ const toast = reactive({
     message: '',
     duration: 5000,
 });
+
+const devLog = (...args) => {
+    if (isDev) {
+        // eslint-disable-next-line no-console
+        console.debug('[Dashboard]', ...args);
+    }
+};
 
 const locationOptions = computed(() => props.locations ?? []);
 const hasCustomRange = computed(() => filters.range === 'custom');
@@ -52,12 +61,14 @@ const formatInputValue = (date) => {
     return `${year}-${month}-${day}`;
 };
 
-const formatRequestDate = (value) => {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return '';
-    }
+const parseDateInput = (value) => {
+    if (!value) return null;
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatRequestDate = (date) => {
+    if (!date) return '';
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -95,6 +106,7 @@ const closeToast = () => {
 };
 
 const buildParams = () => {
+    validationError.value = '';
     const params = { range: filters.range };
 
     if (filters.unit_id) {
@@ -102,15 +114,21 @@ const buildParams = () => {
     }
 
     if (filters.range === 'custom') {
-        const from = formatRequestDate(filters.from_date);
-        const to = formatRequestDate(filters.to_date);
+        const fromDate = parseDateInput(filters.from_date);
+        const toDate = parseDateInput(filters.to_date);
 
-        if (!from || !to) {
-            throw new Error('Debes capturar fechas válidas (dd/mm/aaaa)');
+        if (!fromDate || !toDate) {
+            validationError.value = 'Debes capturar fecha inicial y final.';
+            throw new Error(validationError.value);
         }
 
-        params.from_date = from;
-        params.to_date = to;
+        if (fromDate > toDate) {
+            validationError.value = 'La fecha inicial no puede ser mayor a la final.';
+            throw new Error(validationError.value);
+        }
+
+        params.from_date = formatRequestDate(fromDate);
+        params.to_date = formatRequestDate(toDate);
     }
 
     return params;
@@ -120,6 +138,7 @@ const fetchSummary = async () => {
     let params;
     try {
         params = buildParams();
+        devLog('Parámetros', params);
     } catch (error) {
         showToast({
             type: 'error',
@@ -140,12 +159,31 @@ const fetchSummary = async () => {
         }
         summary.value = data;
         lastUpdated.value = data.meta?.generated_at_local ?? '--';
+        errorMessage.value = '';
+
+        if (data.empty && data.message) {
+            showToast({
+                type: 'info',
+                title: 'Sin datos',
+                message: data.message,
+            });
+        }
+
+        devLog('Respuesta', data);
     } catch (error) {
         if (requestId !== requestCounter.value) {
             return;
         }
 
-        errorMessage.value = error.response?.data?.message ?? 'Error al cargar la información.';
+        if (error.response?.status === 422) {
+            const errors = error.response?.data?.errors ?? {};
+            validationError.value = Object.values(errors)[0]?.[0] ?? 'Datos inválidos.';
+            errorMessage.value = validationError.value;
+        } else {
+            validationError.value = '';
+            errorMessage.value = error.response?.data?.message ?? 'Error al cargar la información.';
+        }
+
         showToast({
             type: 'error',
             title: 'No se pudo actualizar',
@@ -160,13 +198,27 @@ const fetchSummary = async () => {
 
 const applyCustomRange = () => {
     if (!filters.from_date || !filters.to_date) {
+        validationError.value = 'Debes capturar fecha inicial y final.';
         showToast({
             type: 'error',
             title: 'Selecciona el rango',
-            message: 'Debes elegir fecha inicial y final.',
+            message: validationError.value,
         });
         return;
     }
+
+    const from = parseDateInput(filters.from_date);
+    const to = parseDateInput(filters.to_date);
+    if (!from || !to || from > to) {
+        validationError.value = 'Revisa tus fechas. La inicial debe ser menor o igual a la final.';
+        showToast({
+            type: 'error',
+            title: 'Rango inválido',
+            message: validationError.value,
+        });
+        return;
+    }
+
     fetchSummary();
 };
 
@@ -174,6 +226,7 @@ watch(
     () => filters.range,
     (value) => {
         if (value !== 'custom') {
+            validationError.value = '';
             applyRangeDefaults(value);
             fetchSummary();
         } else if (!filters.from_date || !filters.to_date) {
@@ -195,6 +248,10 @@ onMounted(() => {
 });
 
 const summaryData = computed(() => summary.value ?? { meta: null, kpis: {}, charts: {} });
+const summaryEmpty = computed(() => summary.value?.empty ?? false);
+const emptyMessage = computed(() => summary.value?.message ?? 'Sin datos para el rango seleccionado.');
+const chartsLoading = computed(() => loading.value && !summary.value);
+const chartError = computed(() => (errorMessage.value ? errorMessage.value : null));
 
 const kpiCards = computed(() => {
     const kpis = summary.value?.kpis ?? {};
@@ -276,14 +333,17 @@ const chartKeys = reactive({
 
 watch(peopleChartData, () => {
     chartKeys.people += 1;
+    devLog('Dataset personas', peopleChartData.value);
 }, { deep: true });
 
 watch(employeeStatusData, () => {
     chartKeys.employeeStatus += 1;
+    devLog('Dataset empleados', employeeStatusData.value);
 }, { deep: true });
 
 watch(clockHealthData, () => {
     chartKeys.clockHealth += 1;
+    devLog('Dataset relojes', clockHealthData.value);
 }, { deep: true });
 
 const presenceHasData = computed(() => hasChartData(peopleChartData.value));
@@ -428,10 +488,29 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                 <p class="text-xs text-muted">
                     Intervalo aplicado: {{ lastRangeLabel }}
                 </p>
+                <p v-if="validationError" class="text-xs font-semibold text-rose-600">
+                    {{ validationError }}
+                </p>
             </div>
 
-            <div v-if="errorMessage" class="card border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100">
-                {{ errorMessage }}
+            <div
+                v-if="errorMessage"
+                class="card flex flex-wrap items-center justify-between gap-3 border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+            >
+                <span>{{ errorMessage }}</span>
+                <button
+                    type="button"
+                    class="rounded-2xl border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-rose-600 hover:bg-rose-100 dark:border-rose-500/60 dark:hover:bg-rose-900/30"
+                    @click="fetchSummary"
+                >
+                    Reintentar
+                </button>
+            </div>
+            <div
+                v-else-if="summaryEmpty"
+                class="card border border-slate-100 bg-white/80 px-4 py-3 text-sm text-muted dark:border-slate-800 dark:bg-slate-900/40"
+            >
+                {{ emptyMessage }}
             </div>
 
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -459,8 +538,8 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                     title="Personas presentes"
                     description="Colaboradores con al menos una checada"
                     :dataset="peopleChartData"
-                    :loading="loading && !summary"
-                    :error="errorMessage"
+                    :loading="chartsLoading"
+                    :error="chartError"
                     :has-data="presenceHasData"
                     :chart-key="chartKeys.people"
                     empty-text="Sin datos para el rango seleccionado"
@@ -471,8 +550,8 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                     type="doughnut"
                     :options="{ plugins: { legend: { position: 'bottom' } } }"
                     :dataset="employeeStatusData"
-                    :loading="loading && !summary"
-                    :error="errorMessage"
+                    :loading="chartsLoading"
+                    :error="chartError"
                     :has-data="employeeStatusHasData"
                     :chart-key="chartKeys.employeeStatus"
                     empty-text="Sin datos para el rango seleccionado"
@@ -483,8 +562,8 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                     type="doughnut"
                     :options="{ plugins: { legend: { position: 'bottom' } } }"
                     :dataset="clockHealthData"
-                    :loading="loading && !summary"
-                    :error="errorMessage"
+                    :loading="chartsLoading"
+                    :error="chartError"
                     :has-data="clockHealthHasData"
                     :chart-key="chartKeys.clockHealth"
                     empty-text="Sin datos para el rango seleccionado"

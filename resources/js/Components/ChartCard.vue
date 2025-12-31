@@ -2,7 +2,7 @@
 import ChartEmptyState from '@/Components/ChartEmptyState.vue';
 import { hasChartData } from '@/utils/chart';
 import Chart from 'chart.js/auto';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     title: {
@@ -120,17 +120,23 @@ const internalHasData = computed(() =>
 const renderChart = () => {
     destroyChart();
 
-    if (!canvasRef.value || props.loading || !internalHasData.value) {
+    if (props.loading || !internalHasData.value) {
         return;
     }
 
-    const config = {
-        type: props.type,
-        data: props.dataset,
-        options: buildOptions(),
-    };
+    nextTick(() => {
+        if (!canvasRef.value || props.loading || !internalHasData.value) {
+            return;
+        }
 
-    chartInstance = new Chart(canvasRef.value, config);
+        const config = {
+            type: props.type,
+            data: props.dataset,
+            options: buildOptions(),
+        };
+
+        chartInstance = new Chart(canvasRef.value, config);
+    });
 };
 
 watch(

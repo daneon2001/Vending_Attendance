@@ -5,11 +5,11 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 <template>
     <div class="min-h-screen bg-[#f3f6fb] px-4 py-10 sm:px-6 lg:px-8">
         <div
-            class="mx-auto grid max-w-6xl gap-6 rounded-[36px] p-6 sm:p-8 lg:p-10 lg:grid-cols-[1.1fr_0.9fr]"
+            class="mx-auto grid max-w-6xl gap-6 rounded-2xl p-6 sm:p-8 lg:p-10 lg:grid-cols-[1.1fr_0.9fr]"
         >
             <!-- PANEL IZQUIERDO: HERO / RESUMEN -->
             <section
-                class="relative order-2 overflow-hidden rounded-[32px] 
+                class="relative order-2 overflow-hidden rounded-2xl 
                        bg-gradient-to-b 
                        from-white 
                        via-white 
@@ -104,7 +104,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 
             <!-- PANEL DERECHO: LOGIN -->
             <section
-                class="relative order-1 rounded-[32px] border border-[#c5d6ef] bg-white 
+                class="relative order-1 rounded-2xl border border-[#c5d6ef] bg-white 
                        p-6 sm:p-8 lg:p-10 
                        shadow-xl shadow-slate-900/5
                        lg:order-2"

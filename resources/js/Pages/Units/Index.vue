@@ -440,7 +440,6 @@ const clearFilters = () => {
                     </div>
                 </div>
                 </div>
-            </div>
 
             <div class="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
                 <div class="flex flex-wrap gap-3">

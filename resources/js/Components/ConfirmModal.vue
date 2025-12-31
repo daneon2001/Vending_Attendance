@@ -31,7 +31,7 @@ const props = defineProps({
 const emit = defineEmits(['confirm', 'cancel']);
 
 const dialogClasses = computed(() => [
-    'w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl transition dark:bg-slate-900 dark:text-slate-100',
+    'w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl transition dark:bg-slate-900 dark:text-slate-100',
 ]);
 </script>
 
@@ -49,14 +49,14 @@ const dialogClasses = computed(() => [
                 </p>
                 <div class="mt-6 flex justify-end gap-2">
                     <button
-                        class="rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app dark:border-slate-700 dark:text-slate-200"
+                        class="rounded-lg border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app dark:border-slate-700 dark:text-slate-200"
                         :disabled="loading"
                         @click="emit('cancel')"
                     >
                         {{ cancelLabel }}
                     </button>
                     <button
-                        class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="loading"
                         @click="emit('confirm')"
                     >

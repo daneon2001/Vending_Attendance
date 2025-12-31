@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class DashboardController extends Controller
 {
@@ -20,15 +21,15 @@ class DashboardController extends Controller
     {
         $request->validate([
             'range' => ['nullable', 'in:today,7d,30d,custom'],
-            'from' => ['nullable', 'date'],
-            'to' => ['nullable', 'date'],
-            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'from_date' => ['required_if:range,custom', 'nullable', 'date_format:d/m/Y'],
+            'to_date' => ['required_if:range,custom', 'nullable', 'date_format:d/m/Y'],
+            'unit_id' => ['nullable', 'integer', 'exists:locations,id'],
         ]);
 
-        $range = $request->input('range', '7d');
-        $locationId = $request->integer('location_id');
+        $range = $request->input('range', 'today');
+        $unitId = $request->integer('unit_id');
 
-        [$from, $to] = $this->resolveRange($range, $request->input('from'), $request->input('to'));
+        [$from, $to] = $this->resolveRange($range, $request->input('from_date'), $request->input('to_date'));
 
         if (app()->environment('local')) {
             Log::debug('[Dashboard] incoming summary request', [
@@ -37,19 +38,19 @@ class DashboardController extends Controller
                 'raw_to' => $request->input('to'),
                 'normalized_from' => $from->toDateTimeString(),
                 'normalized_to' => $to->toDateTimeString(),
-                'location_id' => $locationId,
+                'unit_id' => $unitId,
             ]);
         }
 
         $attendanceBase = fn () => AttendanceLog::query()
             ->whereBetween('log_date', [$from, $to])
-            ->when($locationId, fn ($query) => $query->where('location_id', $locationId));
+            ->when($unitId, fn ($query) => $query->where('location_id', $unitId));
 
         $totalLogs = $attendanceBase()->count();
 
         $presenceRecords = AttendanceLog::query()
             ->whereBetween('log_date', [$from, $to])
-            ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
+            ->when($unitId, fn ($query) => $query->where('location_id', $unitId))
             ->selectRaw('DATE(log_date) as day')
             ->selectRaw('COUNT(DISTINCT COALESCE(employee_id, fortia_employee_id)) as total')
             ->groupBy('day')
@@ -59,7 +60,7 @@ class DashboardController extends Controller
         $presenceSeries = $this->buildSeriesForPeriod($presenceRecords, $from, $to);
 
         $employeesQuery = Employee::query()
-            ->when($locationId, fn ($query) => $query->where('base_location_id', $locationId));
+            ->when($unitId, fn ($query) => $query->where('base_location_id', $unitId));
 
         $employeeStatus = $employeesQuery
             ->select('status', DB::raw('COUNT(*) as total'))
@@ -67,12 +68,12 @@ class DashboardController extends Controller
             ->get();
 
         $clockStatus = Clock::query()
-            ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
+            ->when($unitId, fn ($query) => $query->where('location_id', $unitId))
             ->select('monitoring_status', DB::raw('COUNT(*) as total'))
             ->groupBy('monitoring_status')
             ->get();
 
-        $topBranches = $this->buildTopBranches($from, $to, $locationId);
+        $topBranches = $this->buildTopBranches($from, $to, $unitId);
 
         $totalEmployees = $employeesQuery->count();
 
@@ -87,7 +88,7 @@ class DashboardController extends Controller
             'range' => $range,
             'from' => $from->toIso8601String(),
             'to' => $to->toIso8601String(),
-            'unit_id' => $locationId,
+            'unit_id' => $unitId,
             'generated_at_local' => now($timezone)->format('d/m/Y H:i:s'),
         ];
 
@@ -98,14 +99,23 @@ class DashboardController extends Controller
             'clocks_offline' => $this->extractClockStatus($clockStatus, 'offline'),
         ];
 
+        $employeesStatusDataset = $this->formatStatusDataset($employeeStatus);
+        $clockDataset = $this->formatClockDataset($clockStatus);
+
         $charts = [
             'people_present_by_day' => $presenceSeries,
-            'employees_status' => $this->formatStatusDataset($employeeStatus),
-            'clock_health' => $this->formatClockDataset($clockStatus),
+            'employees_status' => $employeesStatusDataset,
+            'clock_health' => $clockDataset,
             'top_branches' => $topBranches,
         ];
 
+        $isEmpty = $this->chartsAreEmpty($presenceSeries, $employeesStatusDataset, $clockDataset);
+        $message = $isEmpty ? 'No hay datos para el rango seleccionado.' : null;
+
         $response = [
+            'ok' => true,
+            'empty' => $isEmpty,
+            'message' => $message,
             'meta' => $meta,
             'kpis' => $kpis,
             'charts' => $charts,
@@ -116,6 +126,7 @@ class DashboardController extends Controller
                 'presence_points' => count($presenceSeries['labels']),
                 'top_branches_points' => count($topBranches['labels']),
                 'top_branches_mode' => $topBranches['mode'] ?? null,
+                'is_empty' => $isEmpty,
             ]);
         }
 
@@ -126,15 +137,26 @@ class DashboardController extends Controller
     {
         $now = now();
 
-        if ($range === 'custom' && ($fromInput || $toInput)) {
-            $startReference = $fromInput ?? $toInput;
-            $endReference = $toInput ?? $fromInput ?? $startReference;
+        if ($range === 'custom') {
+            if (! $fromInput || ! $toInput) {
+                throw ValidationException::withMessages([
+                    'from_date' => 'Debes proporcionar fechas de inicio y fin.',
+                ]);
+            }
 
-            $from = Carbon::parse($startReference)->startOfDay();
-            $to = Carbon::parse($endReference)->endOfDay();
+            try {
+                $from = Carbon::createFromFormat('d/m/Y', $fromInput)->startOfDay();
+                $to = Carbon::createFromFormat('d/m/Y', $toInput)->endOfDay();
+            } catch (\Throwable $th) {
+                throw ValidationException::withMessages([
+                    'from_date' => 'El formato de fecha debe ser dd/mm/aaaa.',
+                ]);
+            }
 
             if ($from->greaterThan($to)) {
-                [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+                throw ValidationException::withMessages([
+                    'from_date' => 'La fecha inicial no puede ser mayor a la final.',
+                ]);
             }
 
             return [$from, $to];
@@ -290,5 +312,14 @@ class DashboardController extends Controller
             'labels' => $labels,
             'values' => $values,
         ];
+    }
+
+    protected function chartsAreEmpty(array $presenceSeries, array $employeeDataset, array $clockDataset): bool
+    {
+        $presenceTotal = array_sum($presenceSeries['values'] ?? []);
+        $employeeTotal = array_sum($employeeDataset['values'] ?? []);
+        $clockTotal = array_sum($clockDataset['values'] ?? []);
+
+        return ($presenceTotal + $employeeTotal + $clockTotal) === 0;
     }
 }
