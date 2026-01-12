@@ -115,7 +115,7 @@ class UnitController extends Controller
         AuditLogger::log(
             'units.status_changed',
             $unit,
-            $unit->status ? 'Sucursal desactivada' : 'Sucursal activada',
+            $unit->status ? 'Sucursal activada' : 'Sucursal desactivada',
             [
                 'before' => $previous ? 'activa' : 'inactiva',
                 'after' => $unit->status ? 'activa' : 'inactiva',

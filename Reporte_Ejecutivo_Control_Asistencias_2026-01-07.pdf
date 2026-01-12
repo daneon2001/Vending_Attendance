@@ -1,0 +1,237 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [ 5 0 R 7 0 R ] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Length 3952 >>
+stream
+BT
+/F1 11 Tf
+50 792 Td
+(REPORTE EJECUTIVO - CONTROL DE ASISTENCIAS Y BIOMETRICOS (MEDICAL LIFE)) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Fecha de corte: 2026-01-07) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(1) Estatus general) Tj
+0 -14 Td
+(Implementacion avanzada. Funcionalidad interna operable con panel, catalogos, seguridad y) Tj
+0 -14 Td
+(bitacoras. Avance funcional interno estimado: 76% (completo=100, parcial=50, pendiente=0).) Tj
+0 -14 Td
+(Avance end-to-end con dependencias externas estimado: 45%, debido a integracion Fortia real y) Tj
+0 -14 Td
+(servicios on-premise pendientes.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(2) Avance por modulos) Tj
+0 -14 Td
+(Modulo                               | Estado       | % Avance | Comentario) Tj
+0 -14 Td
+(Login/Seguridad                      | COMPLETO     | 100%     | Autenticacion web y API con Sanctum) Tj
+0 -14 Td
+(Roles/Permisos                       | COMPLETO     | 100%     | Modelo, middleware y UI de gestion) Tj
+0 -14 Td
+(Usuarios del sistema                 | COMPLETO     | 100%     | CRUD y activacion/desactivacion) Tj
+0 -14 Td
+(Catalogo de empleados                | PARCIAL      | 50%      | Sync real Fortia y reglas finales pendientes) Tj
+0 -14 Td
+(Asistencias/checadas + filtros       | PARCIAL      | 50%      | Registro y consulta listos; envio a Fortia pendiente) Tj
+0 -14 Td
+(Sucursales/Unidades                  | COMPLETO     | 100%     | Catalogo, filtros, detalle y estado) Tj
+0 -14 Td
+(Relojes biometricos + bitacora       | COMPLETO     | 100%     | Catalogo, asignacion, importacion CSV y logs) Tj
+0 -14 Td
+(Dashboard/Panel general              | COMPLETO     | 100%     | KPIs y graficas con filtros) Tj
+0 -14 Td
+(Bitacora (Audit trail)               | COMPLETO     | 100%     | Logging y consulta UI/API) Tj
+0 -14 Td
+(Integracion Fortia (mock/real)       | PARCIAL      | 30%      | Mock operativo; servicios reales en TODO) Tj
+0 -14 Td
+(Exportaciones                        | PENDIENTE    | 0%       | Permisos definidos, sin endpoints ni UI) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(3) Logros clave) Tj
+0 -14 Td
+(- Dashboard operativo con KPIs y graficas para asistencias y salud de relojes.) Tj
+0 -14 Td
+(- Catalogos de relojes y sucursales listos con CRUD, filtros y paginacion.) Tj
+0 -14 Td
+(- Catalogo de empleados con control de estatus y flujo de huellas.) Tj
+0 -14 Td
+(- Bitacora de auditoria activa con detalle y filtros por usuario y rango.) Tj
+0 -14 Td
+(- Roles y permisos administrables desde UI.) Tj
+0 -14 Td
+(- Sincronizacion mock con Fortia para pruebas sin dependencia externa.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(4) Bloqueos y dependencias) Tj
+0 -14 Td
+(- Conectividad real a Fortia/OpenSync (credenciales y endpoint).) Tj
+0 -14 Td
+(- Servicio on-premise para enrolamiento/borrado de huellas.) Tj
+0 -14 Td
+(- Definicion final de reglas de negocio de checadas.) Tj
+0 -14 Td
+(- Infra/red on-prem para relojes y servicio local de biometria.) Tj
+0 -14 Td
+(- Definicion de exportaciones requeridas (formatos y periodicidad).) Tj
+0 -14 Td
+(- Datos reales o dataset homologado para pruebas.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(5) Riesgos y mitigacion) Tj
+0 -14 Td
+(- Integracion Fortia real no implementada (impacto alto). Mitigacion: definir contrato y) Tj
+0 -14 Td
+(  priorizar servicios FortiaEmployee/Attendance.) Tj
+0 -14 Td
+(- Servicio on-premise de huellas pendiente (impacto alto). Mitigacion: acordar protocolo y) Tj
+0 -14 Td
+(  mockear servicio local.) Tj
+0 -14 Td
+(- APIs internas sin auth/permiso explicito (impacto medio). Mitigacion: proteger rutas con) Tj
+0 -14 Td
+(  auth:sanctum o middleware.) Tj
+0 -14 Td
+(- Duplicidad de migraciones attendance/employees (impacto medio). Mitigacion: normalizar esquema) Tj
+0 -14 Td
+(  y plan de migracion.) Tj
+0 -14 Td
+(- Exportaciones inexistentes (impacto medio). Mitigacion: definir reportes y endpoints) Tj
+0 -14 Td
+(  prioritarios.) Tj
+0 -14 Td
+(- Cobertura de pruebas limitada (impacto bajo). Mitigacion: pruebas minimas por modulo critico.) Tj
+0 -14 Td
+() Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 2690 >>
+stream
+BT
+/F1 11 Tf
+50 792 Td
+(6) Proximos pasos (1-2 semanas)) Tj
+0 -14 Td
+(- Implementar sync real de empleados con Fortia.) Tj
+0 -14 Td
+(- Implementar envio de checadas a Fortia.) Tj
+0 -14 Td
+(- Integrar servicio on-prem para huellas. (Requiere decision DG)) Tj
+0 -14 Td
+(- Asegurar autenticacion/autorizacion en APIs internas.) Tj
+0 -14 Td
+(- Definir y construir exportaciones clave. (Requiere decision DG)) Tj
+0 -14 Td
+(- Unificar migraciones de attendance_logs y employees/empleados.) Tj
+0 -14 Td
+(- Pruebas funcionales con dataset real o semi-real. (Requiere ventana DG)) Tj
+0 -14 Td
+(- Preparar entorno on-prem (red/puertos/credenciales). (Requiere coordinacion DG)) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(7) Requerimientos a Direccion General) Tj
+0 -14 Td
+(- Accesos reales a Fortia/OpenSync (credenciales y endpoint).) Tj
+0 -14 Td
+(- Definicion del servicio on-prem para biometria (protocolo y responsable).) Tj
+0 -14 Td
+(- Prioridad y formato de exportaciones (PDF/CSV, periodicidad).) Tj
+0 -14 Td
+(- Ventana de pruebas y unidad piloto para validacion operativa.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(ANEXO TECNICO) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(A) Rutas clave (backend)) Tj
+0 -14 Td
+(- Auth web: routes/auth.php) Tj
+0 -14 Td
+(- UI web: routes/web.php (dashboard, clocks, employees, units, settings)) Tj
+0 -14 Td
+(- API OpenSync: routes/api.php prefijo FortiaPrimeApi.Opensync/api/v2) Tj
+0 -14 Td
+(- API empleados: /api/employees (listado, detalle, sync mock, estatus, huellas)) Tj
+0 -14 Td
+(- API asistencias: /api/attendance/* (registro dispositivo, consulta, envio TODO)) Tj
+0 -14 Td
+(- API bitacora: /api/audit-logs (listado y detalle)) Tj
+0 -14 Td
+(- API usuarios: /api/users (CRUD y estatus)) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(B) Componentes principales (frontend)) Tj
+0 -14 Td
+(- Layout y tema: resources/js/Layouts/AuthenticatedLayout.vue, useTheme.js, useSidebar.js) Tj
+0 -14 Td
+(- Dashboard: resources/js/Pages/Dashboard.vue) Tj
+0 -14 Td
+(- Empleados: resources/js/Pages/Employees/EmployeesCatalog.vue y EmployeeAttendanceDrawer.vue) Tj
+0 -14 Td
+(- Relojes: resources/js/Pages/Clocks/Index.vue) Tj
+0 -14 Td
+(- Unidades: resources/js/Pages/Units/Index.vue) Tj
+0 -14 Td
+(- Settings: resources/js/Pages/Settings/* (Index, Roles, Users, Audit)) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(C) Pendientes tecnicos concretos) Tj
+0 -14 Td
+(- Implementar FortiaEmployeeService y FortiaAttendanceService (actualmente TODO).) Tj
+0 -14 Td
+(- Integracion on-prem para huellas en EmployeeController deleteFingerprint.) Tj
+0 -14 Td
+(- Exportaciones sin endpoints ni UI.) Tj
+0 -14 Td
+(- Proteger rutas API internas con auth/permiso.) Tj
+0 -14 Td
+(- Consolidar esquema attendance_logs y transicion empleados legacy.) Tj
+0 -14 Td
+() Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000123 00000 n 
+0000000220 00000 n 
+0000004224 00000 n 
+0000004350 00000 n 
+0000007092 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+7218
+%%EOF
