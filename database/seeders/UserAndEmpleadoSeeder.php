@@ -13,7 +13,7 @@ class UserAndEmpleadoSeeder extends Seeder
     {
         // 1) Usuario admin
         $user = User::firstOrCreate(
-            ['email' => 'admin@asistencias.test'], // clave única
+            ['email' => 'admin@gmail.com'], // clave única
             [
                 'name'    => 'Admin Asistencias',
                 'password'=> bcrypt('password'), // cámbialo a lo que quieras
