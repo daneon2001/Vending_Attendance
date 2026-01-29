@@ -15,27 +15,50 @@ class AttendanceController extends Controller
     {
         $validated = $request->validate([
             'employee_id' => ['required', 'exists:employees,id'],
-            'device_id' => ['required', 'integer'],
-            'log_type' => ['required', 'integer'],
+            'clock_id' => ['required', 'exists:clocks,id'],
+            'location_id' => ['nullable', 'exists:locations,id'],
+            'log_type' => ['required', 'string', 'max:20'],
             'log_date' => ['required', 'date'],
+            'local_id' => ['nullable', 'string', 'max:100'],
+            'device_timestamp' => ['nullable', 'date'],
+            'raw_payload' => ['nullable'],
         ]);
 
-        $employee = Employee::find($validated['employee_id']);
+        // Endpoint pensado para la app on-prem (Python) que envia checadas reales.
+        $employee = Employee::findOrFail($validated['employee_id']);
 
         $nextLogId = (AttendanceLog::max('log_id') ?? 0) + 1;
 
-        AttendanceLog::create([
+        $rawPayload = $validated['raw_payload'] ?? null;
+        if (! is_null($rawPayload)) {
+            $rawPayload = is_array($rawPayload) ? $rawPayload : ['value' => $rawPayload];
+        }
+
+        $enrichedPayload = array_filter([
+            'local_id' => $validated['local_id'] ?? null,
+            'device_timestamp' => $validated['device_timestamp'] ?? null,
+        ]);
+
+        if (! empty($enrichedPayload)) {
+            $rawPayload = array_merge($rawPayload ?? [], $enrichedPayload);
+        }
+
+        $log = AttendanceLog::create([
             'log_id' => $nextLogId,
             'employee_id' => $employee->id,
             'fortia_employee_id' => $employee->fortia_employee_id,
             'company_id' => $employee->company_id,
-            'location_id' => $employee->base_location_id,
-            'device_id' => $validated['device_id'],
+            'location_id' => $validated['location_id'] ?? $employee->base_location_id,
+            'device_id' => $validated['clock_id'],
             'log_date' => Carbon::parse($validated['log_date']),
             'log_type' => $validated['log_type'],
+            'raw_payload' => $rawPayload ?: null,
         ]);
 
-        return response()->json(['message' => 'Attendance stored (dummy).'], 201);
+        return response()->json([
+            'cloud_id' => $log->id,
+            'received' => true,
+        ], 201);
     }
 
     public function listByEmployee(Employee $employee, Request $request): JsonResponse

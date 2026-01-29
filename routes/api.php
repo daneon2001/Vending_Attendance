@@ -2,10 +2,12 @@
 
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CatalogSyncController;
 use App\Http\Controllers\Api\ClockController;
 use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +26,10 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
 
         Route::get('/dashboard/summary', DashboardSummaryController::class)->name('dashboard.summary');
 
+
+        Route::post('/attendance/from-device', [AttendanceController::class, 'storeFromDevice']);
+        Route::post('/enrolments/complete', [EnrolmentController::class, 'complete']);
+        Route::get('/biometrico/catalog', [CatalogSyncController::class, 'catalog']);
         // employee
         // Route::get('/time-and-assistance/employee', [...]);
 
@@ -46,9 +52,20 @@ Route::prefix('employees')->group(function () {
 });
 
 Route::prefix('attendance')->group(function () {
+    // Endpoints consumidos por la app on-prem (Python).
     Route::post('from-device', [AttendanceController::class, 'storeFromDevice']);
     Route::get('employee/{employee}', [AttendanceController::class, 'listByEmployee']);
     Route::post('send-to-fortia', [AttendanceController::class, 'sendToFortia']);
+});
+
+Route::prefix('enrolments')->group(function () {
+    // Endpoints consumidos por la app on-prem (Python).
+    Route::post('complete', [EnrolmentController::class, 'complete']);
+});
+
+Route::prefix('biometrico')->group(function () {
+    // Endpoints consumidos por la app on-prem (Python).
+    Route::get('catalog', [CatalogSyncController::class, 'catalog']);
 });
 
 Route::prefix('fortia-mock')->group(function () {

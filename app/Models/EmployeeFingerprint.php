@@ -12,6 +12,7 @@ class EmployeeFingerprint extends Model
     protected $fillable = [
         'employee_id',
         'clock_id',
+        'vendor_template_id',
         'status',
         'enrolled_at',
         'deleted_at',
