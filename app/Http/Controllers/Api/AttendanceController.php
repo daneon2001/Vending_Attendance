@@ -8,6 +8,8 @@ use App\Models\Employee;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Schema;
 
 class AttendanceController extends Controller
 {
@@ -23,6 +25,26 @@ class AttendanceController extends Controller
             'device_timestamp' => ['nullable', 'date'],
             'raw_payload' => ['nullable'],
         ]);
+
+        $localId = isset($validated['local_id']) ? trim((string) $validated['local_id']) : null;
+        $clockId = (int) $validated['clock_id'];
+
+        $supportsLocalId = Schema::hasColumn('attendance_logs', 'local_id');
+
+        if ($supportsLocalId && ! empty($localId)) {
+            $existing = AttendanceLog::query()
+                ->where('local_id', $localId)
+                ->where('device_id', $clockId)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'cloud_id' => $existing->id,
+                    'received' => true,
+                    'action' => 'ALREADY',
+                ], 200);
+            }
+        }
 
         // Endpoint pensado para la app on-prem (Python) que envia checadas reales.
         $employee = Employee::findOrFail($validated['employee_id']);
@@ -43,21 +65,40 @@ class AttendanceController extends Controller
             $rawPayload = array_merge($rawPayload ?? [], $enrichedPayload);
         }
 
-        $log = AttendanceLog::create([
-            'log_id' => $nextLogId,
-            'employee_id' => $employee->id,
-            'fortia_employee_id' => $employee->fortia_employee_id,
-            'company_id' => $employee->company_id,
-            'location_id' => $validated['location_id'] ?? $employee->base_location_id,
-            'device_id' => $validated['clock_id'],
-            'log_date' => Carbon::parse($validated['log_date']),
-            'log_type' => $validated['log_type'],
-            'raw_payload' => $rawPayload ?: null,
-        ]);
+        try {
+            $log = AttendanceLog::create([
+                'log_id' => $nextLogId,
+                'employee_id' => $employee->id,
+                'fortia_employee_id' => $employee->fortia_employee_id,
+                'company_id' => $employee->company_id,
+                'location_id' => $validated['location_id'] ?? $employee->base_location_id,
+                'device_id' => $clockId,
+                'local_id' => $supportsLocalId ? $localId : null,
+                'log_date' => Carbon::parse($validated['log_date']),
+                'log_type' => $this->normalizeLogType($validated['log_type']),
+                'raw_payload' => $rawPayload ?: null,
+            ]);
+        } catch (QueryException $e) {
+            if ($supportsLocalId && ! empty($localId)) {
+                $existing = AttendanceLog::query()
+                    ->where('local_id', $localId)
+                    ->where('device_id', $clockId)
+                    ->first();
+                if ($existing) {
+                    return response()->json([
+                        'cloud_id' => $existing->id,
+                        'received' => true,
+                        'action' => 'ALREADY',
+                    ], 200);
+                }
+            }
+            throw $e;
+        }
 
         return response()->json([
             'cloud_id' => $log->id,
             'received' => true,
+            'action' => 'CREATED',
         ], 201);
     }
 
@@ -106,6 +147,23 @@ class AttendanceController extends Controller
         }
 
         return $isStart ? $date->copy() : $date->copy();
+    }
+
+    private function normalizeLogType(mixed $value): int
+    {
+        if (is_int($value) || (is_string($value) && ctype_digit($value))) {
+            return (int) $value;
+        }
+
+        $asString = strtoupper(trim((string) $value));
+        if ($asString === 'IN') {
+            return 1;
+        }
+        if ($asString === 'OUT') {
+            return 2;
+        }
+
+        return 0;
     }
 
     public function sendToFortia(): JsonResponse

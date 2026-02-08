@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('empleados') || Schema::hasColumn('empleados', 'status')) {
+            return;
+        }
+
         Schema::table('empleados', function (Blueprint $table) {
             $table->tinyInteger('status')
                   ->default(1)
@@ -17,6 +21,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('empleados') || ! Schema::hasColumn('empleados', 'status')) {
+            return;
+        }
+
         Schema::table('empleados', function (Blueprint $table) {
             $table->dropColumn('status');
         });

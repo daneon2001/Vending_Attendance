@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('empleados') || Schema::hasTable('fingerprints')) {
+            return;
+        }
+
         Schema::create('fingerprints', function (Blueprint $table) {
             $table->id();
             $table->string('finger_name', 30)->nullable();

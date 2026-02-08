@@ -10,6 +10,8 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Http\Middleware\CheckTokenExpiration;
+use App\Http\Middleware\DevOnlyApi;
+use App\Http\Middleware\DeviceTokenMiddleware;
 
 // Middleware de Laravel
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
@@ -22,6 +24,7 @@ use App\Console\Commands\EnsureAdminPermissions;
 use App\Console\Commands\MakeAdminSuperCommand;
 use App\Console\Commands\FortiaMockAddEmployee;
 use App\Console\Commands\FortiaMockSyncEmployees;
+use App\Console\Commands\FortiaDiagnoseApis;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -35,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         FortiaMockSyncEmployees::class,
         EnsureAdminPermissions::class,
         MakeAdminSuperCommand::class,
+        FortiaDiagnoseApis::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)
@@ -62,6 +66,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Nuestro middleware de expiración de token
             'token.expiration' => CheckTokenExpiration::class,
+            'dev.only.api'     => DevOnlyApi::class,
+            'device.token'     => DeviceTokenMiddleware::class,
             'perm'             => EnsurePermission::class,
         ]);
     })

@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     initialClocks: {
@@ -325,6 +325,10 @@ watch(
 );
 
 const fetchClocks = async (page = currentPage.value) => {
+    if (listLoading.value) {
+        return;
+    }
+
     listLoading.value = true;
     try {
         const { data } = await axios.get(route('clocks.list'), {
@@ -343,6 +347,20 @@ const fetchClocks = async (page = currentPage.value) => {
         listLoading.value = false;
     }
 };
+
+let refreshTimer = null;
+
+onMounted(() => {
+    refreshTimer = window.setInterval(() => {
+        fetchClocks(currentPage.value);
+    }, 15000);
+});
+
+onBeforeUnmount(() => {
+    if (refreshTimer) {
+        window.clearInterval(refreshTimer);
+    }
+});
 
 const changePage = (page) => {
     if (!pagination.value) {

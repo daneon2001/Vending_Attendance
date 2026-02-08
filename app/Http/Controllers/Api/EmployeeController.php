@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
+use App\Models\EmployeeTemplateDeletion;
 use App\Services\Audit\AuditLogger;
 use App\Services\FortiaMock\FortiaMockSyncService;
 use Illuminate\Http\JsonResponse;
@@ -139,9 +140,19 @@ class EmployeeController extends Controller
                 continue;
             }
 
+            $deletedAt = now();
             $fingerprint->status = 'pending_delete'; // o 'deleted' si el on-premise responde
-            $fingerprint->deleted_at = now();
+            $fingerprint->deleted_at = $deletedAt;
             $fingerprint->save();
+
+            if (! empty($fingerprint->vendor_template_id)) {
+                EmployeeTemplateDeletion::query()->create([
+                    'vendor' => 'digitalpersona',
+                    'vendor_template_id' => (string) $fingerprint->vendor_template_id,
+                    'employee_id' => $employee->id,
+                    'deleted_at' => $deletedAt,
+                ]);
+            }
             $affected++;
         }
 

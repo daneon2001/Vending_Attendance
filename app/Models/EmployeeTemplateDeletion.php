@@ -5,29 +5,22 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class EmployeeFingerprint extends Model
+class EmployeeTemplateDeletion extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'employee_id',
-        'clock_id',
+        'vendor',
         'vendor_template_id',
-        'template_b64',
-        'template_format',
-        'enrolment_type',
-        'device_serial',
-        'status',
-        'enrolled_at',
-        'performed_at',
+        'employee_id',
         'deleted_at',
     ];
 
     protected $casts = [
-        'enrolled_at' => 'datetime',
-        'performed_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+
+    public $timestamps = true;
 
     public function employee()
     {

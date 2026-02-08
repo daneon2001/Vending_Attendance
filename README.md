@@ -64,3 +64,58 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Enrolment API (Fortia v2)
+
+Manual test for `POST /api/FortiaPrimeApi.Opensync/api/v2/enrolments/complete`:
+
+```bash
+curl -X POST "http://localhost/api/FortiaPrimeApi.Opensync/api/v2/enrolments/complete" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": 1,
+    "clock_id": 1,
+    "enrolment_type": "FINGERPRINT",
+    "template_vendor_id": "TPL-ABC-001",
+    "template_b64": "VGhpcyBpcyBhIHRlc3QgdGVtcGxhdGU=",
+    "template_format": "zkteco-v1",
+    "device_serial": "SN-DEVICE-001",
+    "performed_at": "2026-02-03T12:00:00Z"
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "success": true,
+  "employee_id": 1,
+  "clock_id": 1,
+  "vendor_template_id": "TPL-ABC-001",
+  "action": "CREATED"
+}
+```
+
+## Device token for checador
+
+Device endpoints now support static bearer auth via `DEVICE_STATIC_TOKEN`.
+
+See: `docs/DEVICE_TOKEN.md`
+
+### Quick setup
+
+1. Define `DEVICE_STATIC_TOKEN` in `.env`.
+2. Run `php artisan optimize:clear`.
+3. Run `php artisan fortia:diagnose-apis`.
+
+### Examples (PowerShell)
+
+```powershell
+curl -Method Post "http://localhost/api/device/ping" `
+  -Headers @{ Accept = "application/json"; Authorization = "Bearer TU_TOKEN" }
+
+curl -Method Post "http://localhost/api/FortiaPrimeApi.Opensync/api/v2/login/authenticate" `
+  -Headers @{ Accept = "application/json" } `
+  -Body (@{ user = "demo"; password = "demo" } | ConvertTo-Json)
+```

@@ -5,32 +5,31 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class EmployeeFingerprint extends Model
+class EnrolmentAudit extends Model
 {
     use HasFactory;
+
+    public const STATUS_SENT = 'SENT';
+    public const STATUS_REJECTED = 'REJECTED';
+    public const STATUS_DUPLICATE = 'DUPLICATE';
+    public const STATUS_CONFLICT = 'CONFLICT';
+
+    public $timestamps = false;
 
     protected $fillable = [
         'employee_id',
         'clock_id',
-        'vendor_template_id',
-        'template_b64',
-        'template_format',
         'enrolment_type',
+        'vendor_template_id',
         'device_serial',
-        'status',
-        'enrolled_at',
         'performed_at',
-        'deleted_at',
+        'status',
+        'reason',
+        'created_at',
     ];
 
     protected $casts = [
-        'enrolled_at' => 'datetime',
         'performed_at' => 'datetime',
-        'deleted_at' => 'datetime',
+        'created_at' => 'datetime',
     ];
-
-    public function employee()
-    {
-        return $this->belongsTo(Employee::class);
-    }
 }

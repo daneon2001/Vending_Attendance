@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('empleados') || Schema::hasTable('asistencias')) {
+            return;
+        }
+
         Schema::create('asistencias', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('empleado_id');
@@ -29,6 +33,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('asistencias');
+        if (Schema::hasTable('asistencias')) {
+            Schema::dropIfExists('asistencias');
+        }
     }
 };

@@ -16,6 +16,7 @@ class AttendanceLog extends Model
         'company_id',
         'location_id',
         'device_id',
+        'local_id',
         'log_date',
         'log_type',
         'function_int',
@@ -31,6 +32,7 @@ class AttendanceLog extends Model
         'log_date' => 'datetime',
         'sent_to_fortia_at' => 'datetime',
         'fortia_response_payload' => 'array',
+        'raw_payload' => 'array',
     ];
 
     public function employee()

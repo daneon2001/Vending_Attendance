@@ -74,4 +74,22 @@ class Employee extends Model
             $this->forceFill(['has_fingerprint' => $hasFingerprint])->saveQuietly();
         }
     }
+
+    public function resolveRouteBinding($value, $field = null): ?Model
+    {
+        if ($field !== null) {
+            return parent::resolveRouteBinding($value, $field);
+        }
+
+        $query = $this->newQuery();
+
+        if (is_numeric($value)) {
+            return $query
+                ->whereKey((int) $value)
+                ->orWhere('fortia_employee_id', (int) $value)
+                ->first();
+        }
+
+        return $query->where($this->getRouteKeyName(), $value)->first();
+    }
 }

@@ -21,6 +21,7 @@ class Clock extends Model
         'location_id',
         'last_heartbeat_at',
         'last_status_message',
+        'last_seen_ip',
         'monitoring_status',
         'program_status',
     ];
