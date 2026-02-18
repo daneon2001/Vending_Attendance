@@ -12,6 +12,7 @@ use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Http\Middleware\CheckTokenExpiration;
 use App\Http\Middleware\DevOnlyApi;
 use App\Http\Middleware\DeviceTokenMiddleware;
+use App\Http\Middleware\VerifyDeviceHmac;
 
 // Middleware de Laravel
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
@@ -68,6 +69,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'token.expiration' => CheckTokenExpiration::class,
             'dev.only.api'     => DevOnlyApi::class,
             'device.token'     => DeviceTokenMiddleware::class,
+            'device.hmac'      => VerifyDeviceHmac::class,
             'perm'             => EnsurePermission::class,
         ]);
     })

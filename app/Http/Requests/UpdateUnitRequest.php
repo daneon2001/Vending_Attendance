@@ -36,4 +36,13 @@ class UpdateUnitRequest extends FormRequest
             'status' => ['required', 'in:0,1'],
         ];
     }
+
+    protected function prepareForValidation(): void
+    {
+        if (! $this->filled('timezone')) {
+            $this->merge([
+                'timezone' => 'America/Mexico_City',
+            ]);
+        }
+    }
 }

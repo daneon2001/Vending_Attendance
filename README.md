@@ -125,3 +125,90 @@ curl -Method Post "http://localhost/api/FortiaPrimeApi.Opensync/api/v2/login/aut
 Documentacion del modulo web centralizado:
 
 - `docs/CENTRAL_ASISTENCIAS.md`
+
+## API On-Prem (HMAC)
+
+Nuevos endpoints para sincronizacion offline-first desde checador on-prem:
+
+- `POST /api/onprem/attendances`
+- `POST /api/onprem/heartbeat`
+- `GET /api/onprem/ping`
+
+### Tablas usadas
+
+- `devices`: serial, shared secret HMAC, estado activo y ultimo `last_seen_at`.
+- `device_nonces`: evita replay attacks (nonce unico por dispositivo con expiracion).
+- `attendances_raw`: almacenamiento crudo/idempotente por `(device_serial, local_event_id)`.
+
+### Headers requeridos
+
+- `X-Device-Serial`
+- `X-Timestamp` (unix seconds)
+- `X-Nonce` (uuid)
+- `X-Signature` (base64 HMAC-SHA256)
+
+### Canonical string para firma
+
+```text
+METHOD + "\n" + PATH + "\n" + X-Timestamp + "\n" + X-Nonce + "\n" + SHA256(body_raw)
+```
+
+`PATH` debe ser exactamente el path de la URL (ejemplo: `/api/onprem/attendances`).
+
+### Ejemplo curl (Linux/macOS)
+
+```bash
+DEVICE_SERIAL="CLOCK-001"
+SECRET="replace-with-shared-secret"
+TS=$(date +%s)
+NONCE=$(uuidgen)
+PATH_ONLY="/api/onprem/attendances"
+URL="http://localhost${PATH_ONLY}"
+BODY='{"device_serial":"CLOCK-001","clock_id":1,"unit_id":1,"company_id":1,"timezone":"America/Mexico_City","punches":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":1001,"event_time_utc":"2026-02-18T18:35:00Z","event_time_local":"2026-02-18T12:35:00-06:00","tz":"America/Mexico_City","type_inout":"IN","source":"FINGERPRINT_MATCH","meta":{"quality":97}}]}'
+BODY_HASH=$(printf '%s' "$BODY" | sha256sum | awk '{print $1}')
+CANONICAL="POST\n${PATH_ONLY}\n${TS}\n${NONCE}\n${BODY_HASH}"
+SIG=$(printf '%s' "$CANONICAL" | openssl dgst -sha256 -hmac "$SECRET" -binary | openssl base64 -A)
+
+curl -X POST "$URL" \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Serial: $DEVICE_SERIAL" \
+  -H "X-Timestamp: $TS" \
+  -H "X-Nonce: $NONCE" \
+  -H "X-Signature: $SIG" \
+  -d "$BODY"
+```
+
+### Ejemplo PowerShell (Windows)
+
+```powershell
+$deviceSerial = "CLOCK-001"
+$secret = "replace-with-shared-secret"
+$timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString()
+$nonce = [guid]::NewGuid().ToString()
+$path = "/api/onprem/attendances"
+$url = "http://localhost$path"
+$body = '{"device_serial":"CLOCK-001","clock_id":1,"unit_id":1,"company_id":1,"timezone":"America/Mexico_City","punches":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":1001,"event_time_utc":"2026-02-18T18:35:00Z","event_time_local":"2026-02-18T12:35:00-06:00","tz":"America/Mexico_City","type_inout":"IN","source":"FINGERPRINT_MATCH","meta":{"quality":97}}]}'
+
+$shaBody = [System.Security.Cryptography.SHA256]::Create()
+$bodyHashBytes = $shaBody.ComputeHash([Text.Encoding]::UTF8.GetBytes($body))
+$bodyHash = ([BitConverter]::ToString($bodyHashBytes)).Replace("-", "").ToLower()
+
+$canonical = "POST`n$path`n$timestamp`n$nonce`n$bodyHash"
+$hmac = New-Object System.Security.Cryptography.HMACSHA256 ([Text.Encoding]::UTF8.GetBytes($secret))
+$sigBytes = $hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))
+$signature = [Convert]::ToBase64String($sigBytes)
+
+Invoke-RestMethod -Method Post -Uri $url -ContentType "application/json" -Body $body -Headers @{
+  "X-Device-Serial" = $deviceSerial
+  "X-Timestamp" = $timestamp
+  "X-Nonce" = $nonce
+  "X-Signature" = $signature
+}
+```
+
+### Configuracion relevante (`.env`)
+
+- `ONPREM_HMAC_TOLERANCE_SECONDS=300`
+- `ONPREM_NONCE_TTL_SECONDS=600`
+- `ONPREM_MAX_BATCH_SIZE=500`
+- `ONPREM_HEARTBEAT_INTERVAL_SECONDS=30` (opcional, enviado como `config_overrides`)

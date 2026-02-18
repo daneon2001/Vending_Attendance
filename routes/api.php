@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
+use App\Http\Controllers\Api\OnPrem\OnPremAttendanceController;
+use App\Http\Controllers\Api\OnPrem\OnPremHeartbeatController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('device.token')->match(['GET', 'POST'], '/device/ping', function () {
@@ -20,6 +22,14 @@ Route::middleware('device.token')->match(['GET', 'POST'], '/device/ping', functi
         'device_auth' => true,
     ]);
 });
+
+Route::prefix('onprem')
+    ->middleware('device.hmac')
+    ->group(function (): void {
+        Route::post('/attendances', [OnPremAttendanceController::class, 'store']);
+        Route::post('/heartbeat', [OnPremHeartbeatController::class, 'store']);
+        Route::get('/ping', [OnPremHeartbeatController::class, 'ping']);
+    });
 
 Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
     // LOGIN (public)
