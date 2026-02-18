@@ -4,6 +4,7 @@ use App\Http\Controllers\ClockCatalogController;
 use App\Http\Controllers\ClockController;
 use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
+use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\UserController as ApiUserController;
@@ -109,6 +110,28 @@ Route::middleware('auth')->group(function () {
     Route::prefix('api/audit-logs')->middleware('perm:audit,view')->group(function () {
         Route::get('/', [AuditLogController::class, 'index']);
         Route::get('{auditLog}', [AuditLogController::class, 'show']);
+    });
+
+    Route::prefix('admin/asistencias')->name('admin.asistencias.')->group(function () {
+        Route::get('/', [AdminAttendanceController::class, 'index'])
+            ->middleware('perm:asistencias,view')
+            ->name('index');
+
+        Route::get('/export', [AdminAttendanceController::class, 'export'])
+            ->middleware('perm:asistencias,export')
+            ->name('export');
+
+        Route::post('/adjustments', [AdminAttendanceController::class, 'storeManualAdjustment'])
+            ->middleware('perm:asistencias,edit')
+            ->name('adjustments.store');
+
+        Route::patch('/{attendance_record}/annul', [AdminAttendanceController::class, 'annul'])
+            ->middleware('perm:asistencias,edit')
+            ->name('annul');
+
+        Route::get('/{attendance_record}', [AdminAttendanceController::class, 'show'])
+            ->middleware('perm:asistencias,view')
+            ->name('show');
     });
 });
 

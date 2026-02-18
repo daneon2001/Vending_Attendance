@@ -30,6 +30,8 @@ class AttendanceController extends Controller
         $clockId = (int) $validated['clock_id'];
 
         $supportsLocalId = Schema::hasColumn('attendance_logs', 'local_id');
+        $supportsSource = Schema::hasColumn('attendance_logs', 'source');
+        $supportsAttendanceStatus = Schema::hasColumn('attendance_logs', 'attendance_status');
 
         if ($supportsLocalId && ! empty($localId)) {
             $existing = AttendanceLog::query()
@@ -66,7 +68,7 @@ class AttendanceController extends Controller
         }
 
         try {
-            $log = AttendanceLog::create([
+            $payload = [
                 'log_id' => $nextLogId,
                 'employee_id' => $employee->id,
                 'fortia_employee_id' => $employee->fortia_employee_id,
@@ -77,7 +79,17 @@ class AttendanceController extends Controller
                 'log_date' => Carbon::parse($validated['log_date']),
                 'log_type' => $this->normalizeLogType($validated['log_type']),
                 'raw_payload' => $rawPayload ?: null,
-            ]);
+            ];
+
+            if ($supportsSource) {
+                $payload['source'] = 'api';
+            }
+
+            if ($supportsAttendanceStatus) {
+                $payload['attendance_status'] = 'valida';
+            }
+
+            $log = AttendanceLog::create($payload);
         } catch (QueryException $e) {
             if ($supportsLocalId && ! empty($localId)) {
                 $existing = AttendanceLog::query()

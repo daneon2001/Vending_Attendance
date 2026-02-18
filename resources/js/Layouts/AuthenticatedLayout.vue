@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -18,58 +18,91 @@ const can = (module, action = 'view') => {
     return actions.includes(action) || actions.includes('manage');
 };
 
-const baseNavItems = [
+const SIDEBAR_GROUPS_STORAGE_KEY = 'sidebar_open_groups';
+
+const navGroups = [
     {
-        label: 'Panel general',
-        description: 'KPI diarios y alertas',
-        routeName: 'dashboard',
-        icon: 'dashboard',
+        key: 'operacion',
+        title: 'OPERACION',
+        items: [
+            {
+                label: 'Panel general',
+                description: 'KPI diarios y alertas',
+                routeName: 'dashboard',
+                icon: 'dashboard',
+            },
+            {
+                label: 'Relojes biometricos',
+                description: 'Catalogo y monitoreo',
+                routeName: 'clocks.index',
+                icon: 'clocks',
+            },
+            {
+                label: 'Central de asistencias',
+                description: 'Registros crudos y ajustes',
+                routeName: 'admin.asistencias.index',
+                icon: 'attendance',
+                requiredPermission: { module: 'asistencias', action: 'view' },
+            },
+        ],
     },
     {
-        label: 'Relojes biometricos',
-        description: 'Catalogo y monitoreo',
-        routeName: 'clocks.index',
-        icon: 'clocks',
+        key: 'catalogos',
+        title: 'CATALOGOS',
+        items: [
+            {
+                label: 'Catalogo de empleados',
+                description: 'Estado y huellas',
+                routeName: 'employees.index',
+                icon: 'users',
+            },
+            {
+                label: 'Catalogo Sucursales',
+                description: 'Administracion de sucursales',
+                routeName: 'units.index',
+                icon: 'branches',
+            },
+        ],
     },
     {
-        label: 'Catalogo de empleados',
-        description: 'Estado y huellas',
-        routeName: 'employees.index',
-        icon: 'users',
+        key: 'administracion',
+        title: 'ADMINISTRACION',
+        items: [
+            {
+                label: 'Configuración',
+                description: 'Centro de ajustes y seguridad',
+                routeName: 'settings.index',
+                icon: 'settings',
+                requiredPermission: { module: 'settings', action: 'view' },
+            },
+            {
+                label: 'Roles y permisos',
+                description: 'Configuración y seguridad',
+                routeName: 'settings.roles.page',
+                icon: 'settings',
+                requiredPermission: { module: 'settings', action: 'view' },
+            },
+            {
+                label: 'Usuarios del sistema',
+                description: 'Gestión de cuentas internas',
+                routeName: 'settings.users.page',
+                icon: 'users',
+                requiredPermission: { module: 'users', action: 'view' },
+            },
+        ],
     },
     {
-        label: 'Catalogo Sucursales',
-        description: 'Administracion de sucursales',
-        routeName: 'units.index',
-        icon: 'branches',
-    },
-    {
-        label: 'Configuración',
-        description: 'Centro de ajustes y seguridad',
-        routeName: 'settings.index',
-        icon: 'settings',
-        requiredPermission: { module: 'settings', action: 'view' },
-    },
-    {
-        label: 'Roles y permisos',
-        description: 'Configuración y seguridad',
-        routeName: 'settings.roles.page',
-        icon: 'settings',
-        requiredPermission: { module: 'settings', action: 'view' },
-    },
-    {
-        label: 'Usuarios del sistema',
-        description: 'Gestión de cuentas internas',
-        routeName: 'settings.users.page',
-        icon: 'users',
-        requiredPermission: { module: 'users', action: 'view' },
-    },
-    {
-        label: 'Bitácora',
-        description: 'Audit trail del sistema',
-        routeName: 'settings.audit.page',
-        icon: 'audit',
-        requiredPermission: { module: 'audit', action: 'view' },
+        key: 'auditoria',
+        title: 'AUDITORIA',
+        items: [
+            {
+                label: 'Bitácora',
+                description: 'Audit trail del sistema',
+                routeName: 'settings.audit.page',
+                icon: 'audit',
+                requiredPermission: { module: 'audit', action: 'view' },
+            },
+        ],
     },
 ];
 
@@ -112,15 +145,137 @@ const iconPaths = {
         'M12 5v4',
         'M12 15v4',
     ],
+    attendance: [
+        'M4 7h16',
+        'M4 12h16',
+        'M4 17h16',
+        'M8 4v16',
+    ],
 };
 
 const currentYear = new Date().getFullYear();
-const isActive = (routeName) => (routeName ? route().current(routeName) : false);
-const navItems = computed(() =>
-    baseNavItems.filter((item) => {
-        if (!item.requiredPermission) return true;
-        return can(item.requiredPermission.module, item.requiredPermission.action);
-    }),
+
+const isActive = (item) => {
+    if (!item.routeName) return false;
+    return route().current(item.routeName);
+};
+
+const resolveHref = (item) => (item.routeName ? route(item.routeName) : '#');
+
+const visibleNavGroups = computed(() =>
+    navGroups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) => {
+                if (!item.requiredPermission) return true;
+                return can(item.requiredPermission.module, item.requiredPermission.action);
+            }),
+        }))
+        .filter((group) => group.items.length > 0),
+);
+
+const flatNavItems = computed(() => visibleNavGroups.value.flatMap((group) => group.items));
+
+const readStoredOpenGroups = () => {
+    if (typeof window === 'undefined') {
+        return {};
+    }
+
+    try {
+        const stored = window.localStorage.getItem(SIDEBAR_GROUPS_STORAGE_KEY);
+        if (!stored) return {};
+        const parsed = JSON.parse(stored);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+};
+
+const openGroups = ref(readStoredOpenGroups());
+
+const persistOpenGroups = () => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    window.localStorage.setItem(
+        SIDEBAR_GROUPS_STORAGE_KEY,
+        JSON.stringify(openGroups.value),
+    );
+};
+
+const isGroupActive = (group) => group.items.some((item) => isActive(item));
+
+const isGroupOpen = (group) => {
+    if (Object.prototype.hasOwnProperty.call(openGroups.value, group.key)) {
+        return Boolean(openGroups.value[group.key]);
+    }
+
+    return true;
+};
+
+const toggleGroup = (groupKey) => {
+    const group = visibleNavGroups.value.find((entry) => entry.key === groupKey);
+    if (!group) {
+        return;
+    }
+
+    openGroups.value = {
+        ...openGroups.value,
+        [groupKey]: !isGroupOpen(group),
+    };
+    persistOpenGroups();
+};
+
+const navItemClasses = (item, options = {}) => {
+    const classes = ['sidebar-item'];
+
+    if (options.collapsed) {
+        classes.push('sidebar-item-collapsed');
+    }
+
+    if (isActive(item)) {
+        classes.push('is-active');
+    }
+
+    if (!item.routeName) {
+        classes.push('opacity-70');
+    }
+
+    return classes;
+};
+
+const groupHeaderClasses = (group) => [
+    'sidebar-group-header',
+    isGroupOpen(group) ? 'is-open' : '',
+];
+
+const groupChevronClasses = (group) => [
+    'sidebar-group-chevron',
+    isGroupOpen(group) ? 'is-open' : '',
+];
+
+watch(
+    visibleNavGroups,
+    (groups) => {
+        const nextState = {};
+
+        groups.forEach((group) => {
+            const hasStoredState = Object.prototype.hasOwnProperty.call(openGroups.value, group.key);
+            nextState[group.key] = hasStoredState
+                ? Boolean(openGroups.value[group.key])
+                : true;
+
+            // Open active group on init/route render, but allow manual collapse afterwards.
+            if (isGroupActive(group)) {
+                nextState[group.key] = true;
+            }
+        });
+
+        openGroups.value = nextState;
+        persistOpenGroups();
+    },
+    { deep: true, immediate: true },
 );
 </script>
 
@@ -153,57 +308,103 @@ const navItems = computed(() =>
 
                 <nav
                     :class="[
-                        'mt-10 flex-1',
-                        isCollapsed ? 'space-y-3 text-center text-xs' : 'space-y-1 text-sm',
+                        'sidebar-scroll mt-10 flex-1',
+                        isCollapsed ? 'space-y-3 text-center text-xs' : 'space-y-4 text-sm',
                     ]"
                 >
-                    <Link
-                        v-for="item in navItems"
-                        :key="item.label"
-                        :href="item.routeName ? route(item.routeName) : '#'"
-                        :class="[
-                            'group flex flex-col rounded-2xl border transition-all text-muted',
-                            isCollapsed ? 'items-center px-2 py-4' : 'px-4 py-3',
-                            isActive(item.routeName)
-                                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200'
-                                : 'border-transparent bg-white hover:border-app hover:bg-slate-50 dark:border-transparent dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800',
-                            !item.routeName ? 'opacity-70' : '',
-                        ]"
-                        :title="isCollapsed ? item.label : undefined"
-                        :aria-disabled="!item.routeName"
-                    >
-                        <div class="flex w-full items-center gap-3" :class="isCollapsed ? 'flex-col gap-2 text-xs' : ''">
-                            <span
-                                :class="[
-                                    'flex h-10 w-10 items-center justify-center rounded-2xl border text-soft transition-colors',
-                                    isActive(item.routeName)
-                                        ? 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-500/50 dark:bg-indigo-500/10 dark:text-indigo-200'
-                                        : 'border-app bg-white  dark:bg-slate-900',
-                                ]"
-                            >
-                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <path
-                                        v-for="(path, idx) in iconPaths[item.icon] || []"
-                                        :key="`${item.icon}-${idx}`"
-                                        :d="path"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    />
-                                </svg>
-                                <span class="sr-only">{{ item.label }}</span>
-                            </span>
-                            <div v-if="!isCollapsed" class="flex flex-col text-left">
-                                <span class="text-sm font-semibold">{{ item.label }}</span>
-                                <span class="text-xs text-soft" v-text="item.description" />
-                            </div>
-                        </div>
-                        <span
-                            v-if="!isCollapsed && !item.routeName"
-                            class="chip-muted mt-2 w-fit"
+                    <template v-if="isCollapsed">
+                        <component
+                            :is="item.external ? 'a' : Link"
+                            v-for="item in flatNavItems"
+                            :key="item.label"
+                            :href="resolveHref(item)"
+                            :class="navItemClasses(item, { collapsed: true })"
+                            :title="item.label"
+                            :aria-disabled="!item.routeName"
                         >
-                            Proximamente
-                        </span>
-                    </Link>
+                            <div class="flex w-full flex-col items-center gap-2 text-xs">
+                                <span class="sidebar-item-icon">
+                                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <path
+                                            v-for="(path, idx) in iconPaths[item.icon] || []"
+                                            :key="`${item.icon}-${idx}`"
+                                            :d="path"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        />
+                                    </svg>
+                                    <span class="sr-only">{{ item.label }}</span>
+                                </span>
+                            </div>
+                        </component>
+                    </template>
+
+                    <template v-else>
+                        <section
+                            v-for="group in visibleNavGroups"
+                            :key="group.key"
+                            class="sidebar-group"
+                        >
+                            <button
+                                type="button"
+                                :class="groupHeaderClasses(group)"
+                                @click="toggleGroup(group.key)"
+                            >
+                                <span class="sidebar-group-title">
+                                    {{ group.title }}
+                                </span>
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    :class="groupChevronClasses(group)"
+                                >
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            <Transition
+                                enter-active-class="transition-all duration-200 ease-out"
+                                enter-from-class="max-h-0 opacity-0"
+                                enter-to-class="max-h-96 opacity-100"
+                                leave-active-class="transition-all duration-150 ease-in"
+                                leave-from-class="max-h-96 opacity-100"
+                                leave-to-class="max-h-0 opacity-0"
+                            >
+                                <div v-show="isGroupOpen(group)" class="sidebar-group-panel">
+                                    <div class="sidebar-group-items">
+                                        <component
+                                            :is="item.external ? 'a' : Link"
+                                            v-for="item in group.items"
+                                            :key="item.label"
+                                            :href="resolveHref(item)"
+                                            :class="navItemClasses(item)"
+                                            :aria-disabled="!item.routeName"
+                                        >
+                                            <span class="sidebar-item-icon">
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                    <path
+                                                        v-for="(path, idx) in iconPaths[item.icon] || []"
+                                                        :key="`${item.icon}-${idx}`"
+                                                        :d="path"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    />
+                                                </svg>
+                                                <span class="sr-only">{{ item.label }}</span>
+                                            </span>
+                                            <div class="sidebar-item-content">
+                                                <span class="sidebar-item-label">{{ item.label }}</span>
+                                                <span class="sidebar-item-description" v-text="item.description" />
+                                            </div>
+                                        </component>
+                                    </div>
+                                </div>
+                            </Transition>
+                        </section>
+                    </template>
                 </nav>
 
             </aside>
@@ -324,7 +525,7 @@ const navItems = computed(() =>
 
         <Transition enter-active-class="duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
             <div v-if="mobileSidebarOpen" class="fixed inset-0 z-40 flex lg:hidden">
-                <div class="w-72 bg-white p-6 shadow-2xl dark:bg-slate-900">
+                <div class="sidebar-mobile-sheet">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <ApplicationLogo class="h-8 w-8 text-indigo-600" />
@@ -338,27 +539,72 @@ const navItems = computed(() =>
                         </button>
                     </div>
 
-                    <nav class="mt-8 space-y-2">
-                        <Link
-                            v-for="item in navItems"
-                            :key="item.label"
-                            :href="item.routeName ? route(item.routeName) : '#'"
-                            class="block rounded-2xl border px-4 py-3 text-sm font-medium text-muted"
-                            :class="item.routeName && route().current(item.routeName)
-                                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200'
-                                : 'border-app'"
-                            :aria-disabled="!item.routeName"
-                            @click="mobileSidebarOpen = false"
+                    <nav class="mt-8 space-y-4 pb-6">
+                        <section
+                            v-for="group in visibleNavGroups"
+                            :key="`mobile-${group.key}`"
+                            class="sidebar-group"
                         >
-                            {{ item.label }}
-                            <span class="block text-xs font-normal text-soft dark:text-soft">{{ item.description }}</span>
-                            <span
-                                v-if="!item.routeName"
-                                class="chip-muted mt-1 inline-flex"
+                            <button
+                                type="button"
+                                :class="groupHeaderClasses(group)"
+                                @click="toggleGroup(group.key)"
                             >
-                                Proximamente
-                            </span>
-                        </Link>
+                                <span class="sidebar-group-title">
+                                    {{ group.title }}
+                                </span>
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    :class="groupChevronClasses(group)"
+                                >
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            <Transition
+                                enter-active-class="transition-all duration-200 ease-out"
+                                enter-from-class="max-h-0 opacity-0"
+                                enter-to-class="max-h-96 opacity-100"
+                                leave-active-class="transition-all duration-150 ease-in"
+                                leave-from-class="max-h-96 opacity-100"
+                                leave-to-class="max-h-0 opacity-0"
+                            >
+                                <div v-show="isGroupOpen(group)" class="sidebar-group-panel">
+                                    <div class="sidebar-group-items">
+                                        <component
+                                            :is="item.external ? 'a' : Link"
+                                            v-for="item in group.items"
+                                            :key="`mobile-${group.key}-${item.label}`"
+                                            :href="resolveHref(item)"
+                                            :class="navItemClasses(item)"
+                                            :aria-disabled="!item.routeName"
+                                            @click="mobileSidebarOpen = false"
+                                        >
+                                            <span class="sidebar-item-icon">
+                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                    <path
+                                                        v-for="(path, idx) in iconPaths[item.icon] || []"
+                                                        :key="`${item.icon}-${idx}`"
+                                                        :d="path"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    />
+                                                </svg>
+                                                <span class="sr-only">{{ item.label }}</span>
+                                            </span>
+                                            <div class="sidebar-item-content">
+                                                <span class="sidebar-item-label">{{ item.label }}</span>
+                                                <span class="sidebar-item-description" v-text="item.description" />
+                                            </div>
+                                        </component>
+                                    </div>
+                                </div>
+                            </Transition>
+                        </section>
                     </nav>
                 </div>
                 <div class="flex-1 bg-slate-900/30" @click="mobileSidebarOpen = false"></div>
@@ -366,3 +612,4 @@ const navItems = computed(() =>
         </Transition>
     </div>
 </template>
+

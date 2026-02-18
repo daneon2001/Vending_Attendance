@@ -2,41 +2,56 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\User;
 use App\Models\Company;
 use App\Models\Empleado;
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class UserAndEmpleadoSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1) Usuario admin
-        $user = User::firstOrCreate(
-            ['email' => 'admin@gmail.com'], // clave única
+        $user = User::updateOrCreate(
+            ['email' => 'admin@gmail.com'],
             [
-                'name'    => 'Admin Asistencias',
-                'password'=> bcrypt('password'), // cámbialo a lo que quieras
+                'name' => 'Admin Asistencias',
+                'password' => Hash::make('password'),
                 'estatus' => 1,
+                'email_verified_at' => now(),
             ]
         );
 
-        // 2) Empresa (asumiendo que CompanySeeder ya creó una)
-        $company = Company::first(); // o Company::firstOrCreate([...])
+        $company = Company::first();
 
-        // 3) Empleado ligado al admin
-        Empleado::firstOrCreate(
-            [
-                'user_id' => $user->id,
-            ],
-            [
-                'company_id'    => $company?->id,
-                'num_empleado'  => 'A001',
-                'employee_code' => '1001',
-                'nombre'        => 'Admin',
-                'apellidos'     => 'Asistencias',
-                'status'        => 1,
-            ]
-        );
+        $payload = [
+            'user_id' => $user->id,
+            'company_id' => $company?->id,
+            'num_empleado' => 'A001',
+            'employee_code' => '1001',
+            'nombre' => 'Admin',
+            'apellidos' => 'Asistencias',
+            'status' => 1,
+        ];
+
+        $empleado = Empleado::query()
+            ->where('user_id', $user->id)
+            ->orWhere(function ($query) use ($company): void {
+                $query->where('company_id', $company?->id)
+                    ->where('num_empleado', 'A001');
+            })
+            ->orWhere(function ($query) use ($company): void {
+                $query->where('company_id', $company?->id)
+                    ->where('employee_code', '1001');
+            })
+            ->first();
+
+        if ($empleado) {
+            $empleado->fill($payload)->save();
+
+            return;
+        }
+
+        Empleado::create($payload);
     }
 }

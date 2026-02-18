@@ -50,6 +50,7 @@ class RolePermissionSeeder extends Seeder
                     'dashboard' => ['view'],
                     'employees' => ['view', 'create', 'update', 'sync'],
                     'attendance' => ['view', 'export'],
+                    'asistencias' => ['view', 'export', 'edit'],
                     'clocks' => ['view', 'create', 'update', 'sync'],
                     'locations' => ['view', 'create', 'update'],
                 ],
@@ -63,6 +64,7 @@ class RolePermissionSeeder extends Seeder
                     'employees' => ['view', 'update', 'disable'],
                     'clocks' => ['view', 'update', 'disable'],
                     'attendance' => ['view', 'export'],
+                    'asistencias' => ['view', 'export', 'edit'],
                     'locations' => ['view'],
                     'users' => ['view'],
                 ],
@@ -77,6 +79,7 @@ class RolePermissionSeeder extends Seeder
                     'clocks' => ['view'],
                     'locations' => ['view'],
                     'attendance' => ['view'],
+                    'asistencias' => ['view'],
                 ],
             ],
         ];
@@ -99,7 +102,15 @@ class RolePermissionSeeder extends Seeder
             $role->permissions()->sync($permissionIds);
         }
 
-        $adminUser = User::where('email', 'admin@asistencias.test')->first() ?? User::first();
+        $preferredAdminEmails = array_values(array_unique(array_filter([
+            config('permissions.super_admin_email'),
+            'admin@gmail.com',
+            'admin@asistencias.test',
+        ])));
+
+        $adminUser = User::query()
+            ->whereIn('email', $preferredAdminEmails)
+            ->first() ?? User::first();
 
         if ($adminUser && isset($roleInstances['admin'])) {
             $adminUser->roles()->syncWithoutDetaching([$roleInstances['admin']->id]);

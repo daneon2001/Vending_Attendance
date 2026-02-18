@@ -30,4 +30,97 @@
     .border-app {
         @apply border-slate-200 dark:border-slate-700;
     }
+
+    .sidebar-scroll {
+        @apply overflow-y-auto pb-6 pr-1;
+        scrollbar-gutter: stable;
+    }
+
+    .sidebar-scroll::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .sidebar-scroll::-webkit-scrollbar-thumb {
+        @apply rounded-full bg-slate-300/80 dark:bg-slate-700/80;
+    }
+
+    .sidebar-scroll::-webkit-scrollbar-track {
+        @apply bg-transparent;
+    }
+
+    .sidebar-group {
+        @apply space-y-2;
+    }
+
+    .sidebar-group-header {
+        @apply flex min-h-11 w-full items-center justify-between rounded-xl border border-transparent px-3 py-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40;
+    }
+
+    .sidebar-group-header:hover {
+        @apply bg-slate-50 dark:bg-slate-800/60;
+    }
+
+    .sidebar-group-header.is-open {
+        @apply border-app bg-slate-50 dark:bg-slate-800/60;
+    }
+
+    .sidebar-group-title {
+        @apply truncate text-[11px] font-semibold uppercase tracking-[0.28em] text-soft;
+    }
+
+    .sidebar-group-chevron {
+        @apply h-4 w-4 text-soft transition-transform duration-200;
+    }
+
+    .sidebar-group-chevron.is-open {
+        @apply rotate-180;
+    }
+
+    .sidebar-group-panel {
+        @apply overflow-hidden;
+    }
+
+    .sidebar-group-items {
+        @apply ml-3 mt-1 space-y-1 border-l border-slate-200/80 pl-3 dark:border-slate-700/80;
+    }
+
+    .sidebar-item {
+        @apply flex min-h-12 w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-muted transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40;
+    }
+
+    .sidebar-item:hover {
+        @apply border-app bg-slate-50 text-app dark:bg-slate-800/60;
+    }
+
+    .sidebar-item.is-active {
+        @apply border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200;
+    }
+
+    .sidebar-item-collapsed {
+        @apply justify-center px-2 py-3;
+    }
+
+    .sidebar-item-icon {
+        @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-app bg-white text-soft transition-colors dark:bg-slate-900;
+    }
+
+    .sidebar-item.is-active .sidebar-item-icon {
+        @apply border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-500/50 dark:bg-indigo-500/10 dark:text-indigo-200;
+    }
+
+    .sidebar-item-content {
+        @apply min-w-0 flex-1 text-left;
+    }
+
+    .sidebar-item-label {
+        @apply block truncate text-sm font-semibold leading-5;
+    }
+
+    .sidebar-item-description {
+        @apply mt-0.5 block truncate text-xs leading-4 text-soft;
+    }
+
+    .sidebar-mobile-sheet {
+        @apply h-full w-72 overflow-y-auto border-r border-app bg-white p-6 shadow-2xl dark:bg-slate-900;
+    }
 }

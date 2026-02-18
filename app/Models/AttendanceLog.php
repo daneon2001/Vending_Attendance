@@ -19,6 +19,11 @@ class AttendanceLog extends Model
         'local_id',
         'log_date',
         'log_type',
+        'source',
+        'attendance_status',
+        'adjustment_reason',
+        'annulled_at',
+        'annulled_by_user_id',
         'function_int',
         'function_str',
         'sent_to_fortia_at',
@@ -30,6 +35,7 @@ class AttendanceLog extends Model
 
     protected $casts = [
         'log_date' => 'datetime',
+        'annulled_at' => 'datetime',
         'sent_to_fortia_at' => 'datetime',
         'fortia_response_payload' => 'array',
         'raw_payload' => 'array',

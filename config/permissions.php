@@ -8,7 +8,7 @@ return [
             'actions' => ['view', 'export', 'manage'],
         ],
         'clocks' => [
-            'label' => 'Relojes biométricos',
+            'label' => 'Relojes biometricos',
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'manage'],
         ],
         'locations' => [
@@ -16,15 +16,19 @@ return [
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'manage'],
         ],
         'employees' => [
-            'label' => 'Catálogo de empleados',
+            'label' => 'Catalogo de empleados',
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'manage'],
         ],
         'attendance' => [
             'label' => 'Asistencias y reportes',
             'actions' => ['view', 'export', 'sync', 'manage'],
         ],
+        'asistencias' => [
+            'label' => 'Central de asistencias',
+            'actions' => ['view', 'export', 'edit', 'admin'],
+        ],
         'settings' => [
-            'label' => 'Configuración',
+            'label' => 'Configuracion',
             'actions' => ['view', 'create', 'update', 'delete', 'manage'],
         ],
         'roles' => [
@@ -36,7 +40,7 @@ return [
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'manage'],
         ],
         'audit' => [
-            'label' => 'Bitácora de auditoría',
+            'label' => 'Bitacora de auditoria',
             'actions' => ['view', 'manage'],
         ],
     ],

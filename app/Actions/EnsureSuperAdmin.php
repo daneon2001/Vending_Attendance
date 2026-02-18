@@ -18,8 +18,14 @@ class EnsureSuperAdmin
     {
         $email = $email ?? Config::get('permissions.super_admin_email', env('ADMIN_EMAIL', 'admin@asistencias.test'));
 
-        $user = $email
-            ? User::where('email', $email)->first()
+        $candidateEmails = array_values(array_unique(array_filter([
+            $email,
+            'admin@gmail.com',
+            'admin@asistencias.test',
+        ])));
+
+        $user = $candidateEmails
+            ? User::whereIn('email', $candidateEmails)->first()
             : null;
 
         if (! $user) {

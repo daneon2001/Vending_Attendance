@@ -119,3 +119,9 @@ curl -Method Post "http://localhost/api/FortiaPrimeApi.Opensync/api/v2/login/aut
   -Headers @{ Accept = "application/json" } `
   -Body (@{ user = "demo"; password = "demo" } | ConvertTo-Json)
 ```
+
+## Modulo Central de Asistencias
+
+Documentacion del modulo web centralizado:
+
+- `docs/CENTRAL_ASISTENCIAS.md`
