@@ -25,6 +25,7 @@ use App\Console\Commands\EnsureAdminPermissions;
 use App\Console\Commands\MakeAdminSuperCommand;
 use App\Console\Commands\FortiaMockAddEmployee;
 use App\Console\Commands\FortiaMockSyncEmployees;
+use App\Console\Commands\ReconcileDevicesFromClocks;
 use App\Console\Commands\FortiaDiagnoseApis;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -40,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         EnsureAdminPermissions::class,
         MakeAdminSuperCommand::class,
         FortiaDiagnoseApis::class,
+        ReconcileDevicesFromClocks::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)

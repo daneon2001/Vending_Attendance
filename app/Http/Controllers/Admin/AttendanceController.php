@@ -31,8 +31,9 @@ class AttendanceController extends Controller
         $records = $this->buildFilteredQuery($filters)
             ->with([
                 'employee:id,full_name,name,fortia_employee_id',
-                'location:id,name,code',
-                'clock:id,clock_name,serial_number',
+                'location:id,name,code,timezone',
+                'clock:id,clock_name,serial_number,location_id',
+                'clock.location:id,name,code,timezone',
             ])
             ->orderByDesc('log_date')
             ->paginate($perPage)
@@ -101,8 +102,9 @@ class AttendanceController extends Controller
 
         $attendanceRecord->load([
             'employee:id,full_name,name,fortia_employee_id,base_location_name,company_name',
-            'location:id,name,code',
-            'clock:id,clock_name,serial_number,ip_address',
+            'location:id,name,code,timezone',
+            'clock:id,clock_name,serial_number,ip_address,location_id',
+            'clock.location:id,name,code,timezone',
             'annulledBy:id,name,email',
             'audits.changedBy:id,name,email',
         ]);
@@ -212,8 +214,9 @@ class AttendanceController extends Controller
         $records = $this->buildFilteredQuery($filters)
             ->with([
                 'employee:id,full_name,name,fortia_employee_id',
-                'location:id,name,code',
-                'clock:id,clock_name,serial_number',
+                'location:id,name,code,timezone',
+                'clock:id,clock_name,serial_number,location_id',
+                'clock.location:id,name,code,timezone',
             ])
             ->orderByDesc('log_date')
             ->get();
@@ -238,11 +241,15 @@ class AttendanceController extends Controller
             fputcsv($output, $headers);
 
             foreach ($records as $record) {
+                $resolvedLocation = $record->location ?? $record->clock?->location;
+                $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
+                $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+
                 fputcsv($output, [
-                    optional($record->log_date)->format('Y-m-d H:i:s'),
+                    optional($logDateLocal)->format('Y-m-d H:i:s'),
                     $record->employee?->full_name ?? $record->employee?->name ?? 'N/A',
                     $record->employee?->fortia_employee_id ?? $record->employee_id,
-                    $record->location?->name ?? 'N/A',
+                    $resolvedLocation?->name ?? 'N/A',
                     $record->clock?->clock_name ?? $record->device_id,
                     $this->resolveLogTypeLabel((int) $record->log_type),
                     $this->sourceLabels()[$record->source] ?? $record->source,
@@ -465,11 +472,16 @@ class AttendanceController extends Controller
 
     protected function transformIndexRecord(AttendanceRecord $record): array
     {
+        $resolvedLocation = $record->location ?? $record->clock?->location;
+        $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
+        $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+
         return [
             'id' => $record->id,
             'log_id' => $record->log_id,
             'log_date' => $record->log_date?->toIso8601String(),
-            'log_date_display' => $record->log_date?->format('Y-m-d H:i:s'),
+            'log_date_display' => $logDateLocal?->format('Y-m-d H:i:s'),
+            'log_date_timezone' => $timezone,
             'log_type' => (int) $record->log_type,
             'log_type_label' => $this->resolveLogTypeLabel((int) $record->log_type),
             'source' => $record->source,
@@ -483,14 +495,16 @@ class AttendanceController extends Controller
                 'code' => (string) ($record->employee?->fortia_employee_id ?? $record->employee_id ?? 'N/A'),
             ],
             'location' => [
-                'id' => $record->location?->id ?? $record->location_id,
-                'name' => $record->location?->name ?? 'Sin unidad',
-                'code' => $record->location?->code,
+                'id' => $resolvedLocation?->id ?? $record->location_id ?? $record->clock?->location_id,
+                'name' => $resolvedLocation?->name ?? 'Sin unidad',
+                'code' => $resolvedLocation?->code,
+                'timezone' => $timezone,
             ],
             'clock' => [
                 'id' => $record->clock?->id ?? $record->device_id,
                 'name' => $record->clock?->clock_name ?? ('#'.($record->device_id ?? 'N/A')),
                 'serial_number' => $record->clock?->serial_number,
+                'location_id' => $record->clock?->location_id,
             ],
         ];
     }
@@ -521,7 +535,10 @@ class AttendanceController extends Controller
                 ->map(fn (AttendanceAudit $audit) => [
                     'id' => $audit->id,
                     'created_at' => $audit->created_at?->toIso8601String(),
-                    'created_at_display' => $audit->created_at?->format('Y-m-d H:i:s'),
+                    'created_at_display' => $this->convertToTimezone(
+                        $audit->created_at,
+                        ($record->location ?? $record->clock?->location)?->timezone ?: config('app.timezone', 'UTC'),
+                    )?->format('Y-m-d H:i:s'),
                     'action' => $audit->action,
                     'reason' => $audit->reason,
                     'changed_by_name' => $audit->changed_by_name ?? $audit->changedBy?->name,
@@ -531,5 +548,55 @@ class AttendanceController extends Controller
                 ])
                 ->all(),
         ];
+    }
+
+    private function convertToTimezone(?Carbon $dateTime, ?string $timezone): ?Carbon
+    {
+        if (! $dateTime) {
+            return null;
+        }
+
+        try {
+            return $dateTime->copy()->setTimezone($timezone ?: config('app.timezone', 'UTC'));
+        } catch (\Throwable $exception) {
+            return $dateTime->copy()->setTimezone(config('app.timezone', 'UTC'));
+        }
+    }
+
+    private function resolveRecordTimezone(AttendanceRecord $record, ?string $fallbackTimezone = null): string
+    {
+        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $rawTimezone = $rawPayload['timezone']
+            ?? $rawPayload['tz']
+            ?? null;
+
+        if (is_string($rawTimezone) && trim($rawTimezone) !== '') {
+            return trim($rawTimezone);
+        }
+
+        return $fallbackTimezone ?: config('app.timezone', 'UTC');
+    }
+
+    private function resolveRecordLocalDate(AttendanceRecord $record, ?string $timezone = null): ?Carbon
+    {
+        $tz = $timezone ?: config('app.timezone', 'UTC');
+        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $rawLocal = $rawPayload['punched_at_local']
+            ?? $rawPayload['event_time_local']
+            ?? null;
+
+        if (is_string($rawLocal) && trim($rawLocal) !== '') {
+            try {
+                return Carbon::parse($rawLocal, $tz);
+            } catch (\Throwable $exception) {
+                try {
+                    return Carbon::parse($rawLocal)->setTimezone($tz);
+                } catch (\Throwable $exception) {
+                    // Fallback below.
+                }
+            }
+        }
+
+        return $this->convertToTimezone($record->log_date, $tz);
     }
 }

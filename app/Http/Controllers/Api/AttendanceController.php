@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 class AttendanceController extends Controller
@@ -121,7 +122,13 @@ class AttendanceController extends Controller
             'to' => ['nullable', 'date'],
         ]);
 
-        $query = $employee->attendanceLogs()->latest('log_date');
+        $query = $employee->attendanceLogs()
+            ->with([
+                'clock:id,clock_name,serial_number,location_id',
+                'clock.location:id,name,code,timezone',
+                'location:id,name,code,timezone',
+            ])
+            ->latest('log_date');
 
         if ($request->filled('from')) {
             $fromInput = $request->input('from');
@@ -138,7 +145,9 @@ class AttendanceController extends Controller
         $logs = $query->paginate($request->integer('per_page', 20))->withQueryString();
 
         return response()->json([
-            'data' => $logs->items(),
+            'data' => Collection::make($logs->items())
+                ->map(fn (AttendanceLog $log) => $this->transformEmployeeLog($log))
+                ->values(),
             'meta' => [
                 'current_page' => $logs->currentPage(),
                 'last_page' => $logs->lastPage(),
@@ -148,6 +157,40 @@ class AttendanceController extends Controller
                 'to' => $logs->lastItem(),
             ],
         ]);
+    }
+
+    private function transformEmployeeLog(AttendanceLog $log): array
+    {
+        $resolvedLocation = $log->location ?? $log->clock?->location;
+        $timezone = $this->resolveLogTimezone($log, $resolvedLocation?->timezone);
+        $logDateLocal = $this->resolveLogLocalDate($log, $timezone);
+
+        return [
+            'id' => $log->id,
+            'log_id' => $log->log_id,
+            'log_date' => $log->log_date?->toIso8601String(),
+            'log_date_local' => $logDateLocal?->toIso8601String(),
+            'log_date_local_display' => $logDateLocal?->format('d/m/Y H:i:s'),
+            'timezone' => $timezone,
+            'log_type' => (int) $log->log_type,
+            'log_type_label' => $this->formatLogType((int) $log->log_type),
+            'device_id' => $log->device_id,
+            'clock' => [
+                'id' => $log->clock?->id ?? $log->device_id,
+                'name' => $log->clock?->clock_name
+                    ?? ($log->clock?->serial_number ? 'Reloj '.$log->clock->serial_number : 'Sin reloj'),
+                'serial_number' => $log->clock?->serial_number,
+                'location_id' => $log->clock?->location_id,
+            ],
+            'location' => [
+                'id' => $resolvedLocation?->id ?? $log->location_id ?? $log->clock?->location_id,
+                'name' => $resolvedLocation?->name ?? 'Sin unidad',
+                'code' => $resolvedLocation?->code,
+                'timezone' => $timezone,
+            ],
+            'source' => $log->source,
+            'attendance_status' => $log->attendance_status,
+        ];
     }
 
     private function normalizeDateBoundary(string $value, bool $isStart): Carbon
@@ -176,6 +219,67 @@ class AttendanceController extends Controller
         }
 
         return 0;
+    }
+
+    private function formatLogType(int $value): string
+    {
+        return match ($value) {
+            1 => 'Entrada',
+            2 => 'Salida',
+            3 => 'Break',
+            4 => 'Regreso',
+            default => 'Desconocido',
+        };
+    }
+
+    private function convertToTimezone(?Carbon $dateTime, ?string $timezone): ?Carbon
+    {
+        if (! $dateTime) {
+            return null;
+        }
+
+        try {
+            return $dateTime->copy()->setTimezone($timezone ?: config('app.timezone', 'UTC'));
+        } catch (\Throwable $exception) {
+            return $dateTime->copy()->setTimezone(config('app.timezone', 'UTC'));
+        }
+    }
+
+    private function resolveLogTimezone(AttendanceLog $log, ?string $fallbackTimezone = null): string
+    {
+        $rawPayload = is_array($log->raw_payload) ? $log->raw_payload : [];
+        $rawTimezone = $rawPayload['timezone']
+            ?? $rawPayload['tz']
+            ?? null;
+
+        if (is_string($rawTimezone) && trim($rawTimezone) !== '') {
+            return trim($rawTimezone);
+        }
+
+        return $fallbackTimezone ?: config('app.timezone', 'UTC');
+    }
+
+    private function resolveLogLocalDate(AttendanceLog $log, ?string $timezone = null): ?Carbon
+    {
+        $tz = $timezone ?: config('app.timezone', 'UTC');
+        $rawPayload = is_array($log->raw_payload) ? $log->raw_payload : [];
+        $rawLocal = $rawPayload['punched_at_local']
+            ?? $rawPayload['event_time_local']
+            ?? null;
+
+        if (is_string($rawLocal) && trim($rawLocal) !== '') {
+            try {
+                return Carbon::parse($rawLocal, $tz);
+            } catch (\Throwable $exception) {
+                try {
+                    return Carbon::parse($rawLocal)->setTimezone($tz);
+                } catch (\Throwable $exception) {
+                    // Fallback below.
+                }
+            }
+        }
+
+        return $this->convertToTimezone($log->log_date, $tz);
     }
 
     public function sendToFortia(): JsonResponse

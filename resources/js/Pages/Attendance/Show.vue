@@ -138,7 +138,10 @@ const submitAnnulment = () => {
                         </div>
                         <div>
                             <dt class="text-xs uppercase tracking-[0.3em] text-soft">Fecha/hora</dt>
-                            <dd class="text-sm text-app">{{ record.log_date_display ?? 'N/A' }}</dd>
+                            <dd class="text-sm text-app">
+                                {{ record.log_date_display ?? 'N/A' }}
+                                <span class="text-xs text-soft">({{ record.log_date_timezone ?? 'UTC' }})</span>
+                            </dd>
                         </div>
                         <div>
                             <dt class="text-xs uppercase tracking-[0.3em] text-soft">Empleado</dt>

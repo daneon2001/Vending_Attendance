@@ -128,7 +128,7 @@ Documentacion del modulo web centralizado:
 
 ## API On-Prem (HMAC)
 
-Nuevos endpoints para sincronizacion offline-first desde checador on-prem:
+Endpoints para sincronizacion offline-first desde checador on-prem:
 
 - `POST /api/onprem/attendances`
 - `POST /api/onprem/heartbeat`
@@ -137,8 +137,88 @@ Nuevos endpoints para sincronizacion offline-first desde checador on-prem:
 ### Tablas usadas
 
 - `devices`: serial, shared secret HMAC, estado activo y ultimo `last_seen_at`.
+- `devices`: serial, shared secret HMAC, estado activo, `last_seen_at`, `last_heartbeat_at`, `last_status`.
 - `device_nonces`: evita replay attacks (nonce unico por dispositivo con expiracion).
 - `attendances_raw`: almacenamiento crudo/idempotente por `(device_serial, local_event_id)`.
+
+### Contrato final: `POST /api/onprem/attendances`
+
+Request:
+
+```json
+{
+  "device_serial": "CH-XOCH-001",
+  "unit_id": 82,
+  "events": [
+    {
+      "local_event_id": "uuid",
+      "collaborator_id": 88001,
+      "punched_at_local": "2026-02-18T08:02:00",
+      "timezone": "America/Mexico_City",
+      "punched_at_utc": "2026-02-18T14:02:00Z",
+      "source": "FINGERPRINT",
+      "type_inout": "INOUT",
+      "quality": 78,
+      "meta": {}
+    }
+  ]
+}
+```
+
+Response `200` (incluso con rechazos parciales):
+
+```json
+{
+  "ok": true,
+  "received": [
+    {
+      "local_event_id": "uuid",
+      "stored": true,
+      "remote_id": 123,
+      "status": "STORED",
+      "reason": null
+    }
+  ]
+}
+```
+
+Estados por evento:
+
+- `STORED`: evento persistido.
+- `DUPLICATE`: idempotencia por `(device_serial, local_event_id)`, `stored=true`.
+- `REJECTED`: `stored=false` con `reason`.
+
+Reasons soportados:
+
+- `DEVICE_NOT_ACTIVE`
+- `INVALID_UNIT`
+- `UNKNOWN_COLLABORATOR`
+- `INVALID_TIMESTAMP`
+- `INVALID_SIGNATURE`
+- `NONCE_REPLAY`
+- `BATCH_TOO_LARGE`
+- `VALIDATION_FAILED`
+
+### Contrato final: `POST /api/onprem/heartbeat`
+
+Response:
+
+```json
+{
+  "ok": true,
+  "server_time": "2026-02-18T20:35:00Z",
+  "next_heartbeat_seconds": 15,
+  "device": {
+    "device_serial": "CH-XOCH-001",
+    "clock_id": 10,
+    "unit_id": 82,
+    "company_id": 1,
+    "is_active": true,
+    "last_heartbeat_at": "2026-02-18T20:35:00Z",
+    "last_status": "RUNNING"
+  }
+}
+```
 
 ### Headers requeridos
 
@@ -164,7 +244,7 @@ TS=$(date +%s)
 NONCE=$(uuidgen)
 PATH_ONLY="/api/onprem/attendances"
 URL="http://localhost${PATH_ONLY}"
-BODY='{"device_serial":"CLOCK-001","clock_id":1,"unit_id":1,"company_id":1,"timezone":"America/Mexico_City","punches":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":1001,"event_time_utc":"2026-02-18T18:35:00Z","event_time_local":"2026-02-18T12:35:00-06:00","tz":"America/Mexico_City","type_inout":"IN","source":"FINGERPRINT_MATCH","meta":{"quality":97}}]}'
+BODY='{"device_serial":"CH-XOCH-001","unit_id":82,"events":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":88001,"punched_at_local":"2026-02-18T08:02:00","timezone":"America/Mexico_City","punched_at_utc":"2026-02-18T14:02:00Z","source":"FINGERPRINT","type_inout":"INOUT","quality":78,"meta":{"scanner":"S1"}}]}'
 BODY_HASH=$(printf '%s' "$BODY" | sha256sum | awk '{print $1}')
 CANONICAL="POST\n${PATH_ONLY}\n${TS}\n${NONCE}\n${BODY_HASH}"
 SIG=$(printf '%s' "$CANONICAL" | openssl dgst -sha256 -hmac "$SECRET" -binary | openssl base64 -A)
@@ -187,7 +267,7 @@ $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString()
 $nonce = [guid]::NewGuid().ToString()
 $path = "/api/onprem/attendances"
 $url = "http://localhost$path"
-$body = '{"device_serial":"CLOCK-001","clock_id":1,"unit_id":1,"company_id":1,"timezone":"America/Mexico_City","punches":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":1001,"event_time_utc":"2026-02-18T18:35:00Z","event_time_local":"2026-02-18T12:35:00-06:00","tz":"America/Mexico_City","type_inout":"IN","source":"FINGERPRINT_MATCH","meta":{"quality":97}}]}'
+$body = '{"device_serial":"CH-XOCH-001","unit_id":82,"events":[{"local_event_id":"11111111-1111-1111-1111-111111111111","collaborator_id":88001,"punched_at_local":"2026-02-18T08:02:00","timezone":"America/Mexico_City","punched_at_utc":"2026-02-18T14:02:00Z","source":"FINGERPRINT","type_inout":"INOUT","quality":78,"meta":{"scanner":"S1"}}]}'
 
 $shaBody = [System.Security.Cryptography.SHA256]::Create()
 $bodyHashBytes = $shaBody.ComputeHash([Text.Encoding]::UTF8.GetBytes($body))
@@ -211,4 +291,4 @@ Invoke-RestMethod -Method Post -Uri $url -ContentType "application/json" -Body $
 - `ONPREM_HMAC_TOLERANCE_SECONDS=300`
 - `ONPREM_NONCE_TTL_SECONDS=600`
 - `ONPREM_MAX_BATCH_SIZE=500`
-- `ONPREM_HEARTBEAT_INTERVAL_SECONDS=30` (opcional, enviado como `config_overrides`)
+- `ONPREM_HEARTBEAT_INTERVAL_SECONDS=15` (intervalo sugerido para heartbeat)

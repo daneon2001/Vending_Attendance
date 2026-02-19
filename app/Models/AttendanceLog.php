@@ -45,4 +45,14 @@ class AttendanceLog extends Model
     {
         return $this->belongsTo(Employee::class);
     }
+
+    public function location()
+    {
+        return $this->belongsTo(Location::class, 'location_id');
+    }
+
+    public function clock()
+    {
+        return $this->belongsTo(Clock::class, 'device_id');
+    }
 }

@@ -3,6 +3,8 @@
 namespace App\Http\Requests\OnPrem;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreOnPremHeartbeatRequest extends FormRequest
 {
@@ -30,5 +32,15 @@ class StoreOnPremHeartbeatRequest extends FormRequest
             'status_message' => ['nullable', 'string', 'max:500'],
         ];
     }
-}
 
+    protected function failedValidation(Validator $validator): void
+    {
+        throw new HttpResponseException(response()->json([
+            'ok' => false,
+            'error' => 'VALIDATION_FAILED',
+            'reason' => 'VALIDATION_FAILED',
+            'message' => 'Request validation failed.',
+            'details' => $validator->errors(),
+        ], 422));
+    }
+}

@@ -8,12 +8,18 @@ use App\Http\Requests\ClockRequest;
 use App\Http\Resources\ClockResource;
 use App\Models\Clock;
 use App\Models\ClockLog;
+use App\Services\OnPrem\DeviceRegistryService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ClockController extends Controller
 {
+    public function __construct(
+        private readonly DeviceRegistryService $deviceRegistry,
+    ) {
+    }
+
     public function index(Request $request): JsonResponse
     {
         // Optional filter for on-prem clients:
@@ -35,6 +41,7 @@ class ClockController extends Controller
     public function store(ClockRequest $request): JsonResponse
     {
         $clock = Clock::create($request->validated());
+        $this->syncDeviceRegistry($clock, $request);
 
         return response()->json([
             'message' => 'Clock created',
@@ -45,6 +52,7 @@ class ClockController extends Controller
     public function update(ClockRequest $request, Clock $clock): JsonResponse
     {
         $clock->update($request->validated());
+        $this->syncDeviceRegistry($clock, $request);
 
         return response()->json([
             'message' => 'Clock updated',
@@ -57,6 +65,7 @@ class ClockController extends Controller
         $clock->update([
             'location_id' => $request->location_id,
         ]);
+        $this->syncDeviceRegistry($clock, $request);
 
         return response()->json([
             'message' => 'Clock assigned to location',
@@ -101,6 +110,7 @@ class ClockController extends Controller
         }
 
         $this->applyHeartbeatUpdate($clock, $validated, $request, $validated['source'] ?? 'python-autosync');
+        $this->syncDeviceRegistry($clock, $request);
 
         return response()->json([
             'message' => 'Heartbeat updated',
@@ -135,6 +145,7 @@ class ClockController extends Controller
         ]);
 
         $this->applyHeartbeatUpdate($clock, $validated, $request, $validated['source'] ?? 'checador-app');
+        $this->syncDeviceRegistry($clock, $request);
 
         return response()->json([
             'success' => true,
@@ -142,6 +153,20 @@ class ClockController extends Controller
             'server_time' => now()->toIso8601String(),
             'saved' => true,
         ]);
+    }
+
+    private function syncDeviceRegistry(Clock $clock, Request $request): void
+    {
+        // En catalogos legacy puede existir reloj sin serie; no hay llave para mapear device.
+        if (trim((string) $clock->serial_number) === '') {
+            return;
+        }
+
+        $incomingSecret = trim((string) $request->input('onprem_shared_secret', ''));
+        $this->deviceRegistry->syncFromClock(
+            $clock,
+            $incomingSecret !== '' ? $incomingSecret : null,
+        );
     }
 
     /**

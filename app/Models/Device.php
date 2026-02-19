@@ -17,11 +17,14 @@ class Device extends Model
         'shared_secret',
         'is_active',
         'last_seen_at',
+        'last_heartbeat_at',
+        'last_status',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'last_seen_at' => 'datetime',
+        'last_heartbeat_at' => 'datetime',
     ];
 
     public function clock()
@@ -49,4 +52,3 @@ class Device extends Model
         return $this->hasMany(AttendanceRaw::class);
     }
 }
-

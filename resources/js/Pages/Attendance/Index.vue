@@ -482,7 +482,8 @@ watch(
                                 class="hover:bg-slate-50"
                             >
                                 <td class="px-3 py-3 text-app">
-                                    {{ record.log_date_display ?? 'N/A' }}
+                                    <p>{{ record.log_date_display ?? 'N/A' }}</p>
+                                    <p class="text-xs text-soft">{{ record.log_date_timezone ?? 'UTC' }}</p>
                                 </td>
                                 <td class="px-3 py-3">
                                     <p class="font-semibold text-app">{{ record.employee?.name ?? 'N/A' }}</p>

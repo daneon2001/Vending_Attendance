@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             UserAndEmpleadoSeeder::class,
             LocationSeeder::class,
             ClockSeeder::class,
+            DeviceSeeder::class,
             ClockLogSeeder::class,
             FortiaMockEmployeeSeeder::class,
             EmployeeDataSeeder::class,

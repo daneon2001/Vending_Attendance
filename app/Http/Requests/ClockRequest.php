@@ -28,6 +28,7 @@ class ClockRequest extends FormRequest
             'last_status_message' => ['nullable', 'string', 'max:255'],
             'monitoring_status' => ['nullable', 'in:online,offline,warning'],
             'program_status' => ['nullable', 'string', 'max:30'],
+            'onprem_shared_secret' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

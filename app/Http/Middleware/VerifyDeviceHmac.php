@@ -20,15 +20,15 @@ class VerifyDeviceHmac
         $providedSignature = trim((string) $request->header('X-Signature', ''));
 
         if ($deviceSerial === '' || $timestampHeader === '' || $nonce === '' || $providedSignature === '') {
-            return $this->unauthorized('Missing HMAC headers.');
+            return $this->errorResponse(422, 'VALIDATION_FAILED', 'Missing HMAC headers.');
         }
 
         if (! preg_match('/^\d+$/', $timestampHeader)) {
-            return $this->unauthorized('Invalid timestamp.');
+            return $this->errorResponse(401, 'INVALID_TIMESTAMP', 'Invalid timestamp.');
         }
 
         if (! Str::isUuid($nonce)) {
-            return $this->unauthorized('Invalid nonce.');
+            return $this->errorResponse(422, 'VALIDATION_FAILED', 'Invalid nonce.');
         }
 
         $device = Device::query()
@@ -36,11 +36,11 @@ class VerifyDeviceHmac
             ->first();
 
         if (! $device || ! $device->is_active) {
-            return $this->unauthorized('Device not authorized.');
+            return $this->errorResponse(401, 'DEVICE_NOT_ACTIVE', 'Device not authorized.');
         }
 
         if (trim((string) $device->shared_secret) === '') {
-            return $this->unauthorized('Device secret not configured.');
+            return $this->errorResponse(401, 'INVALID_SIGNATURE', 'Device secret not configured.');
         }
 
         $timestamp = (int) $timestampHeader;
@@ -48,7 +48,7 @@ class VerifyDeviceHmac
         $nowTimestamp = now()->timestamp;
 
         if (abs($nowTimestamp - $timestamp) > $toleranceSeconds) {
-            return $this->unauthorized('Timestamp out of range.');
+            return $this->errorResponse(401, 'INVALID_TIMESTAMP', 'Timestamp out of range.');
         }
 
         $now = now();
@@ -65,7 +65,7 @@ class VerifyDeviceHmac
             ->exists();
 
         if ($nonceAlreadyUsed) {
-            return $this->unauthorized('Nonce already used.');
+            return $this->errorResponse(409, 'NONCE_REPLAY', 'Nonce already used.');
         }
 
         $rawBody = (string) $request->getContent();
@@ -86,7 +86,7 @@ class VerifyDeviceHmac
         ));
 
         if (! hash_equals($expectedSignature, $providedSignature)) {
-            return $this->unauthorized('Invalid signature.');
+            return $this->errorResponse(401, 'INVALID_SIGNATURE', 'Invalid signature.');
         }
 
         try {
@@ -97,7 +97,7 @@ class VerifyDeviceHmac
                 'expires_at' => $now->copy()->addSeconds($nonceTtlSeconds),
             ]);
         } catch (QueryException) {
-            return $this->unauthorized('Nonce already used.');
+            return $this->errorResponse(409, 'NONCE_REPLAY', 'Nonce already used.');
         }
 
         $request->attributes->set('onprem_device', $device);
@@ -121,10 +121,13 @@ class VerifyDeviceHmac
         return $method."\n".$path."\n".$timestamp."\n".$nonce."\n".$bodyHash;
     }
 
-    private function unauthorized(string $message): Response
+    private function errorResponse(int $status, string $error, string $message): Response
     {
         return response()->json([
+            'ok' => false,
+            'error' => $error,
+            'reason' => $error,
             'message' => $message,
-        ], 401);
+        ], $status);
     }
 }

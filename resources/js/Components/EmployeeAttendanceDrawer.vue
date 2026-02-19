@@ -22,13 +22,6 @@ const loading = ref(false);
 const errorMessage = ref('');
 const expandedDays = ref(new Set());
 
-const LOG_TYPE_LABELS = {
-    1: 'Entrada',
-    2: 'Salida',
-    3: 'Break',
-    4: 'Regreso',
-};
-
 const pad = (num) => String(num).padStart(2, '0');
 const formatDateInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const formatDisplayDate = (date) => `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
@@ -67,26 +60,19 @@ const formatDateTime = (value) => {
     )}:${pad(date.getSeconds())}`;
 };
 
-const extractTime = (value) => {
-    const formatted = formatDateTime(value);
+const resolveLogDate = (log) => log?.log_date_local ?? log?.log_date ?? null;
+
+const extractTime = (log) => {
+    const formatted = log?.log_date_local_display ?? formatDateTime(resolveLogDate(log));
     const parts = formatted.split(' ');
     return parts.length > 1 ? parts[1] : formatted;
-};
-
-const formatLogType = (code) => {
-    if (code === null || code === undefined) {
-        return 'Desconocido (-)';
-    }
-
-    const label = LOG_TYPE_LABELS[code] ?? 'Desconocido';
-    return `${label} (${code})`;
 };
 
 const groupLogs = (allLogs) => {
     const groups = new Map();
 
     allLogs.forEach((log) => {
-        const date = new Date(log.log_date);
+        const date = new Date(resolveLogDate(log));
         if (Number.isNaN(date.getTime())) {
             return;
         }
@@ -103,14 +89,14 @@ const groupLogs = (allLogs) => {
 
     return Array.from(groups.values())
         .map((group) => {
-            group.logs.sort((a, b) => new Date(a.log_date) - new Date(b.log_date));
+            group.logs.sort((a, b) => new Date(resolveLogDate(a)) - new Date(resolveLogDate(b)));
             return {
                 ...group,
                 first: group.logs[0],
                 last: group.logs[group.logs.length - 1],
             };
         })
-        .sort((a, b) => new Date(b.first.log_date) - new Date(a.first.log_date));
+        .sort((a, b) => new Date(resolveLogDate(b.first)) - new Date(resolveLogDate(a.first)));
 };
 
 const groupedLogs = computed(() => groupLogs(logs.value));
@@ -284,14 +270,14 @@ const drawerTitle = computed(
                                         <td class="px-3 py-2 font-semibold text-app">{{ group.dateLabel }}</td>
                                         <td class="px-3 py-2">
                                             <div class="text-sm text-app">
-                                                {{ extractTime(group.first.log_date) }}
-                                                <span class="text-xs text-soft">· {{ formatLogType(group.first.log_type) }}</span>
+                                                {{ extractTime(group.first) }}
+                                                <span class="text-xs text-soft">· {{ group.first.clock?.name ?? 'Sin reloj' }}</span>
                                             </div>
                                         </td>
                                         <td class="px-3 py-2">
                                             <div class="text-sm text-app">
-                                                {{ extractTime(group.last.log_date) }}
-                                                <span class="text-xs text-soft">· {{ formatLogType(group.last.log_type) }}</span>
+                                                {{ extractTime(group.last) }}
+                                                <span class="text-xs text-soft">· {{ group.last.location?.name ?? 'Sin unidad' }}</span>
                                             </div>
                                         </td>
                                         <td class="px-3 py-2 text-right">
@@ -311,7 +297,7 @@ const drawerTitle = computed(
                                                         <tr>
                                                             <th class="px-2 py-1">Fecha/Hora</th>
                                                             <th class="px-2 py-1">Reloj</th>
-                                                            <th class="px-2 py-1">Tipo</th>
+                                                            <th class="px-2 py-1">Unidad</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -320,9 +306,9 @@ const drawerTitle = computed(
                                                             :key="log.id"
                                                             class="border-t border-app/40 text-muted"
                                                         >
-                                                            <td class="px-2 py-1">{{ formatDateTime(log.log_date) }}</td>
-                                                            <td class="px-2 py-1">{{ log.device_id ?? '-' }}</td>
-                                                            <td class="px-2 py-1">{{ formatLogType(log.log_type) }}</td>
+                                                            <td class="px-2 py-1">{{ log.log_date_local_display ?? formatDateTime(resolveLogDate(log)) }}</td>
+                                                            <td class="px-2 py-1">{{ log.clock?.name ?? `#${log.device_id ?? '-'}` }}</td>
+                                                            <td class="px-2 py-1">{{ log.location?.name ?? 'Sin unidad' }}</td>
                                                         </tr>
                                                     </tbody>
                                                 </table>
@@ -343,3 +329,4 @@ const drawerTitle = computed(
         </aside>
     </div>
 </template>
+

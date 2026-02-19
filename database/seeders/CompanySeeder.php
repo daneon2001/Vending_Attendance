@@ -9,11 +9,12 @@ class CompanySeeder extends Seeder
 {
     public function run(): void
     {
-        \App\Models\Company::create([
-            'name' => 'Empresa Demo',
-            'code' => 'DEMO',
-            'status' => 1,
-        ]);
+        \App\Models\Company::updateOrCreate(
+            ['code' => 'DEMO'],
+            [
+                'name' => 'Empresa Demo',
+                'status' => 1,
+            ]
+        );
     }
 }
-
