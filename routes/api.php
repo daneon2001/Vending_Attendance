@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\AdminEmployeeController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogSyncController;
 use App\Http\Controllers\Api\ClockController;
 use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
@@ -76,6 +78,35 @@ Route::prefix('employees')->group(function () {
     Route::post('{employee}/fingerprints', [EmployeeController::class, 'storeFingerprint']);
     Route::delete('{employee}/fingerprints', [EmployeeController::class, 'deleteFingerprint']);
 });
+
+Route::prefix('admin')->group(function (): void {
+    Route::get('employees', [AdminEmployeeController::class, 'index'])
+        ->middleware(['web', 'auth', 'perm:employees,view']);
+});
+
+Route::prefix('admin')
+    ->middleware([
+        'auth:sanctum',
+        'audit.biometric',
+        'role:administrador,admin',
+        'perm.strict:biometrics,fingerprints.read',
+        'throttle:biometrics-fingerprints',
+    ])
+    ->group(function (): void {
+        Route::get('employees/{employee}/fingerprints', [EmployeeFingerprintAccessController::class, 'index']);
+    });
+
+Route::prefix('superadmin')
+    ->middleware([
+        'auth:sanctum',
+        'audit.biometric',
+        'role:superadmin',
+        'perm.strict:biometrics,templates.read',
+        'throttle:biometrics-templates',
+    ])
+    ->group(function (): void {
+        Route::get('employees/{employee}/fingerprints/templates', [EmployeeFingerprintAccessController::class, 'templates']);
+    });
 
 Route::prefix('attendance')->group(function () {
     // Endpoints legacy consumidos por la app on-prem (Python).

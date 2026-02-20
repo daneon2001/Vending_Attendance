@@ -43,6 +43,10 @@ return [
             'label' => 'Bitacora de auditoria',
             'actions' => ['view', 'manage'],
         ],
+        'biometrics' => [
+            'label' => 'Acceso biometrico',
+            'actions' => ['fingerprints.read', 'templates.read'],
+        ],
     ],
     'standard_actions' => ['view', 'create', 'update', 'delete', 'disable', 'export', 'sync', 'manage'],
 ];

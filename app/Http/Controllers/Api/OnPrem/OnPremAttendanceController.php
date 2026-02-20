@@ -245,11 +245,19 @@ class OnPremAttendanceController extends Controller
                             'tz' => $tz,
                             'type' => strtoupper((string) $eventData['type_inout']),
                             'source' => (string) $eventData['source'],
-                            'meta' => $this->buildMeta($eventData, $warnings),
+                            'meta' => $this->buildMeta(
+                                eventData: $eventData,
+                                warnings: $warnings,
+                                payloadHash: $payloadHash,
+                                ingestIp: $request->ip(),
+                                requestId: (string) ($request->attributes->get('request_id') ?? ''),
+                                authKeyId: 'hmac:'.$device->device_serial,
+                            ),
                         ],
                     );
 
                     $this->syncCentralAttendanceLog(
+                        request: $request,
                         device: $device,
                         unit: $unit,
                         employee: $employee,
@@ -257,6 +265,7 @@ class OnPremAttendanceController extends Controller
                         eventTimeUtc: $eventTimeUtc,
                         localEventId: $localEventId,
                         rawRemoteId: (int) $record->remote_event_id,
+                        payloadHash: $payloadHash,
                     );
 
                     $results[] = [
@@ -292,6 +301,7 @@ class OnPremAttendanceController extends Controller
                     }
 
                     $this->syncCentralAttendanceLog(
+                        request: $request,
                         device: $device,
                         unit: $unit,
                         employee: $employee,
@@ -299,6 +309,7 @@ class OnPremAttendanceController extends Controller
                         eventTimeUtc: $eventTimeUtc,
                         localEventId: $localEventId,
                         rawRemoteId: (int) $record->remote_event_id,
+                        payloadHash: $payloadHash,
                     );
 
                     $results[] = [
@@ -356,6 +367,7 @@ class OnPremAttendanceController extends Controller
     }
 
     private function syncCentralAttendanceLog(
+        StoreOnPremAttendancesRequest $request,
         Device $device,
         Location $unit,
         Employee $employee,
@@ -363,6 +375,7 @@ class OnPremAttendanceController extends Controller
         CarbonImmutable $eventTimeUtc,
         string $localEventId,
         int $rawRemoteId,
+        string $payloadHash,
     ): void {
         if (! Schema::hasTable('attendance_logs')) {
             return;
@@ -423,8 +436,24 @@ class OnPremAttendanceController extends Controller
                 'source' => $eventData['source'] ?? null,
                 'quality' => $eventData['quality'] ?? null,
                 'raw_remote_id' => $rawRemoteId,
+                'payload_hash' => $payloadHash,
                 'meta' => $eventData['meta'] ?? null,
             ];
+        }
+        if ($this->hasAttendanceLogsColumn('ingested_at_utc')) {
+            $payload['ingested_at_utc'] = now('UTC');
+        }
+        if ($this->hasAttendanceLogsColumn('ingest_ip')) {
+            $payload['ingest_ip'] = $request->ip();
+        }
+        if ($this->hasAttendanceLogsColumn('device_serial')) {
+            $payload['device_serial'] = $device->device_serial;
+        }
+        if ($this->hasAttendanceLogsColumn('auth_key_id')) {
+            $payload['auth_key_id'] = 'hmac:'.$device->device_serial;
+        }
+        if ($this->hasAttendanceLogsColumn('request_id')) {
+            $payload['request_id'] = (string) ($request->attributes->get('request_id') ?? null);
         }
 
         try {
@@ -469,7 +498,14 @@ class OnPremAttendanceController extends Controller
         return $cache[$column];
     }
 
-    private function buildMeta(array $eventData, array $warnings): ?array
+    private function buildMeta(
+        array $eventData,
+        array $warnings,
+        string $payloadHash,
+        ?string $ingestIp,
+        ?string $requestId,
+        string $authKeyId,
+    ): ?array
     {
         $meta = $eventData['meta'] ?? [];
         if (! is_array($meta)) {
@@ -483,6 +519,14 @@ class OnPremAttendanceController extends Controller
         if ($warnings !== []) {
             $meta['_warnings'] = $warnings;
         }
+
+        $meta['_ingest'] = [
+            'payload_hash' => $payloadHash,
+            'ingest_ip' => $ingestIp,
+            'request_id' => $requestId ?: null,
+            'auth_key_id' => $authKeyId,
+            'captured_at_utc' => now('UTC')->toIso8601String(),
+        ];
 
         return $meta === [] ? null : $meta;
     }

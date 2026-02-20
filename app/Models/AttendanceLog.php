@@ -26,17 +26,28 @@ class AttendanceLog extends Model
         'annulled_by_user_id',
         'function_int',
         'function_str',
+        'ingested_at_utc',
+        'ingest_ip',
+        'device_serial',
+        'auth_key_id',
+        'request_id',
         'sent_to_fortia_at',
         'fortia_status',
         'fortia_response_payload',
         'status',
         'raw_payload',
+        'integrity_hash',
+        'integrity_previous_hash',
+        'integrity_hash_version',
+        'integrity_verified_at',
     ];
 
     protected $casts = [
         'log_date' => 'datetime',
         'annulled_at' => 'datetime',
+        'ingested_at_utc' => 'datetime',
         'sent_to_fortia_at' => 'datetime',
+        'integrity_verified_at' => 'datetime',
         'fortia_response_payload' => 'array',
         'raw_payload' => 'array',
     ];

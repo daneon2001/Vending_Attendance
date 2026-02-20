@@ -38,6 +38,34 @@ const meta = reactive({
     per_page: filters.perPage,
 });
 
+const normalizeStatus = (value) => {
+    const normalized = String(value ?? '').toUpperCase();
+    return normalized === 'A' || normalized === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE';
+};
+
+const isActiveStatus = (value) => normalizeStatus(value) === 'ACTIVE';
+
+const normalizeFingerprintStatus = (employee = {}) => {
+    const fingerprintStatus = employee.fingerprint_status;
+
+    if (typeof fingerprintStatus === 'string' && fingerprintStatus.length > 0) {
+        return fingerprintStatus;
+    }
+
+    if (typeof fingerprintStatus === 'boolean') {
+        return fingerprintStatus ? 'enrolled' : 'none';
+    }
+
+    return employee.has_fingerprint ? 'enrolled' : 'none';
+};
+
+const normalizeEmployee = (employee = {}) => ({
+    ...employee,
+    status: normalizeStatus(employee.status),
+    has_fingerprint: Boolean(employee.has_fingerprint),
+    fingerprint_status: normalizeFingerprintStatus(employee),
+});
+
 const showToast = ({ type = 'success', title = '', message = '', duration }) => {
     toast.show = false;
     toast.type = type;
@@ -84,28 +112,32 @@ const setMeta = (payload) => {
         return;
     }
 
-    meta.current_page = payload.current_page ?? 1;
+    const currentPage = payload.current_page ?? payload.page ?? 1;
+    const perPage = payload.per_page ?? filters.perPage;
+    const total = payload.total ?? 0;
+
+    meta.current_page = currentPage;
     meta.last_page = payload.last_page ?? 1;
-    meta.from = payload.from ?? 0;
-    meta.to = payload.to ?? 0;
-    meta.total = payload.total ?? 0;
-    meta.per_page = payload.per_page ?? filters.perPage;
+    meta.total = total;
+    meta.per_page = perPage;
+    meta.from = payload.from ?? (total > 0 ? (currentPage - 1) * perPage + 1 : 0);
+    meta.to = payload.to ?? (total > 0 ? Math.min(currentPage * perPage, total) : 0);
 };
 
 const loadEmployees = async (pageNumber = filters.page) => {
     loading.value = true;
     filters.page = pageNumber;
     try {
-        const { data } = await axios.get('/api/employees', {
+        const { data } = await axios.get('/api/admin/employees', {
             params: {
                 status: filters.status || undefined,
-                search: filters.search || undefined,
+                q: filters.search || undefined,
                 page: filters.page,
                 per_page: filters.perPage,
             },
         });
 
-        employees.value = data.data ?? [];
+        employees.value = (data.data ?? []).map(normalizeEmployee);
         setMeta(data.meta);
     } catch (error) {
         showToast({
@@ -145,7 +177,7 @@ const syncNow = async () => {
 const updateEmployeeInList = (updatedData) => {
     const index = employees.value.findIndex((item) => item.id === updatedData.id);
     if (index !== -1) {
-        employees.value[index] = { ...employees.value[index], ...updatedData };
+        employees.value[index] = normalizeEmployee({ ...employees.value[index], ...updatedData });
     }
 };
 
@@ -154,7 +186,7 @@ const resetModal = () => {
 };
 
 const openStatusModal = (employee) => {
-    const nextStatus = employee.status === 'A' ? 'inactive' : 'active';
+    const nextStatus = isActiveStatus(employee.status) ? 'inactive' : 'active';
     modalState.value = {
         ...modalDefaults,
         show: true,
@@ -289,14 +321,14 @@ onMounted(loadEmployees);
                 <input
                     v-model="filters.search"
                     type="text"
-                    placeholder="Nombre, RFC, IMSS..."
+                    placeholder="Nombre o codigo..."
                     class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
-                    @keyup.enter="loadEmployees"
+                    @keyup.enter="loadEmployees(1)"
                 />
             </label>
             <label class="flex flex-col">
                 <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Estado</span>
-                <select v-model="filters.status" class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900" @change="loadEmployees">
+                <select v-model="filters.status" class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900" @change="loadEmployees(1)">
                     <option value="">Todos</option>
                     <option value="active">Activos</option>
                     <option value="inactive">Baja</option>
@@ -304,7 +336,7 @@ onMounted(loadEmployees);
             </label>
             <button
                 class="self-end rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app"
-                @click="loadEmployees"
+                @click="loadEmployees(1)"
             >
                 Aplicar
             </button>
@@ -336,7 +368,7 @@ onMounted(loadEmployees);
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
                     <tr>
                         <th class="px-4 py-3">Nombre</th>
-                        <th class="px-4 py-3">Empresa</th>
+                        <th class="px-4 py-3">Unidad</th>
                         <th class="px-4 py-3">Estado</th>
                         <th class="px-4 py-3">Estado huella</th>
                         <th class="px-4 py-3">Acciones</th>
@@ -348,21 +380,21 @@ onMounted(loadEmployees);
                     </tr>
                     <tr v-for="employee in employees" :key="employee.id" class="hover:bg-slate-50 dark:hover:bg-slate-900/40">
                         <td class="px-4 py-3 font-semibold text-app">{{ employee.full_name ?? employee.name }}</td>
-                        <td class="px-4 py-3 text-muted">{{ employee.company_name }}</td>
+                        <td class="px-4 py-3 text-muted">{{ employee.unit_name ?? 'Sin unidad' }}</td>
                         <td class="px-4 py-3">
                             <button
                                 v-if="canDisableEmployees"
                                 class="rounded-full px-3 py-1 text-xs font-semibold"
-                                :class="employee.status === 'A' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+                                :class="isActiveStatus(employee.status) ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
                                 @click="openStatusModal(employee)"
                             >
-                                {{ employee.status === 'A' ? 'Activo' : 'Baja' }}
+                                {{ isActiveStatus(employee.status) ? 'Activo' : 'Baja' }}
                             </button>
                             <span
                                 v-else
                                 class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-soft dark:bg-slate-800 dark:text-slate-300"
                             >
-                                {{ employee.status === 'A' ? 'Activo' : 'Baja' }}
+                                {{ isActiveStatus(employee.status) ? 'Activo' : 'Baja' }}
                             </span>
                         </td>
                         <td class="px-4 py-3">

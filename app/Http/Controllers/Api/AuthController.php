@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -18,6 +19,18 @@ class AuthController extends Controller
         ]);
 
         if (!Auth::attempt(['email' => $credentials['user'], 'password' => $credentials['password']])) {
+            AuditLogger::log(
+                event: 'auth.login.failed',
+                auditable: null,
+                description: 'Authentication failed',
+                metadata: [
+                    'action' => 'login',
+                    'entity' => 'auth',
+                    'reason' => 'invalid_credentials',
+                    'new_values' => ['user' => $credentials['user']],
+                ]
+            );
+
             return response()->json([
                 'message' => 'Invalid credentials',
             ], 401);
@@ -33,6 +46,21 @@ class AuthController extends Controller
         $accessToken = $tokenResult->accessToken;
         $accessToken->expires_at = now()->addMinutes(30);
         $accessToken->save();
+
+        AuditLogger::log(
+            event: 'auth.login.success',
+            auditable: $user,
+            description: 'Authentication success',
+            metadata: [
+                'action' => 'login',
+                'entity' => 'users',
+                'entity_id' => (string) $user->id,
+                'new_values' => [
+                    'token_id' => $accessToken->id,
+                    'expires_at' => $accessToken->expires_at?->toIso8601String(),
+                ],
+            ]
+        );
 
         // Estructura de respuesta: emulamos algo tipo Fortia
         return response()->json([

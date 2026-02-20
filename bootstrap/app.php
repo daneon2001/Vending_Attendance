@@ -6,9 +6,13 @@ use Illuminate\Foundation\Configuration\Middleware;
 
 // Middleware propios
 use App\Http\Middleware\EnsurePermission;
+use App\Http\Middleware\AuditBiometricAccess;
+use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureStrictPermission;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
+use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\CheckTokenExpiration;
 use App\Http\Middleware\DevOnlyApi;
 use App\Http\Middleware\DeviceTokenMiddleware;
@@ -27,6 +31,8 @@ use App\Console\Commands\FortiaMockAddEmployee;
 use App\Console\Commands\FortiaMockSyncEmployees;
 use App\Console\Commands\ReconcileDevicesFromClocks;
 use App\Console\Commands\FortiaDiagnoseApis;
+use App\Console\Commands\FortiaDiagnoseBiometrics;
+use App\Console\Commands\VerifyAttendanceIntegrity;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -41,10 +47,16 @@ return Application::configure(basePath: dirname(__DIR__))
         EnsureAdminPermissions::class,
         MakeAdminSuperCommand::class,
         FortiaDiagnoseApis::class,
+        FortiaDiagnoseBiometrics::class,
         ReconcileDevicesFromClocks::class,
+        VerifyAttendanceIntegrity::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)
+        $middleware->web(prepend: [
+            AssignRequestId::class,
+        ]);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
@@ -52,6 +64,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Grupo API
         $middleware->api(prepend: [
+            AssignRequestId::class,
             // Si fueras a usar Sanctum con COOKIES (SPA) lo activas:
             // EnsureFrontendRequestsAreStateful::class,
 
@@ -73,6 +86,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'device.token'     => DeviceTokenMiddleware::class,
             'device.hmac'      => VerifyDeviceHmac::class,
             'perm'             => EnsurePermission::class,
+            'perm.strict'      => EnsureStrictPermission::class,
+            'role'             => EnsureRole::class,
+            'audit.biometric'  => AuditBiometricAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

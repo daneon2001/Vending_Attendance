@@ -125,6 +125,31 @@ curl -Method Post "http://localhost/api/FortiaPrimeApi.Opensync/api/v2/login/aut
 Documentacion del modulo web centralizado:
 
 - `docs/CENTRAL_ASISTENCIAS.md`
+- `docs/SECURITY_FORENSIC_HARDENING.md`
+
+## Catalogo compacto de empleados
+
+Para el listado de UI del catalogo de trabajadores usar:
+
+- `GET /api/admin/employees`
+
+Este endpoint devuelve una version compacta (paginada y filtrable) sin plantillas biometricas/base64 para evitar payloads pesados.
+
+## Acceso a biometria de empleados
+
+- `GET /api/employees`:
+  - No carga `fingerprints` por defecto.
+  - Permite `include=fingerprints` con metadatos unicamente (`id`, `type`, `quality`, `created_at`), sin `template_b64`.
+- `GET /api/admin/employees/{employee}/fingerprints`:
+  - Endpoint API protegido (`auth:sanctum`) para metadata biometrica (admin).
+  - Requiere rol admin y permiso `biometrics.fingerprints.read`.
+  - Throttle: `60/min`.
+- `GET /api/superadmin/employees/{employee}/fingerprints/templates`:
+  - Endpoint API protegido (`auth:sanctum`) para acceso a plantillas (`template_b64`) solo superadmin.
+  - Requiere rol superadmin y permiso `biometrics.templates.read`.
+  - Throttle: `10/min`.
+  - Respuesta con `Cache-Control: no-store, no-cache, must-revalidate`.
+  - Cada acceso se audita en `audit_logs` con `action=biometric.template.accessed`.
 
 ## API On-Prem (HMAC)
 
@@ -285,6 +310,19 @@ Invoke-RestMethod -Method Post -Uri $url -ContentType "application/json" -Body $
   "X-Signature" = $signature
 }
 ```
+
+## Catalogo de empleados (endpoint compacto)
+
+Para el listado del catalogo en UI usar `GET /api/admin/employees` (no `GET /api/employees`).
+
+Este endpoint:
+
+- Devuelve un payload compacto (`ok`, `data`, `meta`) para paginacion rapida.
+- Soporta filtros `q`, `unit_id`, `status` y `per_page` (max 100).
+- Excluye biometria y campos pesados (por ejemplo `template_b64`).
+- Incluye `has_fingerprint` (boolean) para estado rapido de huella.
+- Requiere sesion autenticada y permiso `employees.view`.
+- El endpoint legacy `GET /api/employees` se mantiene sin cambios por compatibilidad.
 
 ### Configuracion relevante (`.env`)
 

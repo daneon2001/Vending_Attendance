@@ -8,16 +8,40 @@ use App\Models\EmployeeFingerprint;
 use App\Models\EmployeeTemplateDeletion;
 use App\Services\Audit\AuditLogger;
 use App\Services\FortiaMock\FortiaMockSyncService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Employee::query()->with('fingerprints');
+        $includes = $this->resolveIncludes($request);
+        $includeFingerprints = in_array('fingerprints', $includes, true);
+
+        $query = Employee::query();
+
+        if ($includeFingerprints) {
+            $query->with([
+                'fingerprints' => function (HasMany $fingerprints): void {
+                    $fingerprints->select([
+                        'id',
+                        'employee_id',
+                        'enrolment_type',
+                        'status',
+                        'created_at',
+                    ]);
+
+                    if (Schema::hasColumn('employee_fingerprints', 'quality')) {
+                        $fingerprints->addSelect('quality');
+                    }
+                },
+            ]);
+        }
 
         if ($request->filled('status')) {
             $status = $this->normalizeStatus($request->string('status'));
@@ -39,8 +63,12 @@ class EmployeeController extends Controller
         $perPage = max(5, min($perPage, 100));
         $employees = $query->orderBy('full_name')->paginate($perPage)->withQueryString();
 
+        $data = collect($employees->items())
+            ->map(fn (Employee $employee) => $this->transformEmployeeListItem($employee, $includeFingerprints))
+            ->values();
+
         return response()->json([
-            'data' => $employees->items(),
+            'data' => $data,
             'meta' => [
                 'current_page' => $employees->currentPage(),
                 'last_page' => $employees->lastPage(),
@@ -161,6 +189,9 @@ class EmployeeController extends Controller
         // app(OnPremiseBiometricsService::class)->deleteFingerprint($employee->id, $validated['clock_id'] ?? null);
 
         $employee->refreshFingerprintFlag();
+        $employee->load([
+            'fingerprints' => fn (Builder $builder) => $builder->select('id', 'employee_id', 'status'),
+        ]);
 
         AuditLogger::log(
             'employees.fingerprint_deleted',
@@ -216,5 +247,62 @@ class EmployeeController extends Controller
         $status = strtolower($status);
 
         return in_array($status, ['active', 'a'], true) ? 'A' : 'B';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveIncludes(Request $request): array
+    {
+        $rawInclude = (string) $request->query('include', '');
+        if (trim($rawInclude) === '') {
+            return [];
+        }
+
+        $allowed = ['fingerprints'];
+
+        return collect(explode(',', $rawInclude))
+            ->map(fn (string $include) => strtolower(trim($include)))
+            ->filter()
+            ->unique()
+            ->intersect($allowed)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transformEmployeeListItem(Employee $employee, bool $includeFingerprints): array
+    {
+        $data = $employee->toArray();
+
+        if (! $includeFingerprints) {
+            unset($data['fingerprints']);
+
+            return $data;
+        }
+
+        $data['fingerprints'] = $employee->fingerprints
+            ->map(fn (EmployeeFingerprint $fingerprint) => $this->transformFingerprintMetadata($fingerprint))
+            ->values()
+            ->all();
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transformFingerprintMetadata(EmployeeFingerprint $fingerprint): array
+    {
+        $quality = $fingerprint->quality ?? null;
+
+        return [
+            'id' => (int) $fingerprint->id,
+            'type' => $fingerprint->enrolment_type ?: ($fingerprint->status ?: 'FINGERPRINT'),
+            'quality' => is_numeric($quality) ? (int) $quality : null,
+            'created_at' => optional($fingerprint->created_at)->toISOString(),
+        ];
     }
 }

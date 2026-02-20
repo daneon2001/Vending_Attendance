@@ -47,11 +47,18 @@ class Employee extends Model
         return $this->hasMany(EmployeeFingerprint::class);
     }
 
+    public function unit()
+    {
+        return $this->belongsTo(Location::class, 'base_location_id');
+    }
+
     public function getFingerprintStatusAttribute(): string
     {
-        $fingerprints = $this->relationLoaded('fingerprints')
-            ? $this->fingerprints
-            : $this->fingerprints()->get();
+        if (! $this->relationLoaded('fingerprints')) {
+            return $this->has_fingerprint ? 'enrolled' : 'none';
+        }
+
+        $fingerprints = $this->fingerprints;
 
         if ($fingerprints->firstWhere('status', 'enrolled')) {
             return 'enrolled';

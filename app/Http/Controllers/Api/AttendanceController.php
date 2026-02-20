@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
+use App\Models\Clock;
 use App\Models\Employee;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -33,6 +34,16 @@ class AttendanceController extends Controller
         $supportsLocalId = Schema::hasColumn('attendance_logs', 'local_id');
         $supportsSource = Schema::hasColumn('attendance_logs', 'source');
         $supportsAttendanceStatus = Schema::hasColumn('attendance_logs', 'attendance_status');
+        $supportsIngestedAt = Schema::hasColumn('attendance_logs', 'ingested_at_utc');
+        $supportsIngestIp = Schema::hasColumn('attendance_logs', 'ingest_ip');
+        $supportsDeviceSerial = Schema::hasColumn('attendance_logs', 'device_serial');
+        $supportsAuthKeyId = Schema::hasColumn('attendance_logs', 'auth_key_id');
+        $supportsRequestId = Schema::hasColumn('attendance_logs', 'request_id');
+
+        $clockSerial = null;
+        if ($supportsDeviceSerial) {
+            $clockSerial = Clock::query()->whereKey($clockId)->value('serial_number');
+        }
 
         if ($supportsLocalId && ! empty($localId)) {
             $existing = AttendanceLog::query()
@@ -88,6 +99,21 @@ class AttendanceController extends Controller
 
             if ($supportsAttendanceStatus) {
                 $payload['attendance_status'] = 'valida';
+            }
+            if ($supportsIngestedAt) {
+                $payload['ingested_at_utc'] = now('UTC');
+            }
+            if ($supportsIngestIp) {
+                $payload['ingest_ip'] = $request->ip();
+            }
+            if ($supportsDeviceSerial) {
+                $payload['device_serial'] = $clockSerial;
+            }
+            if ($supportsAuthKeyId) {
+                $payload['auth_key_id'] = 'device_static_token';
+            }
+            if ($supportsRequestId) {
+                $payload['request_id'] = (string) ($request->attributes->get('request_id') ?? null);
             }
 
             $log = AttendanceLog::create($payload);

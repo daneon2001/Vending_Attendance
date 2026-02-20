@@ -11,12 +11,14 @@ use App\Models\AttendanceRecord;
 use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\Location;
+use App\Services\Audit\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -169,7 +171,7 @@ class AttendanceController extends Controller
         DB::transaction(function () use ($validated, $employee, $logType, $user, $request, &$record): void {
             $nextLogId = ((int) (AttendanceRecord::query()->max('log_id') ?? 0)) + 1;
 
-            $record = AttendanceRecord::query()->create([
+            $payload = [
                 'log_id' => $nextLogId,
                 'employee_id' => $employee->id,
                 'fortia_employee_id' => $employee->fortia_employee_id,
@@ -185,7 +187,25 @@ class AttendanceController extends Controller
                     'manual_note' => $validated['notes'] ?? null,
                     'created_from' => 'admin.central_asistencias',
                 ],
-            ]);
+            ];
+
+            if (Schema::hasColumn('attendance_logs', 'ingested_at_utc')) {
+                $payload['ingested_at_utc'] = now('UTC');
+            }
+            if (Schema::hasColumn('attendance_logs', 'ingest_ip')) {
+                $payload['ingest_ip'] = $request->ip();
+            }
+            if (Schema::hasColumn('attendance_logs', 'request_id')) {
+                $payload['request_id'] = (string) ($request->attributes->get('request_id') ?? null);
+            }
+            if (Schema::hasColumn('attendance_logs', 'auth_key_id')) {
+                $payload['auth_key_id'] = 'web_session:'.($user?->id ?? 'system');
+            }
+            if (Schema::hasColumn('attendance_logs', 'device_serial') && ! empty($validated['device_id'])) {
+                $payload['device_serial'] = Clock::query()->whereKey((int) $validated['device_id'])->value('serial_number');
+            }
+
+            $record = AttendanceRecord::query()->create($payload);
 
             $this->storeAudit(
                 request: $request,
@@ -220,6 +240,22 @@ class AttendanceController extends Controller
             ])
             ->orderByDesc('log_date')
             ->get();
+
+        AuditLogger::log(
+            event: 'attendance.records.exported',
+            auditable: null,
+            description: 'Attendance export generated',
+            metadata: [
+                'action' => 'export',
+                'entity' => 'attendance_logs',
+                'reason' => 'manual_export',
+                'new_values' => [
+                    'format' => $format,
+                    'filters' => $filters,
+                    'records_count' => $records->count(),
+                ],
+            ],
+        );
 
         $headers = [
             'FechaHora',
