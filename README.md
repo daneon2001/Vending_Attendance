@@ -330,3 +330,25 @@ Este endpoint:
 - `ONPREM_NONCE_TTL_SECONDS=600`
 - `ONPREM_MAX_BATCH_SIZE=500`
 - `ONPREM_HEARTBEAT_INTERVAL_SECONDS=15` (intervalo sugerido para heartbeat)
+
+## Comandos de diagnostico
+
+Comandos para validar que los stacks de on-prem HMAC y device-token siguen operando:
+
+- `php artisan fortia:diagnose-onprem`
+  - Verifica rutas/middlewares de `/api/onprem/*`.
+  - Ejecuta requests internos firmados HMAC (`ping`, `heartbeat`, `attendances`).
+  - Genera `storage/app/onprem_diagnostics.json`.
+- `php artisan fortia:diagnose-device-token`
+  - Verifica rutas/middlewares de `FortiaPrimeApi.Opensync/api/v2`.
+  - Ejecuta requests internos con bearer token para endpoints de dispositivo.
+  - Genera `storage/app/device_token_diagnostics.json`.
+
+Variables requeridas:
+
+- `DEVICE_STATIC_TOKEN`
+- `ONPREM_HMAC_TOLERANCE_SECONDS`
+- `ONPREM_NONCE_TTL_SECONDS`
+- `ONPREM_MAX_BATCH_SIZE`
+- `ONPREM_HEARTBEAT_INTERVAL_SECONDS`
+- `ONPREM_DEFAULT_SHARED_SECRET` (opcional; fallback para altas de dispositivos)

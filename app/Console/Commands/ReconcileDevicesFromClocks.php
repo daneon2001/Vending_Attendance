@@ -48,7 +48,16 @@ class ReconcileDevicesFromClocks extends Command
                         continue;
                     }
 
-                    $device = $registry->syncFromClock($clock, $incomingSecret);
+                    $device = $registry->syncFromClock(
+                        clock: $clock,
+                        deviceSerial: $serial,
+                        sharedSecret: $incomingSecret,
+                    );
+                    if (! $device) {
+                        $skipped++;
+                        $this->warn("serial={$serial} omitido: no se pudo resolver device_serial.");
+                        continue;
+                    }
                     if ($before) {
                         $updated++;
                     } else {

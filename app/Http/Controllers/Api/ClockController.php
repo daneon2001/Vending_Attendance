@@ -157,14 +157,19 @@ class ClockController extends Controller
 
     private function syncDeviceRegistry(Clock $clock, Request $request): void
     {
-        // En catalogos legacy puede existir reloj sin serie; no hay llave para mapear device.
-        if (trim((string) $clock->serial_number) === '') {
-            return;
-        }
+        $serial = $request->input('device_serial')
+            ?? $request->input('serial')
+            ?? $request->input('serial_number')
+            ?? $clock->getAttribute('device_serial')
+            ?? $clock->getAttribute('serial')
+            ?? $clock->getAttribute('serial_number')
+            ?? $clock->getAttribute('device_id')
+            ?? $clock->getAttribute('st_Serial');
 
         $incomingSecret = trim((string) $request->input('onprem_shared_secret', ''));
         $this->deviceRegistry->syncFromClock(
             $clock,
+            is_scalar($serial) ? (string) $serial : null,
             $incomingSecret !== '' ? $incomingSecret : null,
         );
     }
