@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
+use App\Http\Controllers\Api\EmployeeFingerprintDeleteController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
@@ -76,7 +77,6 @@ Route::prefix('employees')->group(function () {
     Route::post('sync-fortia-mock', [EmployeeController::class, 'syncFortiaMock']);
     Route::patch('{employee}/status', [EmployeeController::class, 'updateStatus']);
     Route::post('{employee}/fingerprints', [EmployeeController::class, 'storeFingerprint']);
-    Route::delete('{employee}/fingerprints', [EmployeeController::class, 'deleteFingerprint']);
 });
 
 Route::prefix('admin')->group(function (): void {
@@ -94,6 +94,18 @@ Route::prefix('admin')
     ])
     ->group(function (): void {
         Route::get('employees/{employee}/fingerprints', [EmployeeFingerprintAccessController::class, 'index']);
+    });
+
+Route::prefix('admin')
+    ->middleware([
+        'auth:web,sanctum',
+        'audit.biometric',
+        'role:administrador,admin,superadmin',
+        'perm.strict:biometrics,fingerprints.delete',
+        'throttle:biometrics-delete',
+    ])
+    ->group(function (): void {
+        Route::delete('employees/{employee}/fingerprints', [EmployeeFingerprintDeleteController::class, 'destroy']);
     });
 
 Route::prefix('superadmin')

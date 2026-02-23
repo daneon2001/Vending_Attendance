@@ -69,8 +69,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Grupo API
         $middleware->api(prepend: [
             AssignRequestId::class,
-            // Si fueras a usar Sanctum con COOKIES (SPA) lo activas:
-            // EnsureFrontendRequestsAreStateful::class,
+            // Permite que auth:sanctum acepte cookies de sesion en el frontend (Inertia/SPA).
+            EnsureFrontendRequestsAreStateful::class,
 
             // En APIs puras con Bearer no es obligatorio,
             // pero SubstituteBindings viene bien para route model binding.

@@ -5,14 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
-use App\Models\EmployeeTemplateDeletion;
 use App\Services\Audit\AuditLogger;
 use App\Services\FortiaMock\FortiaMockSyncService;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -107,7 +104,7 @@ class EmployeeController extends Controller
         AuditLogger::log(
             'employees.sync_mock',
             null,
-            'Sincronización con Fortia Mock',
+            'Sincronizacion con Fortia Mock',
             $summary
         );
 
@@ -141,74 +138,6 @@ class EmployeeController extends Controller
         );
 
         return response()->json($employee->refresh());
-    }
-
-    public function deleteFingerprint(Employee $employee, Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'clock_id' => ['nullable', 'integer'],
-        ]);
-
-        $fingerprintsQuery = $employee->fingerprints();
-        if (! empty($validated['clock_id'])) {
-            $fingerprintsQuery->where('clock_id', $validated['clock_id']);
-        }
-
-        $fingerprints = $fingerprintsQuery->get();
-
-        if ($fingerprints->isEmpty()) {
-            return response()->json([
-                'message' => 'No se encontraron huellas para borrar.',
-            ], 404);
-        }
-
-        $affected = 0;
-        foreach ($fingerprints as $fingerprint) {
-            if ($fingerprint->status === 'deleted') {
-                continue;
-            }
-
-            $deletedAt = now();
-            $fingerprint->status = 'pending_delete'; // o 'deleted' si el on-premise responde
-            $fingerprint->deleted_at = $deletedAt;
-            $fingerprint->save();
-
-            if (! empty($fingerprint->vendor_template_id)) {
-                EmployeeTemplateDeletion::query()->create([
-                    'vendor' => 'digitalpersona',
-                    'vendor_template_id' => (string) $fingerprint->vendor_template_id,
-                    'employee_id' => $employee->id,
-                    'deleted_at' => $deletedAt,
-                ]);
-            }
-            $affected++;
-        }
-
-        // TODO: llamar aquí al servicio on-premise que elimina la plantilla de huella
-        // Ejemplo:
-        // app(OnPremiseBiometricsService::class)->deleteFingerprint($employee->id, $validated['clock_id'] ?? null);
-
-        $employee->refreshFingerprintFlag();
-        $employee->load([
-            'fingerprints' => fn (Builder $builder) => $builder->select('id', 'employee_id', 'status'),
-        ]);
-
-        AuditLogger::log(
-            'employees.fingerprint_deleted',
-            $employee,
-            'Borrado de huella',
-            [
-                'clock_id' => $validated['clock_id'] ?? null,
-                'affected' => $affected,
-            ]
-        );
-
-        return response()->json([
-            'message' => 'Borrado de huella en proceso.',
-            'affected' => $affected,
-            'has_fingerprint' => $employee->has_fingerprint,
-            'fingerprint_status' => $employee->fingerprint_status,
-        ]);
     }
 
     public function storeFingerprint(Employee $employee, Request $request): JsonResponse
@@ -306,3 +235,4 @@ class EmployeeController extends Controller
         ];
     }
 }
+

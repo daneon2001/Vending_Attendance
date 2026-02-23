@@ -79,32 +79,34 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <transition name="fade">
-        <div
-            v-if="show"
-            class="pointer-events-auto fixed top-6 right-6 z-50 w-full max-w-sm rounded-3xl border px-4 py-3 text-sm shadow-lg"
-            :class="typeStyles.container"
-        >
-            <div class="flex items-start gap-3">
-                <div class="flex-1">
-                    <p class="text-base font-semibold" :class="typeStyles.title">
-                        {{ title }}
-                    </p>
-                    <p class="mt-1 text-slate-600 dark:text-slate-200">
-                        {{ message }}
-                    </p>
+    <Teleport to="body">
+        <transition name="fade">
+            <div
+                v-if="show"
+                class="pointer-events-auto fixed top-6 right-6 z-[70] w-full max-w-sm rounded-3xl border px-4 py-3 text-sm shadow-lg"
+                :class="typeStyles.container"
+            >
+                <div class="flex items-start gap-3">
+                    <div class="flex-1">
+                        <p class="text-base font-semibold" :class="typeStyles.title">
+                            {{ title }}
+                        </p>
+                        <p class="mt-1 text-slate-600 dark:text-slate-200">
+                            {{ message }}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="rounded-full p-1 text-slate-400 transition hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
+                        aria-label="Cerrar notificacion"
+                        @click="emit('close')"
+                    >
+                        x
+                    </button>
                 </div>
-                <button
-                    type="button"
-                    class="rounded-full p-1 text-slate-400 transition hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
-                    aria-label="Cerrar notificación"
-                    @click="emit('close')"
-                >
-                    ×
-                </button>
             </div>
-        </div>
-    </transition>
+        </transition>
+    </Teleport>
 </template>
 
 <style scoped>

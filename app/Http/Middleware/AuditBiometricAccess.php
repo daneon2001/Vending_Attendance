@@ -23,34 +23,54 @@ class AuditBiometricAccess
             ? array_values(array_map('intval', $rawFingerprintIds))
             : [];
 
-        $includeTemplates = str_contains($request->path(), '/templates');
+        $path = trim($request->path(), '/');
+        $isDeleteRoute = $request->isMethod('DELETE')
+            && preg_match('#^api/admin/employees/[^/]+/fingerprints$#', $path) === 1;
+        $includeTemplates = str_contains($path, '/templates');
         $statusCode = $response->getStatusCode();
         $granted = $statusCode >= 200 && $statusCode < 300;
 
-        AuditLogger::log(
-            event: $includeTemplates
+        $event = $isDeleteRoute
+            ? 'biometric.fingerprint.deleted'
+            : ($includeTemplates
                 ? 'biometric.fingerprints.templates.accessed'
-                : 'biometric.fingerprints.metadata.accessed',
-            auditable: $employee,
-            description: $granted
+                : 'biometric.fingerprints.metadata.accessed');
+        $reason = $isDeleteRoute
+            ? ($granted ? 'fingerprints_deleted' : 'access_denied')
+            : ($granted
+                ? ($includeTemplates ? 'templates_read' : 'metadata_read')
+                : 'access_denied');
+        $description = $isDeleteRoute
+            ? ($granted ? 'Biometric fingerprints deleted' : 'Biometric fingerprint delete denied')
+            : ($granted
                 ? 'Biometric fingerprint access granted'
-                : 'Biometric fingerprint access denied',
+                : 'Biometric fingerprint access denied');
+        $deletedCount = (int) $request->attributes->get('biometric_deleted_count', 0);
+        $requestId = (string) ($request->attributes->get('request_id') ?? '');
+        $correlationId = (string) ($request->attributes->get('correlation_id') ?? '');
+
+        AuditLogger::log(
+            event: $event,
+            auditable: $employee,
+            description: $description,
             metadata: [
-                'action' => 'biometric.template.accessed',
+                'action' => $isDeleteRoute ? 'biometric.fingerprint.deleted' : 'biometric.template.accessed',
                 'entity' => 'employee_fingerprints',
                 'entity_id' => $employeeId !== null ? (string) $employeeId : null,
-                'reason' => $granted
-                    ? ($includeTemplates ? 'templates_read' : 'metadata_read')
-                    : 'access_denied',
+                'reason' => $reason,
                 'new_values' => [
                     'employee_id' => $employeeId,
                     'fingerprint_ids' => $fingerprintIds,
+                    'deleted_count' => $deletedCount,
+                    'user_id' => optional($request->user())->id,
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                     'route' => $request->path(),
-                    'request_id' => (string) ($request->attributes->get('request_id') ?? ''),
+                    'request_id' => $requestId,
+                    'correlation_id' => $correlationId,
                     'records_count' => count($fingerprintIds),
                     'include_templates' => $includeTemplates,
+                    'is_delete' => $isDeleteRoute,
                     'access_granted' => $granted,
                     'response_status' => $statusCode,
                 ],

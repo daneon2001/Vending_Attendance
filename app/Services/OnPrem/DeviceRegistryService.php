@@ -15,6 +15,14 @@ class DeviceRegistryService
         ?string $sharedSecret = null,
     ): ?Device
     {
+        if (! Schema::hasTable('devices')) {
+            Log::warning('onprem.device_registry.sync.skipped_missing_table', [
+                'clock_id' => $clock->id,
+            ]);
+
+            return null;
+        }
+
         $serial = $this->resolveDeviceSerial($clock, $deviceSerial);
         if ($serial === null) {
             Log::warning('onprem.device_registry.sync.skipped_missing_serial', [

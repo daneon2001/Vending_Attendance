@@ -87,6 +87,7 @@ const canSyncEmployees = computed(() => can('employees', 'sync'));
 const canDisableEmployees = computed(() => can('employees', 'disable'));
 const canUpdateEmployees = computed(() => can('employees', 'update'));
 const canViewAttendance = computed(() => can('attendance', 'view'));
+const canDeleteFingerprints = computed(() => can('biometrics', 'fingerprints.delete'));
 
 const modalDefaults = {
     show: false,
@@ -142,7 +143,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
     } catch (error) {
         showToast({
             type: 'error',
-            title: 'No se pudo cargar el catálogo',
+            title: 'No se pudo cargar el catalogo',
             message: error?.response?.data?.message ?? 'Intenta nuevamente.',
         });
     } finally {
@@ -160,13 +161,13 @@ const syncNow = async () => {
         await loadEmployees(filters.page);
         showToast({
             type: 'success',
-            title: 'Sincronización lista',
+            title: 'Sincronizacion lista',
             message: `Nuevos: ${data.created_count}, Actualizados: ${data.updated_count}, Sin cambios: ${data.unchanged_count}, Cambios de estatus: ${data.status_changed_count}`,
         });
     } catch (error) {
         showToast({
             type: 'error',
-            title: 'Sincronización fallida',
+            title: 'Sincronizacion fallida',
             message: error?.response?.data?.message || 'No se pudo sincronizar.',
         });
     } finally {
@@ -191,7 +192,7 @@ const openStatusModal = (employee) => {
         ...modalDefaults,
         show: true,
         title: nextStatus === 'inactive' ? 'Desactivar empleado' : 'Activar empleado',
-        message: `¿Seguro que deseas ${nextStatus === 'inactive' ? 'desactivar' : 'activar'} a ${
+        message: `Seguro que deseas ${nextStatus === 'inactive' ? 'desactivar' : 'activar'} a ${
             employee.full_name ?? employee.name
         }?`,
         confirmLabel: nextStatus === 'inactive' ? 'Desactivar' : 'Activar',
@@ -204,10 +205,9 @@ const openFingerprintModal = (employee) => {
     modalState.value = {
         ...modalDefaults,
         show: true,
-        title: 'Borrar huella',
-        message:
-            'Esto marcará la huella como pendiente de eliminación y notificará al sistema on-premise cuando esté disponible.',
-        confirmLabel: 'Borrar huella',
+        title: 'Eliminar huellas del empleado',
+        message: `Eliminar huellas del empleado ${employee.full_name ?? employee.name}? Esta accion no se puede deshacer.`,
+        confirmLabel: 'Eliminar huellas',
         action: 'fingerprint',
         context: { employee },
     };
@@ -233,24 +233,26 @@ const executeModalAction = async () => {
                 message: `Estado de ${data.full_name ?? data.name} actualizado correctamente.`,
             });
         } else if (action === 'fingerprint') {
-            const { data } = await axios.delete(`/api/employees/${context.employee.id}/fingerprints`);
+            await axios.get('/sanctum/csrf-cookie');
+            const { data } = await axios.delete(`/api/admin/employees/${context.employee.id}/fingerprints`);
             updateEmployeeInList({
                 id: context.employee.id,
-                has_fingerprint: data.has_fingerprint,
-                fingerprint_status: data.fingerprint_status,
+                has_fingerprint: false,
+                fingerprint_status: 'none',
             });
             showToast({
                 type: 'success',
-                title: 'Huella actualizada',
-                message: data.message,
+                title: 'Huellas eliminadas',
+                message: `Se eliminaron ${data.deleted_count ?? 0} huella(s).`,
             });
         }
         resetModal();
     } catch (error) {
+        resetModal();
         showToast({
             type: 'error',
-            title: 'Acción no completada',
-            message: error?.response?.data?.message || 'No se pudo completar la acción.',
+            title: 'Accion no completada',
+            message: error?.response?.data?.message || 'No se pudo completar la accion.',
         });
     } finally {
         modalState.value.loading = false;
@@ -293,7 +295,7 @@ onMounted(loadEmployees);
         <template #header>
             <div>
                 <h1 class="text-app text-xl font-semibold leading-tight">
-                    Catálogo de trabajadores
+                    Catalogo de trabajadores
                 </h1>
                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Recursos humanos</p>
             </div>
@@ -346,10 +348,10 @@ onMounted(loadEmployees);
             <p class="text-muted font-semibold">Cambios de estatus recientes:</p>
             <ul class="mt-2 space-y-1 text-sm text-app">
                 <li v-for="item in statusChanges.slice(0, 5)" :key="`${item.company_id}-${item.fortia_employee_id}-${item.changed_at}`">
-                    <span class="font-semibold">{{ item.full_name }}</span> ({{ item.fortia_employee_id }}) - {{ item.old_status }} → {{ item.new_status }}
+                    <span class="font-semibold">{{ item.full_name }}</span> ({{ item.fortia_employee_id }}) - {{ item.old_status }} -> {{ item.new_status }}
                 </li>
                 <li v-if="statusChanges.length > 5" class="text-muted text-xs">
-                    ...y {{ statusChanges.length - 5 }} más
+                    ...y {{ statusChanges.length - 5 }} mas
                 </li>
             </ul>
         </div>
@@ -425,7 +427,7 @@ onMounted(loadEmployees);
                                     Ver asistencias
                                 </button>
                                 <button
-                                    v-if="canUpdateEmployees"
+                                    v-if="canDeleteFingerprints"
                                     class="rounded-2xl border border-app px-3 py-1 text-rose-600"
                                     @click="openFingerprintModal(employee)"
                                 >
@@ -470,3 +472,4 @@ onMounted(loadEmployees);
     </section>
     </AuthenticatedLayout>
 </template>
+

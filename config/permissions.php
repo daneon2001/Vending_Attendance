@@ -45,7 +45,7 @@ return [
         ],
         'biometrics' => [
             'label' => 'Acceso biometrico',
-            'actions' => ['fingerprints.read', 'templates.read'],
+            'actions' => ['fingerprints.read', 'fingerprints.delete', 'templates.read'],
         ],
     ],
     'standard_actions' => ['view', 'create', 'update', 'delete', 'disable', 'export', 'sync', 'manage'],

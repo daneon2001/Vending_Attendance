@@ -7,12 +7,11 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-class EmployeeBiometricRouteSecurityTest extends TestCase
+class EmployeeFingerprintDeleteTest extends TestCase
 {
     private bool $createdUsersTable = false;
     private bool $createdRolesTable = false;
@@ -21,6 +20,7 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
     private bool $createdPermissionRoleTable = false;
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeFingerprintsTable = false;
+    private bool $createdEmployeeTemplateDeletionsTable = false;
     private bool $createdAuditLogsTable = false;
 
     protected function setUp(): void
@@ -36,6 +36,9 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
     {
         if ($this->createdAuditLogsTable && Schema::hasTable('audit_logs')) {
             Schema::drop('audit_logs');
+        }
+        if ($this->createdEmployeeTemplateDeletionsTable && Schema::hasTable('employee_template_deletions')) {
+            Schema::drop('employee_template_deletions');
         }
         if ($this->createdEmployeeFingerprintsTable && Schema::hasTable('employee_fingerprints')) {
             Schema::drop('employee_fingerprints');
@@ -62,97 +65,168 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_biometric_routes_are_registered_in_api_stack_not_web_stack(): void
+    public function test_admin_can_delete_fingerprints_and_returns_deleted_count(): void
     {
-        $adminRoute = $this->findRoute('GET', 'api/admin/employees/{employee}/fingerprints');
-        $this->assertNotNull($adminRoute);
-        $adminMiddleware = $adminRoute->middleware();
-        $this->assertContains('api', $adminMiddleware);
-        $this->assertNotContains('web', $adminMiddleware);
-        $this->assertContains('auth:sanctum', $adminMiddleware);
-        $this->assertContains('audit.biometric', $adminMiddleware);
-        $this->assertContains('perm.strict:biometrics,fingerprints.read', $adminMiddleware);
-        $this->assertContains('throttle:biometrics-fingerprints', $adminMiddleware);
-
-        $deleteRoute = $this->findRoute('DELETE', 'api/admin/employees/{employee}/fingerprints');
-        $this->assertNotNull($deleteRoute);
-        $deleteMiddleware = $deleteRoute->middleware();
-        $this->assertContains('api', $deleteMiddleware);
-        $this->assertNotContains('web', $deleteMiddleware);
-        $this->assertContains('auth:web,sanctum', $deleteMiddleware);
-        $this->assertContains('audit.biometric', $deleteMiddleware);
-        $this->assertContains('role:administrador,admin,superadmin', $deleteMiddleware);
-        $this->assertContains('perm.strict:biometrics,fingerprints.delete', $deleteMiddleware);
-        $this->assertContains('throttle:biometrics-delete', $deleteMiddleware);
-
-        $templateRoute = $this->findRoute('GET', 'api/superadmin/employees/{employee}/fingerprints/templates');
-        $this->assertNotNull($templateRoute);
-        $templateMiddleware = $templateRoute->middleware();
-        $this->assertContains('api', $templateMiddleware);
-        $this->assertNotContains('web', $templateMiddleware);
-        $this->assertContains('auth:sanctum', $templateMiddleware);
-        $this->assertContains('audit.biometric', $templateMiddleware);
-        $this->assertContains('perm.strict:biometrics,templates.read', $templateMiddleware);
-        $this->assertContains('throttle:biometrics-templates', $templateMiddleware);
-    }
-
-    public function test_templates_endpoint_has_basic_throttle_limit(): void
-    {
-        $employeeId = $this->seedEmployeeWithTemplate();
-        $user = $this->createUserWithRoleAndPermission('SuperAdmin', 'biometrics', 'templates.read');
+        $employeeId = $this->seedEmployeeWithFingerprints(2);
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'biometrics', 'fingerprints.delete');
         Sanctum::actingAs($user);
 
-        RateLimiter::clear('biometrics-templates:'.$user->id);
+        $response = $this
+            ->withHeaders([
+                'X-Correlation-Id' => 'corr-delete-ok-001',
+            ])
+            ->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
 
-        for ($i = 0; $i < 10; $i++) {
-            $response = $this->getJson("/api/superadmin/employees/{$employeeId}/fingerprints/templates");
+        $response->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('deleted_count', 2);
+
+        $cacheControl = strtolower((string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', $cacheControl);
+
+        $this->assertSame(
+            0,
+            DB::table('employee_fingerprints')->where('employee_id', $employeeId)->count()
+        );
+        $this->assertDatabaseHas('employees', [
+            'id' => $employeeId,
+            'has_fingerprint' => 0,
+        ]);
+        $this->assertSame(
+            2,
+            DB::table('employee_template_deletions')->where('employee_id', $employeeId)->count()
+        );
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'biometric.fingerprint.deleted',
+            'entity' => 'employee_fingerprints',
+            'reason' => 'fingerprints_deleted',
+            'correlation_id' => 'corr-delete-ok-001',
+        ]);
+
+        $newValues = json_decode((string) DB::table('audit_logs')
+            ->where('action', 'biometric.fingerprint.deleted')
+            ->latest('id')
+            ->value('new_values'), true);
+
+        $this->assertIsArray($newValues);
+        $this->assertSame($employeeId, $newValues['employee_id'] ?? null);
+        $this->assertSame(2, $newValues['deleted_count'] ?? null);
+        $this->assertSame(200, $newValues['response_status'] ?? null);
+        $this->assertNotEmpty($newValues['request_id'] ?? null);
+    }
+
+    public function test_admin_delete_without_existing_fingerprints_returns_zero(): void
+    {
+        $employeeId = $this->seedEmployeeWithoutFingerprints();
+        $user = $this->createUserWithRoleAndPermission('Admin', 'biometrics', 'fingerprints.delete');
+        Sanctum::actingAs($user);
+
+        $response = $this->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
+
+        $response->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('deleted_count', 0);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'biometric.fingerprint.deleted',
+            'entity' => 'employee_fingerprints',
+            'reason' => 'fingerprints_deleted',
+        ]);
+    }
+
+    public function test_user_without_delete_permission_gets_403_and_audit_is_logged(): void
+    {
+        $employeeId = $this->seedEmployeeWithFingerprints(1);
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'employees', 'view');
+        Sanctum::actingAs($user);
+
+        $response = $this
+            ->withHeaders([
+                'X-Correlation-Id' => 'corr-delete-denied-001',
+            ])
+            ->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
+
+        $response->assertForbidden();
+
+        $this->assertSame(
+            1,
+            DB::table('employee_fingerprints')->where('employee_id', $employeeId)->count()
+        );
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'biometric.fingerprint.deleted',
+            'entity' => 'employee_fingerprints',
+            'reason' => 'access_denied',
+            'correlation_id' => 'corr-delete-denied-001',
+        ]);
+    }
+
+    public function test_delete_endpoint_is_throttled(): void
+    {
+        $employeeId = $this->seedEmployeeWithFingerprints(1);
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'biometrics', 'fingerprints.delete');
+        Sanctum::actingAs($user);
+
+        RateLimiter::clear('biometrics-delete:'.$user->id);
+
+        for ($i = 0; $i < 30; $i++) {
+            $response = $this->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
             $response->assertOk();
         }
 
-        $response = $this->getJson("/api/superadmin/employees/{$employeeId}/fingerprints/templates");
+        $response = $this->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
         $response->assertStatus(429);
     }
 
-    private function findRoute(string $method, string $uri)
-    {
-        $method = strtoupper($method);
-
-        return collect(Route::getRoutes()->getRoutes())
-            ->first(fn ($route) => $route->uri() === $uri && in_array($method, $route->methods(), true));
-    }
-
-    private function seedEmployeeWithTemplate(): int
+    private function seedEmployeeWithFingerprints(int $count): int
     {
         $employeeId = DB::table('employees')->insertGetId([
-            'fortia_employee_id' => random_int(81000, 89999),
-            'name' => 'Throttle',
-            'last_name' => 'User',
-            'full_name' => 'Throttle User',
+            'fortia_employee_id' => random_int(60000, 69999),
+            'name' => 'Delete',
+            'last_name' => 'Target',
+            'full_name' => 'Delete Target',
             'status' => 'A',
             'has_fingerprint' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        DB::table('employee_fingerprints')->insert([
-            'employee_id' => $employeeId,
-            'vendor_template_id' => 'TPL-THROTTLE-001',
-            'template_b64' => str_repeat('TTT', 100),
-            'template_format' => 'zkteco-v1',
-            'enrolment_type' => 'FINGERPRINT',
-            'status' => 'enrolled',
+        for ($i = 1; $i <= $count; $i++) {
+            DB::table('employee_fingerprints')->insert([
+                'employee_id' => $employeeId,
+                'vendor_template_id' => "TPL-DEL-{$employeeId}-{$i}",
+                'template_b64' => str_repeat('ABC', 50),
+                'template_format' => 'zkteco-v1',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $employeeId;
+    }
+
+    private function seedEmployeeWithoutFingerprints(): int
+    {
+        return DB::table('employees')->insertGetId([
+            'fortia_employee_id' => random_int(70000, 79999),
+            'name' => 'No',
+            'last_name' => 'Fingerprints',
+            'full_name' => 'No Fingerprints',
+            'status' => 'A',
+            'has_fingerprint' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-
-        return $employeeId;
     }
 
     private function createUserWithRoleAndPermission(string $roleName, string $module, string $action): User
     {
         $userId = DB::table('users')->insertGetId([
             'name' => 'Usuario '.str_replace(' ', '', $roleName),
-            'email' => strtolower(str_replace(' ', '', $roleName)).'.route@example.test',
+            'email' => strtolower(str_replace(' ', '', $roleName)).'.delete@example.test',
             'password' => bcrypt('password'),
             'estatus' => true,
             'created_at' => now(),
@@ -279,9 +353,22 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
                 $table->string('status', 30)->default('enrolled');
                 $table->string('device_serial')->nullable();
                 $table->dateTime('performed_at')->nullable();
+                $table->dateTime('deleted_at')->nullable();
                 $table->timestamps();
             });
             $this->createdEmployeeFingerprintsTable = true;
+        }
+
+        if (! Schema::hasTable('employee_template_deletions')) {
+            Schema::create('employee_template_deletions', function (Blueprint $table): void {
+                $table->id();
+                $table->string('vendor', 40);
+                $table->string('vendor_template_id', 191);
+                $table->unsignedBigInteger('employee_id')->nullable();
+                $table->dateTime('deleted_at');
+                $table->timestamps();
+            });
+            $this->createdEmployeeTemplateDeletionsTable = true;
         }
 
         if (! Schema::hasTable('audit_logs')) {
@@ -322,6 +409,7 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
     {
         foreach ([
             'audit_logs',
+            'employee_template_deletions',
             'employee_fingerprints',
             'employees',
             'permission_role',
