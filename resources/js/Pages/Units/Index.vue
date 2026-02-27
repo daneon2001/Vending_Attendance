@@ -5,6 +5,7 @@ import Toast from '@/Components/Toast.vue';
 import UnitCard from './Partials/UnitCard.vue';
 import UnitFormModal from './Partials/UnitFormModal.vue';
 import UnitDetailDrawer from './Partials/UnitDetailDrawer.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
@@ -271,6 +272,8 @@ const confirmState = reactive({
     loading: false,
 });
 
+useBodyScrollLock(() => confirmState.open);
+
 const openCreateForm = () => {
     formState.mode = 'create';
     formState.form = defaultForm();
@@ -418,7 +421,7 @@ const clearFilters = () => {
                 </article>
                 <div
                     v-if="pageSummary.total"
-                    class="sm:col-span-3 flex flex-col gap-3 lg:flex-row"
+                    class="sm:col-span-3 flex flex-col gap-3 lg:flex-row lg:items-center"
                 >
                     <PaginationBar
                         class="flex-1 card"
@@ -428,10 +431,10 @@ const clearFilters = () => {
                         @update:page="handlePageChange"
                         @update:perPage="handlePerPageChange"
                     />
-                    <div class="card flex items-center justify-center px-4 py-3 lg:w-auto">
+                    <div class="card flex w-full items-center justify-center px-4 py-3 lg:w-auto">
                         <button
                             type="button"
-                            class="inline-flex items-center gap-2 rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app disabled:cursor-not-allowed disabled:opacity-50"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                             :disabled="!canToggleAll"
                             @click="toggleAll"
                         >
@@ -441,13 +444,13 @@ const clearFilters = () => {
                 </div>
                 </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                <div class="flex flex-wrap gap-3">
-                    <div class="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-1.5">
+            <div class="flex flex-wrap items-stretch justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm sm:items-center">
+                <div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
+                    <div class="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 px-3 py-1.5 sm:w-auto sm:justify-start">
                         <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Empresa</span>
                         <select
                             v-model="filters.company_id"
-                            class="bg-transparent text-sm font-medium text-slate-700 focus:outline-none"
+                            class="w-full bg-transparent text-sm font-medium text-slate-700 focus:outline-none sm:w-auto"
                         >
                             <option value="">Todas</option>
                             <option v-for="company in companies" :key="company.id" :value="company.id">
@@ -456,11 +459,11 @@ const clearFilters = () => {
                         </select>
                     </div>
 
-                    <div class="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-1.5">
+                    <div class="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 px-3 py-1.5 sm:w-auto sm:justify-start">
                         <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Estado</span>
                         <select
                             v-model="filters.status"
-                            class="bg-transparent text-sm font-medium text-slate-700 focus:outline-none"
+                            class="w-full bg-transparent text-sm font-medium text-slate-700 focus:outline-none sm:w-auto"
                         >
                             <option value="">Todos</option>
                             <option :value="1">Activas</option>
@@ -472,21 +475,21 @@ const clearFilters = () => {
                         v-model="filters.search"
                         type="search"
                         placeholder="Buscar por nombre o código"
-                        class="rounded-2xl border border-slate-200 px-4 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none sm:w-auto sm:min-w-[16rem]"
                     />
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
                         type="button"
-                        class="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 hover:text-slate-900"
+                        class="w-full rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 hover:text-slate-900 sm:w-auto"
                         @click="clearFilters"
                     >
                         Limpiar
                     </button>
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 sm:w-auto"
                         @click="openCreateForm"
                     >
                         <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -550,7 +553,7 @@ const clearFilters = () => {
             v-if="confirmState.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
                 <h3 class="text-xl font-semibold text-slate-900">
                     {{ confirmState.unit?.status ? 'Desactivar sucursal' : 'Activar sucursal' }}
                 </h3>
@@ -561,17 +564,17 @@ const clearFilters = () => {
                             : '¿Deseas activar la sucursal para permitir asignaciones y monitoreo?'
                     }}
                 </p>
-                <div class="mt-6 flex justify-end gap-2">
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
                         type="button"
-                        class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                        class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                         @click="confirmState.open = false"
                     >
                         Cancelar
                     </button>
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                         :disabled="confirmState.loading"
                         @click="toggleStatus"
                     >

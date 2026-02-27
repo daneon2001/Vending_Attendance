@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
+import LoadingState from '@/Components/LoadingState.vue';
+import EmptyState from '@/Components/EmptyState.vue';
+import ErrorState from '@/Components/ErrorState.vue';
 
 const props = defineProps({
     open: {
@@ -147,13 +151,6 @@ const handleKeyDown = (event) => {
     }
 };
 
-const toggleBodyScroll = (lock) => {
-    if (typeof document === 'undefined') {
-        return;
-    }
-    document.body.classList.toggle('overflow-hidden', lock);
-};
-
 watch(
     () => [props.open, props.employee?.id],
     async ([open, employeeId], [prevOpen, prevEmployeeId]) => {
@@ -173,19 +170,18 @@ watch(
     () => props.open,
     (open) => {
         if (open) {
-            toggleBodyScroll(true);
             window.addEventListener('keydown', handleKeyDown);
         } else {
-            toggleBodyScroll(false);
             window.removeEventListener('keydown', handleKeyDown);
         }
     },
 );
 
 onBeforeUnmount(() => {
-    toggleBodyScroll(false);
     window.removeEventListener('keydown', handleKeyDown);
 });
+
+useBodyScrollLock(() => props.open);
 
 const drawerTitle = computed(
     () => props.employee?.full_name ?? props.employee?.name ?? `Empleado #${props.employee?.id ?? ''}`,
@@ -196,7 +192,7 @@ const drawerTitle = computed(
     <div v-if="open && employee" class="fixed inset-0 z-40 flex">
         <div class="flex-1 bg-slate-900/60" @click="emit('close')" />
         <aside
-            class="relative flex w-full max-w-xl flex-col bg-white/95 px-6 py-6 shadow-2xl transition dark:bg-slate-950/95"
+            class="relative flex min-w-0 w-full max-w-xl flex-col bg-white/95 px-4 py-6 shadow-2xl transition dark:bg-slate-950/95 sm:px-6"
         >
             <header class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800">
                 <div>
@@ -204,13 +200,14 @@ const drawerTitle = computed(
                     <h2 class="text-2xl font-semibold text-app">
                         {{ drawerTitle }}
                     </h2>
-                    <p class="text-sm text-muted">
+                    <p class="truncate text-sm text-muted" :title="employee.company_name ?? 'Compania no asignada'">
                         {{ employee.company_name ?? 'Compañía no asignada' }}
                     </p>
                 </div>
                 <button
                     type="button"
                     class="rounded-full border border-app/40 p-2 text-soft hover:text-app"
+                    aria-label="Cerrar panel de asistencias"
                     @click="emit('close')"
                 >
                     <span class="sr-only">Cerrar</span>
@@ -220,14 +217,14 @@ const drawerTitle = computed(
                 </button>
             </header>
 
-            <section class="mt-5 space-y-4 overflow-y-auto pb-10 text-sm text-muted">
-                <div class="flex flex-wrap gap-3">
+            <section class="mt-5 min-w-0 space-y-4 overflow-y-auto pb-10 text-sm text-muted">
+                <div class="grid gap-3 sm:grid-cols-2">
                     <label class="flex flex-col">
                         <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Desde</span>
                         <input
                             v-model="from"
                             type="date"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900"
                         />
                     </label>
                     <label class="flex flex-col">
@@ -235,54 +232,121 @@ const drawerTitle = computed(
                         <input
                             v-model="to"
                             type="date"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 dark:bg-slate-900"
                         />
                     </label>
                     <button
-                        class="self-end rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500"
+                        type="button"
+                        class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500 sm:col-span-2 sm:w-auto sm:justify-self-end"
                         @click="search"
                     >
                         Buscar
                     </button>
                 </div>
 
-                <p v-if="errorMessage" class="text-sm text-rose-600">
-                    {{ errorMessage }}
-                </p>
+                <ErrorState
+                    v-if="errorMessage && !loading"
+                    title="No se pudieron cargar las asistencias"
+                    :message="errorMessage"
+                    @retry="search"
+                />
 
-                <div class="rounded-2xl border border-app">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
-                            <tr>
-                                <th class="px-3 py-2">Fecha</th>
-                                <th class="px-3 py-2">Primer registro</th>
-                                <th class="px-3 py-2">Último registro</th>
-                                <th class="px-3 py-2 text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-if="loading">
-                                <td colspan="4" class="px-3 py-4 text-center text-soft">Cargando...</td>
-                            </tr>
-                            <template v-else>
+                <LoadingState v-else-if="loading" title="Cargando asistencias..." :rows="3" />
+
+                <EmptyState
+                    v-else-if="!groupedLogs.length"
+                    title="Sin asistencias"
+                    message="No hay asistencias en el rango seleccionado."
+                />
+
+                <div v-else class="rounded-2xl border border-app">
+                    <div class="space-y-3 p-3 sm:hidden">
+                        <article
+                            v-for="group in groupedLogs"
+                            :key="`mobile-${group.dateKey}`"
+                            class="rounded-2xl border border-app bg-white p-3 dark:bg-slate-900"
+                        >
+                            <div class="flex items-start justify-between gap-2">
+                                <p class="text-sm font-semibold text-app">{{ group.dateLabel }}</p>
+                                <button
+                                    type="button"
+                                    class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold"
+                                    :aria-label="expandedDays.has(group.dateKey) ? 'Ocultar detalles del dia' : 'Ver detalles del dia'"
+                                    @click="toggleDetails(group.dateKey)"
+                                >
+                                    {{ expandedDays.has(group.dateKey) ? 'Ocultar' : 'Detalles' }}
+                                </button>
+                            </div>
+                            <dl class="mt-3 space-y-2 text-xs">
+                                <div>
+                                    <dt class="text-soft">Primer registro</dt>
+                                    <dd class="text-app">
+                                        {{ extractTime(group.first) }}
+                                        <span class="block truncate text-soft" :title="group.first.clock?.name ?? 'Sin reloj'">
+                                            {{ group.first.clock?.name ?? 'Sin reloj' }}
+                                        </span>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-soft">Ultimo registro</dt>
+                                    <dd class="text-app">
+                                        {{ extractTime(group.last) }}
+                                        <span class="block truncate text-soft" :title="group.last.location?.name ?? 'Sin unidad'">
+                                            {{ group.last.location?.name ?? 'Sin unidad' }}
+                                        </span>
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            <div v-if="expandedDays.has(group.dateKey)" class="mt-3 space-y-2">
+                                <article
+                                    v-for="log in group.logs"
+                                    :key="`mobile-log-${log.id}`"
+                                    class="rounded-xl border border-app bg-slate-50/70 px-3 py-2 text-xs dark:bg-slate-900/60"
+                                >
+                                    <p class="font-semibold text-app">{{ log.log_date_local_display ?? formatDateTime(resolveLogDate(log)) }}</p>
+                                    <p class="mt-1 truncate text-muted" :title="log.clock?.name ?? `#${log.device_id ?? '-'}`">Reloj: {{ log.clock?.name ?? `#${log.device_id ?? '-'}` }}</p>
+                                    <p class="truncate text-muted" :title="log.location?.name ?? 'Sin unidad'">Unidad: {{ log.location?.name ?? 'Sin unidad' }}</p>
+                                </article>
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="hidden overflow-x-auto sm:block">
+                        <table class="w-full min-w-[42rem] text-sm">
+                            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
+                                <tr>
+                                    <th class="px-3 py-2">Fecha</th>
+                                    <th class="px-3 py-2">Primer registro</th>
+                                    <th class="px-3 py-2">Ultimo registro</th>
+                                    <th class="px-3 py-2 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 <template v-for="group in groupedLogs" :key="group.dateKey">
                                     <tr class="border-t border-app/40 text-muted">
                                         <td class="px-3 py-2 font-semibold text-app">{{ group.dateLabel }}</td>
                                         <td class="px-3 py-2">
                                             <div class="text-sm text-app">
                                                 {{ extractTime(group.first) }}
-                                                <span class="text-xs text-soft">· {{ group.first.clock?.name ?? 'Sin reloj' }}</span>
+                                                <span class="block max-w-[10rem] truncate text-xs text-soft" :title="group.first.clock?.name ?? 'Sin reloj'">
+                                                    {{ group.first.clock?.name ?? 'Sin reloj' }}
+                                                </span>
                                             </div>
                                         </td>
                                         <td class="px-3 py-2">
                                             <div class="text-sm text-app">
                                                 {{ extractTime(group.last) }}
-                                                <span class="text-xs text-soft">· {{ group.last.location?.name ?? 'Sin unidad' }}</span>
+                                                <span class="block max-w-[10rem] truncate text-xs text-soft" :title="group.last.location?.name ?? 'Sin unidad'">
+                                                    {{ group.last.location?.name ?? 'Sin unidad' }}
+                                                </span>
                                             </div>
                                         </td>
                                         <td class="px-3 py-2 text-right">
                                             <button
-                                                class="rounded-2xl border border-app px-4 py-1 text-xs font-semibold hover:text-app"
+                                                type="button"
+                                                class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold hover:text-app sm:w-auto"
+                                                :aria-label="expandedDays.has(group.dateKey) ? 'Ocultar detalles del dia' : 'Ver detalles del dia'"
                                                 @click="toggleDetails(group.dateKey)"
                                             >
                                                 {{ expandedDays.has(group.dateKey) ? 'Ocultar' : 'Detalles' }}
@@ -292,38 +356,39 @@ const drawerTitle = computed(
                                     <tr v-if="expandedDays.has(group.dateKey)">
                                         <td colspan="4" class="bg-slate-50/70 px-3 py-3 dark:bg-slate-900/40">
                                             <div class="rounded-2xl border border-app bg-white p-3 shadow-sm dark:bg-slate-900">
-                                                <table class="w-full text-sm">
-                                                    <thead class="text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                                                        <tr>
-                                                            <th class="px-2 py-1">Fecha/Hora</th>
-                                                            <th class="px-2 py-1">Reloj</th>
-                                                            <th class="px-2 py-1">Unidad</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <tr
-                                                            v-for="log in group.logs"
-                                                            :key="log.id"
-                                                            class="border-t border-app/40 text-muted"
-                                                        >
-                                                            <td class="px-2 py-1">{{ log.log_date_local_display ?? formatDateTime(resolveLogDate(log)) }}</td>
-                                                            <td class="px-2 py-1">{{ log.clock?.name ?? `#${log.device_id ?? '-'}` }}</td>
-                                                            <td class="px-2 py-1">{{ log.location?.name ?? 'Sin unidad' }}</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
+                                                <div class="overflow-x-auto">
+                                                    <table class="w-full min-w-[36rem] text-sm">
+                                                        <thead class="text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                                            <tr>
+                                                                <th class="px-2 py-1">Fecha/Hora</th>
+                                                                <th class="px-2 py-1">Reloj</th>
+                                                                <th class="px-2 py-1">Unidad</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr
+                                                                v-for="log in group.logs"
+                                                                :key="log.id"
+                                                                class="border-t border-app/40 text-muted"
+                                                            >
+                                                                <td class="px-2 py-1">{{ log.log_date_local_display ?? formatDateTime(resolveLogDate(log)) }}</td>
+                                                                <td class="px-2 py-1">
+                                                                    <span class="block max-w-[12rem] truncate" :title="log.clock?.name ?? `#${log.device_id ?? '-'}`">{{ log.clock?.name ?? `#${log.device_id ?? '-'}` }}</span>
+                                                                </td>
+                                                                <td class="px-2 py-1">
+                                                                    <span class="block max-w-[12rem] truncate" :title="log.location?.name ?? 'Sin unidad'">{{ log.location?.name ?? 'Sin unidad' }}</span>
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
                                 </template>
-                                <tr v-if="!groupedLogs.length">
-                                    <td colspan="4" class="px-3 py-6 text-center text-soft">
-                                        Sin asistencias en el rango seleccionado.
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </aside>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
 const props = defineProps({
     show: {
@@ -30,8 +31,10 @@ const props = defineProps({
 
 const emit = defineEmits(['confirm', 'cancel']);
 
+useBodyScrollLock(() => props.show);
+
 const dialogClasses = computed(() => [
-    'w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl transition dark:bg-slate-900 dark:text-slate-100',
+    'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl transition dark:bg-slate-900 dark:text-slate-100 sm:p-6',
 ]);
 </script>
 
@@ -47,16 +50,16 @@ const dialogClasses = computed(() => [
                 <p class="mt-2 text-sm text-muted dark:text-slate-300">
                     {{ message }}
                 </p>
-                <div class="mt-6 flex justify-end gap-2">
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
-                        class="rounded-lg border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app dark:border-slate-700 dark:text-slate-200"
+                        class="w-full rounded-lg border border-app px-4 py-2 text-sm font-semibold text-muted hover:text-app dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                         :disabled="loading"
                         @click="emit('cancel')"
                     >
                         {{ cancelLabel }}
                     </button>
                     <button
-                        class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                         :disabled="loading"
                         @click="emit('confirm')"
                     >

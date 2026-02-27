@@ -31,7 +31,7 @@ const canManageSettings = computed(() => {
 
         <section class="space-y-6">
             <div class="card p-6">
-                <header class="flex items-center justify-between">
+                <header class="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Centro de control</p>
                         <h2 class="text-xl font-semibold text-app">Secciones disponibles</h2>
@@ -69,7 +69,7 @@ const canManageSettings = computed(() => {
                             <Link
                                 v-if="section.route && section.available"
                                 :href="section.route"
-                                class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 sm:w-auto"
                             >
                                 Administrar
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

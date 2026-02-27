@@ -6,10 +6,12 @@ import DropdownLink from '@/Components/DropdownLink.vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { useTheme } from '@/composables/useTheme';
 import { useSidebar } from '@/composables/useSidebar';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
 const mobileSidebarOpen = ref(false);
 const { theme, toggleTheme } = useTheme();
 const { isCollapsed, collapseSidebar, expandSidebar } = useSidebar();
+useBodyScrollLock(() => mobileSidebarOpen.value);
 
 const page = usePage();
 const permissions = computed(() => page.props.auth.permissions ?? {});
@@ -280,8 +282,8 @@ watch(
 </script>
 
 <template>
-    <div class="min-h-screen bg-app text-app transition-colors duration-300">
-        <div class="flex min-h-screen">
+    <div class="min-h-screen overflow-x-clip bg-app text-app transition-colors duration-300">
+        <div class="flex min-h-screen overflow-x-clip">
             <aside
                 :class="[
                     'hidden border-r border-app bg-white/90 backdrop-blur transition-all duration-300 transition-[width] ease-in-out dark:bg-slate-900/70 lg:flex lg:flex-col lg:py-6',
@@ -409,12 +411,14 @@ watch(
 
             </aside>
 
-            <div class="flex flex-1 flex-col">
+            <div class="flex min-w-0 flex-1 flex-col">
                 <header class="sticky top-0 z-20 border-b border-app bg-white/90 backdrop-blur  dark:bg-slate-900/80">
-                    <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-10">
-                        <div class="flex items-center gap-4">
+                    <div class="flex h-16 items-center justify-between gap-2 px-3 sm:px-6 lg:px-10">
+                        <div class="flex min-w-0 items-center gap-2 sm:gap-4">
                             <button
+                                type="button"
                                 class="rounded-2xl border border-app p-2 text-soft lg:hidden"
+                                aria-label="Abrir menu lateral"
                                 @click="mobileSidebarOpen = true"
                             >
                                 <span class="sr-only">Abrir menu</span>
@@ -435,7 +439,7 @@ watch(
                                 </svg>
                             </button>
 
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-base font-semibold text-app">
                                     <slot name="header">
                                         Panel de control
@@ -444,7 +448,7 @@ watch(
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-2 sm:gap-4">
                             <button
                                 type="button"
                                 class="flex h-10 w-10 items-center justify-center rounded-full border border-app text-soft transition-colors hover:text-app dark:hover:text-white"
@@ -483,7 +487,11 @@ watch(
 
                             <Dropdown align="right" width="48" :content-classes="'bg-white shadow-lg ring-1 ring-slate-900/5 rounded-2xl py-2 dark:bg-slate-900 dark:text-slate-100'">
                                 <template #trigger>
-                                    <button class="flex items-center gap-2 rounded-full border border-app bg-white px-3 py-1.5 text-sm font-medium text-muted shadow-sm hover:text-app  dark:bg-slate-900  dark:hover:text-white">
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-2 rounded-full border border-app bg-white px-2 py-1.5 text-sm font-medium text-muted shadow-sm hover:text-app  dark:bg-slate-900  dark:hover:text-white sm:px-3"
+                                        aria-label="Abrir menu de usuario"
+                                    >
                                         <span class="hidden text-right sm:flex sm:flex-col">
                                             <span class="text-xs uppercase tracking-wide text-soft dark:text-soft">Usuario</span>
                                             <span>{{ $page.props.auth.user.name.split(' ')[0] }}</span>
@@ -506,13 +514,13 @@ watch(
                     </div>
                 </header>
 
-                <main class="flex-1 px-4 py-8 sm:px-6 lg:px-10">
-                    <div class="card p-6">
+                <main class="flex-1 min-w-0 px-3 py-6 sm:px-6 sm:py-8 lg:px-10">
+                    <div class="card overflow-hidden p-4 sm:p-6">
                         <slot />
                     </div>
                 </main>
 
-                <footer class="border-t border-app bg-white/80 px-4 py-4 text-xs text-soft  dark:bg-slate-900/80 sm:px-6 lg:px-10">
+                <footer class="border-t border-app bg-white/80 px-3 py-4 text-xs text-soft  dark:bg-slate-900/80 sm:px-6 lg:px-10">
                     <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <p>&copy; {{ currentYear }} Medicallife suite | Gestion humana digital.</p>
                         <p class="text-[11px] uppercase tracking-[0.3em] text-soft dark:text-soft">
@@ -524,14 +532,14 @@ watch(
         </div>
 
         <Transition enter-active-class="duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div v-if="mobileSidebarOpen" class="fixed inset-0 z-40 flex lg:hidden">
+            <div v-if="mobileSidebarOpen" class="fixed inset-0 z-40 flex overflow-hidden lg:hidden">
                 <div class="sidebar-mobile-sheet">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <ApplicationLogo class="h-8 w-8 text-indigo-600" />
                             <p class="text-base font-semibold text-app">Opensync HR</p>
                         </div>
-                        <button class="rounded-full border border-app p-2 " @click="mobileSidebarOpen = false">
+                        <button class="rounded-full border border-app p-2" aria-label="Cerrar menu lateral" @click="mobileSidebarOpen = false">
                             <span class="sr-only">Cerrar menu</span>
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />

@@ -398,12 +398,12 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
 
         <section class="space-y-6">
             <div class="card flex flex-col gap-4 px-4 py-4 sm:px-6">
-                <div class="flex flex-wrap items-center gap-4">
-                    <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                <div class="flex flex-wrap items-end gap-4">
+                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
                         Rango
                         <select
                             v-model="filters.range"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900 sm:w-auto"
                         >
                             <option
                                 v-for="option in rangeOptions"
@@ -417,27 +417,27 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
 
                     <div
                         v-if="hasCustomRange"
-                        class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft"
+                        class="grid w-full gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:grid-cols-2 lg:w-auto lg:grid-cols-[1fr_1fr_auto]"
                     >
-                        <label class="flex items-center gap-2">
+                        <label class="flex flex-col gap-2 sm:flex-col">
                             Desde
                             <input
                                 v-model="filters.from_date"
                                 type="date"
-                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
                             />
                         </label>
-                        <label class="flex items-center gap-2">
+                        <label class="flex flex-col gap-2 sm:flex-col">
                             Hasta
                             <input
                                 v-model="filters.to_date"
                                 type="date"
-                                class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
                             />
                         </label>
                         <button
                             type="button"
-                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500 lg:w-auto"
                             :disabled="loading"
                             @click="applyCustomRange"
                         >
@@ -445,11 +445,11 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                         </button>
                     </div>
 
-                    <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
                         Sucursal
                         <select
                             v-model="filters.unit_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900 sm:w-auto"
                         >
                             <option value="">Todas</option>
                             <option
@@ -464,7 +464,7 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
 
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40 sm:w-auto"
                         :disabled="loading"
                         @click="fetchSummary"
                     >
@@ -473,7 +473,7 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                         <span aria-hidden="true">↻</span>
                     </button>
 
-                    <div class="min-w-[200px] flex-1 space-y-1 text-right">
+                    <div class="min-w-0 w-full space-y-1 text-left sm:ml-auto sm:w-auto sm:min-w-[200px] sm:text-right">
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                             Última actualización
                         </p>
@@ -500,7 +500,7 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                 <span>{{ errorMessage }}</span>
                 <button
                     type="button"
-                    class="rounded-2xl border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-rose-600 hover:bg-rose-100 dark:border-rose-500/60 dark:hover:bg-rose-900/30"
+                    class="w-full rounded-2xl border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-rose-600 hover:bg-rose-100 dark:border-rose-500/60 dark:hover:bg-rose-900/30 sm:w-auto"
                     @click="fetchSummary"
                 >
                     Reintentar

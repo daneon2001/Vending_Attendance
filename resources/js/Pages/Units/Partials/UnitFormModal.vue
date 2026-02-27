@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
 const props = defineProps({
     open: {
@@ -29,6 +30,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'submit']);
+useBodyScrollLock(() => props.open);
 
 const statusOptions = [
     { value: 1, label: 'Activa' },
@@ -45,7 +47,7 @@ const title = computed(() =>
         v-if="open"
         class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
     >
-        <div class="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -58,6 +60,7 @@ const title = computed(() =>
                 <button
                     type="button"
                     class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                    aria-label="Cerrar formulario de sucursal"
                     @click="emit('close')"
                 >
                     <span class="sr-only">Cerrar</span>
@@ -176,17 +179,17 @@ const title = computed(() =>
                     </label>
                 </div>
 
-                <div class="flex justify-end gap-2">
+                <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
                         type="button"
-                        class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                        class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                         @click="emit('close')"
                     >
                         Cancelar
                     </button>
                     <button
                         type="submit"
-                        class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                         :disabled="loading"
                     >
                         <span v-if="loading">Guardando...</span>

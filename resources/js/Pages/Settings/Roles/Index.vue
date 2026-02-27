@@ -1,6 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Toast from '@/Components/Toast.vue';
+import EmptyState from '@/Components/EmptyState.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, reactive, ref, watch } from 'vue';
@@ -81,6 +83,8 @@ const assignModal = reactive({
     userIds: [],
     errors: {},
 });
+
+useBodyScrollLock(() => roleForm.open || assignModal.open);
 
 const moduleEntries = computed(() => Object.entries(props.modules ?? {}));
 
@@ -291,7 +295,7 @@ const selectRole = (role) => {
         </template>
 
         <section class="space-y-6">
-            <div class="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-app bg-white/70 px-6 py-4 dark:bg-slate-900/60">
+            <div class="flex flex-wrap items-stretch justify-between gap-4 rounded-3xl border border-app bg-white/70 px-6 py-4 dark:bg-slate-900/60 sm:items-center">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Roles activos</p>
                     <p class="text-2xl font-semibold text-app">
@@ -301,7 +305,7 @@ const selectRole = (role) => {
                 <button
                     v-if="can('settings', 'create')"
                     type="button"
-                    class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                     @click="openCreateModal"
                 >
                     <span>Nuevo rol</span>
@@ -309,88 +313,150 @@ const selectRole = (role) => {
             </div>
 
             <div class="grid gap-6 lg:grid-cols-3">
-                <div class="card p-4 lg:col-span-2">
-                    <header class="flex items-center justify-between pb-4">
+                <div class="card min-w-0 p-4 lg:col-span-2">
+                    <header class="flex flex-wrap items-center justify-between gap-3 pb-4">
                         <div>
                             <h2 class="text-lg font-semibold text-app">Lista de roles</h2>
                             <p class="text-sm text-muted">Selecciona un rol para ver los detalles y permisos.</p>
                         </div>
                     </header>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-left text-sm">
-                            <thead>
-                                <tr class="text-xs uppercase tracking-[0.3em] text-soft">
-                                    <th class="px-3 py-2">Rol</th>
-                                    <th class="px-3 py-2">Usuarios</th>
-                                    <th class="px-3 py-2">Sistema</th>
-                                    <th class="px-3 py-2 text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="role in roleList"
-                                    :key="role.id"
-                                    class="border-b border-slate-100 last:border-none dark:border-slate-800"
-                                >
-                                    <td class="px-3 py-3">
-                                        <button
-                                            type="button"
-                                            class="text-left"
-                                            @click="selectRole(role)"
-                                        >
-                                            <p class="font-semibold text-app">{{ role.name }}</p>
-                                            <p class="text-xs text-muted">{{ role.description }}</p>
-                                        </button>
-                                    </td>
-                                    <td class="px-3 py-3">
-                                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                                            {{ role.user_count }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-3">
-                                        <span
-                                            class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest"
-                                            :class="role.is_system ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-soft dark:bg-slate-800'"
-                                        >
-                                            {{ role.is_system ? 'System' : 'Custom' }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-3 text-right">
-                                        <div class="inline-flex gap-2">
+                    <EmptyState
+                        v-if="!roleList.length"
+                        title="Sin roles"
+                        message="No hay roles registrados aun."
+                    />
+
+                    <template v-else>
+                        <div class="space-y-3 sm:hidden">
+                            <article
+                                v-for="role in roleList"
+                                :key="`mobile-${role.id}`"
+                                class="rounded-2xl border p-3"
+                                :class="selectedRole?.id === role.id ? 'border-indigo-300 bg-indigo-50/40 dark:border-indigo-500/40 dark:bg-indigo-500/10' : 'border-app bg-white dark:bg-slate-900'"
+                            >
+                                <div class="min-w-0">
+                                    <button
+                                        type="button"
+                                        class="w-full text-left"
+                                        @click="selectRole(role)"
+                                    >
+                                        <p class="truncate font-semibold text-app" :title="role.name">{{ role.name }}</p>
+                                        <p class="mt-1 truncate text-xs text-muted" :title="role.description ?? ''">{{ role.description ?? 'Sin descripcion' }}</p>
+                                    </button>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                                        {{ role.user_count }} usuarios
+                                    </span>
+                                    <span
+                                        class="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-widest"
+                                        :class="role.is_system ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-soft dark:bg-slate-800'"
+                                    >
+                                        {{ role.is_system ? 'System' : 'Custom' }}
+                                    </span>
+                                </div>
+                                <div class="mt-3 flex flex-col gap-2 text-xs font-semibold">
+                                    <button
+                                        type="button"
+                                        class="w-full rounded-2xl border border-app px-3 py-2 text-app"
+                                        @click="selectRole(role)"
+                                    >
+                                        Ver detalle
+                                    </button>
+                                    <button
+                                        v-if="can('settings', 'update')"
+                                        type="button"
+                                        class="w-full rounded-2xl border border-app px-3 py-2 text-indigo-600"
+                                        @click="openEditModal(role)"
+                                    >
+                                        Editar
+                                    </button>
+                                    <button
+                                        v-if="!role.is_system && can('settings', 'delete')"
+                                        type="button"
+                                        class="w-full rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-600"
+                                        @click="deleteRole(role)"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
+                            </article>
+                        </div>
+
+                        <div class="hidden overflow-x-auto sm:block">
+                            <table class="w-full min-w-[56rem] text-left text-sm">
+                                <thead>
+                                    <tr class="text-xs uppercase tracking-[0.3em] text-soft">
+                                        <th class="px-3 py-2">Rol</th>
+                                        <th class="px-3 py-2">Usuarios</th>
+                                        <th class="px-3 py-2">Sistema</th>
+                                        <th class="px-3 py-2 text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        v-for="role in roleList"
+                                        :key="role.id"
+                                        class="border-b border-slate-100 last:border-none dark:border-slate-800"
+                                        :class="selectedRole?.id === role.id ? 'bg-indigo-50/40 dark:bg-indigo-500/10' : ''"
+                                    >
+                                        <td class="px-3 py-3">
                                             <button
-                                                v-if="can('settings', 'update')"
                                                 type="button"
-                                                class="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
-                                                @click="openEditModal(role)"
+                                                class="min-w-0 text-left"
+                                                @click="selectRole(role)"
                                             >
-                                                Editar
+                                                <p class="max-w-[14rem] truncate font-semibold text-app" :title="role.name">{{ role.name }}</p>
+                                                <p class="max-w-[16rem] truncate text-xs text-muted" :title="role.description ?? ''">{{ role.description ?? 'Sin descripcion' }}</p>
                                             </button>
-                                            <button
-                                                v-if="!role.is_system && can('settings', 'delete')"
-                                                type="button"
-                                                class="text-xs font-semibold text-rose-600 hover:text-rose-500"
-                                                @click="deleteRole(role)"
+                                        </td>
+                                        <td class="px-3 py-3">
+                                            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                                                {{ role.user_count }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-3">
+                                            <span
+                                                class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest"
+                                                :class="role.is_system ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-soft dark:bg-slate-800'"
                                             >
-                                                Eliminar
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p v-if="!roleList.length" class="py-6 text-center text-sm text-muted">
-                            No hay roles registrados aún.
-                        </p>
-                    </div>
+                                                {{ role.is_system ? 'System' : 'Custom' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-3 text-right">
+                                            <div class="inline-flex gap-2">
+                                                <button
+                                                    v-if="can('settings', 'update')"
+                                                    type="button"
+                                                    class="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                                                    @click="openEditModal(role)"
+                                                >
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    v-if="!role.is_system && can('settings', 'delete')"
+                                                    type="button"
+                                                    class="text-xs font-semibold text-rose-600 hover:text-rose-500"
+                                                    @click="deleteRole(role)"
+                                                >
+                                                    Eliminar
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
                 </div>
 
-                <div class="card p-5">
+                <div class="card min-w-0 p-5">
                     <div v-if="selectedRole" class="space-y-4">
-                        <div class="flex items-start justify-between">
-                            <div>
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div class="min-w-0">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Rol seleccionado</p>
-                                <h3 class="text-xl font-semibold text-app">{{ selectedRole.name }}</h3>
-                                <p class="text-sm text-muted">{{ selectedRole.description }}</p>
+                                <h3 class="truncate text-xl font-semibold text-app" :title="selectedRole.name">{{ selectedRole.name }}</h3>
+                                <p class="truncate text-sm text-muted" :title="selectedRole.description ?? ''">{{ selectedRole.description ?? 'Sin descripcion' }}</p>
                             </div>
                             <span
                                 class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide"
@@ -431,7 +497,7 @@ const selectRole = (role) => {
                         </div>
 
                         <div class="space-y-3 rounded-2xl border border-app p-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                                         Usuarios asignados
@@ -443,7 +509,7 @@ const selectRole = (role) => {
                                 <button
                                     v-if="can('settings', 'update')"
                                     type="button"
-                                    class="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                                    class="w-full text-left text-xs font-semibold text-indigo-600 hover:text-indigo-500 sm:w-auto sm:text-right"
                                     @click="openAssignModal(selectedRole)"
                                 >
                                     Asignar usuarios
@@ -453,11 +519,11 @@ const selectRole = (role) => {
                                 <li
                                     v-for="user in selectedRole.users ?? []"
                                     :key="user.id"
-                                    class="flex items-center justify-between rounded-2xl border border-app px-3 py-2"
+                                    class="flex flex-col gap-2 rounded-2xl border border-app px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                                 >
-                                    <div>
-                                        <p class="font-semibold">{{ user.name }}</p>
-                                        <p class="text-xs text-muted">{{ user.email }}</p>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="truncate font-semibold" :title="user.name">{{ user.name }}</p>
+                                        <p class="truncate text-xs text-muted" :title="user.email">{{ user.email }}</p>
                                         <span
                                             class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
                                             :class="user.status ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100' : 'bg-slate-100 text-soft dark:bg-slate-800'"
@@ -468,7 +534,7 @@ const selectRole = (role) => {
                                     <button
                                         v-if="can('settings', 'update')"
                                         type="button"
-                                        class="text-xs text-rose-500 hover:text-rose-400"
+                                        class="w-full text-left text-xs text-rose-500 hover:text-rose-400 sm:w-auto sm:text-right"
                                         @click="removeUserFromRole(selectedRole, user)"
                                     >
                                         Quitar
@@ -510,6 +576,7 @@ const selectRole = (role) => {
                     <button
                         type="button"
                         class="rounded-full border border-app p-2 text-soft hover:text-app dark:hover:text-white"
+                        aria-label="Cerrar formulario de rol"
                         @click="roleForm.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -520,7 +587,7 @@ const selectRole = (role) => {
                 </header>
 
                 <form class="flex flex-1 flex-col overflow-hidden" @submit.prevent="submitRoleForm">
-                    <div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+                    <div class="flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <label class="text-sm font-semibold text-app">
                                 Nombre del rol
@@ -545,62 +612,100 @@ const selectRole = (role) => {
                         </div>
 
                         <div class="rounded-3xl border border-app">
-                            <table class="min-w-full text-left text-sm">
-                                <thead>
-                                    <tr class="text-xs uppercase tracking-[0.3em] text-soft">
-                                        <th class="px-4 py-3">Módulo</th>
-                                        <th class="px-4 py-3">Permisos</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                                    <tr
-                                        v-for="[moduleKey, moduleMeta] in moduleEntries"
-                                        :key="moduleKey"
-                                    >
-                                        <td class="px-4 py-3 text-sm font-semibold text-app">
+                            <div class="space-y-3 p-3 sm:hidden">
+                                <article
+                                    v-for="[moduleKey, moduleMeta] in moduleEntries"
+                                    :key="`mobile-${moduleKey}`"
+                                    class="rounded-2xl border border-app bg-white p-3 dark:bg-slate-900"
+                                >
+                                    <div class="flex items-start justify-between gap-2">
+                                        <p class="text-sm font-semibold text-app">
                                             {{ moduleMeta.label }}
-                                        </td>
-                                        <td class="px-4 py-3">
-                                            <div class="flex flex-wrap gap-3">
-                                                <label
-                                                    v-for="action in moduleMeta.actions"
-                                                    :key="`${moduleKey}-${action}`"
-                                                    class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft"
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold text-indigo-600"
+                                            @click="toggleModule(moduleKey, !isModuleFullySelected(moduleKey))"
+                                        >
+                                            {{ isModuleFullySelected(moduleKey) ? 'Quitar todo' : 'Seleccionar todo' }}
+                                        </button>
+                                    </div>
+                                    <div class="mt-3 space-y-2">
+                                        <label
+                                            v-for="action in moduleMeta.actions"
+                                            :key="`${moduleKey}-${action}`"
+                                            class="flex items-center gap-2 rounded-xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-soft"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                :checked="moduleHasAction(moduleKey, action)"
+                                                @change="togglePermission(moduleKey, action)"
+                                            />
+                                            <span class="text-app">{{ action }}</span>
+                                        </label>
+                                    </div>
+                                </article>
+                            </div>
+
+                            <div class="hidden overflow-x-auto sm:block">
+                                <table class="w-full min-w-[48rem] text-left text-sm">
+                                    <thead>
+                                        <tr class="text-xs uppercase tracking-[0.3em] text-soft">
+                                            <th class="px-4 py-3">Módulo</th>
+                                            <th class="px-4 py-3">Permisos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                                        <tr
+                                            v-for="[moduleKey, moduleMeta] in moduleEntries"
+                                            :key="moduleKey"
+                                        >
+                                            <td class="px-4 py-3 text-sm font-semibold text-app">
+                                                {{ moduleMeta.label }}
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap gap-3">
+                                                    <label
+                                                        v-for="action in moduleMeta.actions"
+                                                        :key="`${moduleKey}-${action}`"
+                                                        class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                            :checked="moduleHasAction(moduleKey, action)"
+                                                            @change="togglePermission(moduleKey, action)"
+                                                        />
+                                                        {{ action }}
+                                                    </label>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                                                    @click="toggleModule(moduleKey, !isModuleFullySelected(moduleKey))"
                                                 >
-                                                    <input
-                                                        type="checkbox"
-                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                                        :checked="moduleHasAction(moduleKey, action)"
-                                                        @change="togglePermission(moduleKey, action)"
-                                                    />
-                                                    {{ action }}
-                                                </label>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                class="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-500"
-                                                @click="toggleModule(moduleKey, !isModuleFullySelected(moduleKey))"
-                                            >
-                                                {{ isModuleFullySelected(moduleKey) ? 'Quitar todo' : 'Seleccionar todo' }}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                                                    {{ isModuleFullySelected(moduleKey) ? 'Quitar todo' : 'Seleccionar todo' }}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
                     <div class="flex flex-col gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white sm:w-auto"
                             @click="roleForm.open = false"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                            class="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                             :disabled="roleForm.loading"
                         >
                             <span v-if="roleForm.loading">Guardando...</span>
@@ -616,7 +721,7 @@ const selectRole = (role) => {
             v-if="assignModal.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl dark:bg-slate-900 sm:p-6">
                 <div class="flex items-center justify-between pb-4">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Asignar usuarios</p>
@@ -625,6 +730,7 @@ const selectRole = (role) => {
                     <button
                         type="button"
                         class="rounded-full border border-app p-2 text-soft hover:text-app dark:hover:text-white"
+                        aria-label="Cerrar asignacion de usuarios"
                         @click="assignModal.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -654,17 +760,17 @@ const selectRole = (role) => {
                         </span>
                     </label>
 
-                    <div class="flex justify-end gap-2">
+                    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white sm:w-auto"
                             @click="assignModal.open = false"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="inline-flex items-center rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                            class="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                             :disabled="assignModal.loading"
                         >
                             <span v-if="assignModal.loading">Guardando...</span>

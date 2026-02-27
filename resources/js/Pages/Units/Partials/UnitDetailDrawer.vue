@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
 const props = defineProps({
     open: {
@@ -21,6 +22,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close']);
+useBodyScrollLock(() => props.open);
 
 const monitoringStyles = {
     online: 'bg-emerald-50 text-emerald-700',
@@ -35,9 +37,9 @@ const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'S
 </script>
 
 <template>
-    <div v-if="open" class="fixed inset-0 z-40 flex">
+    <div v-if="open" class="fixed inset-0 z-40 flex overflow-hidden">
         <div class="flex-1 bg-slate-900/50" @click="emit('close')" />
-        <div class="w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl">
+        <div class="w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:p-6">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -53,6 +55,7 @@ const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'S
                 <button
                     type="button"
                     class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                    aria-label="Cerrar detalle de sucursal"
                     @click="emit('close')"
                 >
                     <span class="sr-only">Cerrar</span>

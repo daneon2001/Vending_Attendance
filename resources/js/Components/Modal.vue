@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
 const props = defineProps({
     show: {
@@ -20,17 +21,16 @@ const emit = defineEmits(['close']);
 const dialog = ref();
 const showSlot = ref(props.show);
 
+useBodyScrollLock(() => props.show);
+
 watch(
     () => props.show,
     () => {
         if (props.show) {
-            document.body.style.overflow = 'hidden';
             showSlot.value = true;
 
             dialog.value?.showModal();
         } else {
-            document.body.style.overflow = '';
-
             setTimeout(() => {
                 dialog.value?.close();
                 showSlot.value = false;
@@ -59,8 +59,6 @@ onMounted(() => document.addEventListener('keydown', closeOnEscape));
 
 onUnmounted(() => {
     document.removeEventListener('keydown', closeOnEscape);
-
-    document.body.style.overflow = '';
 });
 
 const maxWidthClass = computed(() => {

@@ -352,3 +352,48 @@ Variables requeridas:
 - `ONPREM_MAX_BATCH_SIZE`
 - `ONPREM_HEARTBEAT_INTERVAL_SECONDS`
 - `ONPREM_DEFAULT_SHARED_SECRET` (opcional; fallback para altas de dispositivos)
+
+## Visual regression (Playwright)
+
+Pruebas visuales responsivas para rutas clave:
+
+- `/dashboard`
+- `/admin/asistencias`
+- `/admin/asistencias/{id}`
+- `/units`
+- `/clocks`
+- `/settings/users`
+- `/settings/roles`
+- `/settings/audit`
+
+Breakpoints cubiertos:
+
+- `360x800`
+- `480x900`
+- `768x1024`
+- `1024x768`
+- `1366x768`
+- `1920x1080`
+
+Variables opcionales para E2E:
+
+- `E2E_BASE_URL` (default: `http://127.0.0.1:8000`)
+- `E2E_EMAIL` (default: `admin@gmail.com`)
+- `E2E_PASSWORD` (default: `password`)
+- `E2E_ATTENDANCE_ID` (si no se define, se toma el primer detalle disponible)
+- `E2E_WEB_SERVER_COMMAND` (comando para levantar la app en pruebas)
+
+Comandos:
+
+```bash
+npm install
+npx playwright install --with-deps chromium
+npm run test:e2e:update
+npm run test:e2e
+```
+
+Notas CI:
+
+1. Ejecutar `npm run build` antes de `npm run test:e2e`.
+2. Mantener snapshots versionados para detectar regresiones.
+3. Al cambiar UI esperada, actualizar snapshots con `npm run test:e2e:update`.

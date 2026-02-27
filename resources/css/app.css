@@ -2,7 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+    :root {
+        --ui-control-height: 2.75rem;
+        --ui-radius: 0.75rem;
+        --ui-space-1: 0.5rem;
+        --ui-space-2: 0.75rem;
+        --ui-space-3: 1rem;
+    }
+
+    html,
+    body,
+    #app {
+        @apply overflow-x-hidden;
+    }
+
+    button,
+    [type='button'],
+    [type='submit'],
+    [type='reset'] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+        min-height: var(--ui-control-height);
+        border-radius: var(--ui-radius);
+    }
+
+    :where(button, a, input, select, textarea):focus-visible {
+        outline: 2px solid rgb(79 70 229 / 0.75);
+        outline-offset: 2px;
+    }
+}
+
 @layer components {
+    .ui-control {
+        @apply min-h-[44px] rounded-xl;
+    }
+
+    .ui-tap-target {
+        @apply min-h-[44px] min-w-[44px];
+    }
+
     .bg-app {
         @apply bg-[#f3f6fb] dark:bg-slate-950;
     }
@@ -121,6 +165,6 @@
     }
 
     .sidebar-mobile-sheet {
-        @apply h-full w-72 overflow-y-auto border-r border-app bg-white p-6 shadow-2xl dark:bg-slate-900;
+        @apply h-full w-[85vw] max-w-xs overflow-y-auto border-r border-app bg-white p-4 shadow-2xl dark:bg-slate-900 sm:w-72 sm:p-6;
     }
 }

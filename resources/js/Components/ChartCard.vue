@@ -50,13 +50,29 @@ const props = defineProps({
 const emit = defineEmits(['point-click']);
 
 const canvasRef = ref(null);
+const chartContainerRef = ref(null);
 let chartInstance = null;
+let resizeObserver = null;
+let resizeRaf = null;
 
 const destroyChart = () => {
     if (chartInstance) {
         chartInstance.destroy();
         chartInstance = null;
     }
+};
+
+const scheduleChartResize = () => {
+    if (typeof window === 'undefined' || !chartInstance) return;
+
+    if (resizeRaf) {
+        window.cancelAnimationFrame(resizeRaf);
+    }
+
+    resizeRaf = window.requestAnimationFrame(() => {
+        chartInstance?.resize();
+        resizeRaf = null;
+    });
 };
 
 const buildOptions = () => {
@@ -149,9 +165,29 @@ watch(
 
 onMounted(() => {
     renderChart();
+
+    if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => {
+            scheduleChartResize();
+        });
+
+        if (chartContainerRef.value) {
+            resizeObserver.observe(chartContainerRef.value);
+        }
+    }
 });
 
 onBeforeUnmount(() => {
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    }
+
+    if (resizeRaf && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(resizeRaf);
+        resizeRaf = null;
+    }
+
     destroyChart();
 });
 </script>
@@ -170,7 +206,7 @@ onBeforeUnmount(() => {
                 </div>
             </header>
 
-            <div class="mt-6 h-64">
+            <div ref="chartContainerRef" class="mt-6 h-56 sm:h-64 lg:h-72">
                 <div
                     v-if="loading"
                     class="h-full rounded-2xl bg-slate-100/70 animate-pulse dark:bg-slate-800/60"

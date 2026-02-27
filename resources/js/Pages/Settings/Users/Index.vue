@@ -3,6 +3,10 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import PaginationBar from '@/Components/PaginationBar.vue';
 import Toast from '@/Components/Toast.vue';
+import LoadingState from '@/Components/LoadingState.vue';
+import EmptyState from '@/Components/EmptyState.vue';
+import ErrorState from '@/Components/ErrorState.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -44,6 +48,7 @@ const meta = reactive({
 });
 
 const loading = ref(false);
+const loadError = ref('');
 
 const toast = reactive({
     show: false,
@@ -87,6 +92,8 @@ const confirmModal = reactive({
     activate: true,
 });
 
+useBodyScrollLock(() => userModal.open);
+
 const passwordRules = [
     'Minimo 10 caracteres',
     'Debe incluir mayusculas y minusculas',
@@ -105,6 +112,7 @@ const setPagination = (payloadMeta) => {
 
 const loadUsers = async (pageNumber = filters.page) => {
     loading.value = true;
+    loadError.value = '';
     filters.page = pageNumber;
     try {
         const { data } = await axios.get('/api/users', {
@@ -119,10 +127,11 @@ const loadUsers = async (pageNumber = filters.page) => {
         users.value = data.data ?? [];
         setPagination(data.meta);
     } catch (error) {
+        loadError.value = error.response?.data?.message ?? 'Intenta nuevamente.';
         showToast({
             type: 'error',
             title: 'No se pudo cargar la lista',
-            message: error.response?.data?.message ?? 'Intenta nuevamente.',
+            message: loadError.value,
         });
     } finally {
         loading.value = false;
@@ -278,14 +287,14 @@ onMounted(() => {
         </template>
 
         <section class="space-y-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-wrap items-stretch justify-between gap-4 sm:items-center">
                 <p class="text-sm text-muted">
                     Consulta y gestiona los usuarios internos de Medical Life.
                 </p>
                 <button
                     v-if="canCreate"
                     type="button"
-                    class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500"
+                    class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 sm:w-auto"
                     @click="openCreateModal"
                 >
                     Nuevo usuario
@@ -293,7 +302,7 @@ onMounted(() => {
             </div>
 
             <div class="card flex flex-wrap gap-4 px-4 py-4 text-sm">
-                <label class="flex min-w-[220px] flex-1 flex-col">
+                <label class="flex w-full flex-1 flex-col sm:min-w-[16rem]">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Buscar</span>
                     <input
                         v-model="filters.search"
@@ -303,11 +312,11 @@ onMounted(() => {
                         @keyup.enter="applyFilters"
                     />
                 </label>
-                <label class="flex flex-col">
+                <label class="flex w-full flex-col sm:w-auto">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Estado</span>
                     <select
                         v-model="filters.status"
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
                         @change="applyFilters"
                     >
                         <option value="todos">Todos</option>
@@ -315,9 +324,9 @@ onMounted(() => {
                         <option value="inactive">Inactivos</option>
                     </select>
                 </label>
-                <div class="flex items-end">
+                <div class="flex w-full items-end sm:w-auto">
                     <button
-                        class="rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app"
+                        class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
                         @click="applyFilters"
                     >
                         Aplicar
@@ -334,9 +343,57 @@ onMounted(() => {
                 @update:perPage="handlePerPageChange"
             />
 
-            <div class="card overflow-hidden p-0">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-left text-sm">
+            <ErrorState
+                v-if="loadError && !loading"
+                title="No se pudo cargar la lista"
+                :message="loadError"
+                @retry="loadUsers(filters.page)"
+            />
+
+            <LoadingState v-else-if="loading" title="Cargando usuarios..." :rows="4" />
+
+            <EmptyState
+                v-else-if="!users.length"
+                title="Sin usuarios"
+                message="No se encontraron usuarios con los filtros seleccionados."
+            />
+
+            <div v-else class="card overflow-hidden p-0">
+                <div class="space-y-3 p-3 sm:hidden">
+                    <article
+                        v-for="user in users"
+                        :key="`mobile-${user.id}`"
+                        class="rounded-2xl border border-app bg-white p-3"
+                    >
+                        <p class="font-semibold text-app">{{ user.name }}</p>
+                        <p class="truncate text-xs text-muted" :title="user.email">{{ user.email }}</p>
+                        <p class="mt-2 text-xs text-muted">Rol: {{ user.roles?.[0]?.name ?? 'Sin rol' }}</p>
+                        <span class="mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide" :class="statusBadgeClass(user.status)">
+                            {{ user.status_label }}
+                        </span>
+                        <div class="mt-3 flex flex-col gap-2 text-xs font-semibold">
+                            <button
+                                v-if="canUpdate"
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-indigo-600"
+                                @click="openEditModal(user)"
+                            >
+                                Editar
+                            </button>
+                            <button
+                                v-if="canDisable"
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-slate-600"
+                                @click="askToggleStatus(user)"
+                            >
+                                {{ user.status ? 'Desactivar' : 'Activar' }}
+                            </button>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="hidden overflow-x-auto sm:block">
+                    <table class="w-full min-w-[56rem] text-left text-sm">
                         <thead>
                             <tr class="text-xs uppercase tracking-[0.3em] text-soft">
                                 <th class="px-4 py-3">Usuario</th>
@@ -352,8 +409,8 @@ onMounted(() => {
                                 class="border-b border-slate-100 last:border-b-0 dark:border-slate-800"
                             >
                                 <td class="px-4 py-3">
-                                    <p class="font-semibold text-app">{{ user.name }}</p>
-                                    <p class="text-xs text-muted">{{ user.email }}</p>
+                                    <p class="max-w-[14rem] truncate font-semibold text-app" :title="user.name">{{ user.name }}</p>
+                                    <p class="max-w-[14rem] truncate text-xs text-muted" :title="user.email">{{ user.email }}</p>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="text-sm text-muted">
@@ -390,13 +447,6 @@ onMounted(() => {
                                 </td>
                             </tr>
                         </tbody>
-                        <tbody v-else>
-                            <tr>
-                                <td colspan="4" class="px-4 py-8 text-center text-sm text-muted">
-                                    No se encontraron usuarios con los filtros seleccionados.
-                                </td>
-                            </tr>
-                        </tbody>
                     </table>
                 </div>
             </div>
@@ -416,7 +466,7 @@ onMounted(() => {
             v-if="userModal.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4 py-8"
         >
-            <div class="flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900">
+            <div class="flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900">
                 <header class="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -429,6 +479,7 @@ onMounted(() => {
                     <button
                         type="button"
                         class="rounded-full border border-app p-2 text-soft hover:text-app dark:hover:text-white"
+                        aria-label="Cerrar formulario de usuario"
                         @click="userModal.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -438,7 +489,7 @@ onMounted(() => {
                     </button>
                 </header>
 
-                <form class="flex flex-1 flex-col overflow-y-auto px-6 py-6" @submit.prevent="submitUser">
+                <form class="flex flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6 sm:py-6" @submit.prevent="submitUser">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <label class="text-sm font-semibold text-app">
                             Nombre completo
@@ -523,17 +574,17 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div class="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                    <div class="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-soft hover:text-app dark:hover:text-white sm:w-auto"
                             @click="userModal.open = false"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                             :disabled="userModal.loading"
                         >
                             <span v-if="userModal.loading">Guardando...</span>

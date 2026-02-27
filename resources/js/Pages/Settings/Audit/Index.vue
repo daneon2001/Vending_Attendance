@@ -2,6 +2,10 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PaginationBar from '@/Components/PaginationBar.vue';
 import Toast from '@/Components/Toast.vue';
+import LoadingState from '@/Components/LoadingState.vue';
+import EmptyState from '@/Components/EmptyState.vue';
+import ErrorState from '@/Components/ErrorState.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -34,6 +38,7 @@ const filters = reactive({
 });
 
 const loading = ref(false);
+const loadError = ref('');
 
 const toast = reactive({
     show: false,
@@ -49,6 +54,8 @@ const detailModal = reactive({
     log: null,
     metadata: null,
 });
+
+useBodyScrollLock(() => detailModal.show);
 
 const userOptions = computed(() => props.users ?? []);
 
@@ -140,6 +147,7 @@ const loadLogs = async (pageNumber = filters.page) => {
     }
 
     loading.value = true;
+    loadError.value = '';
     filters.page = pageNumber;
 
     try {
@@ -150,10 +158,11 @@ const loadLogs = async (pageNumber = filters.page) => {
         logs.value = data.data ?? [];
         Object.assign(meta, data.meta ?? {});
     } catch (error) {
+        loadError.value = error.response?.data?.message ?? 'Intenta nuevamente.';
         showToast({
             type: 'error',
             title: 'Error al cargar bitacora',
-            message: error.response?.data?.message ?? 'Intenta nuevamente.',
+            message: loadError.value,
         });
     } finally {
         loading.value = false;
@@ -268,11 +277,11 @@ onMounted(() => {
 
         <section class="space-y-6">
             <div class="card flex flex-wrap gap-4 px-4 py-4 text-sm">
-                <label class="flex flex-col">
+                <label class="flex w-full flex-col sm:w-auto">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Rango</span>
                     <select
                         v-model="filters.range"
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
                     >
                         <option value="today">Hoy</option>
                         <option value="7d">Ultimos 7 dias</option>
@@ -283,7 +292,7 @@ onMounted(() => {
 
                 <label
                     v-if="filters.range === 'custom'"
-                    class="flex flex-col"
+                    class="flex w-full flex-col sm:w-auto"
                 >
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Desde</span>
                     <input
@@ -291,14 +300,14 @@ onMounted(() => {
                         type="text"
                         inputmode="numeric"
                         placeholder="dd/mm/aaaa"
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
                         @blur="normalizeCustomInput('from')"
                     />
                 </label>
 
                 <label
                     v-if="filters.range === 'custom'"
-                    class="flex flex-col"
+                    class="flex w-full flex-col sm:w-auto"
                 >
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Hasta</span>
                     <input
@@ -306,16 +315,16 @@ onMounted(() => {
                         type="text"
                         inputmode="numeric"
                         placeholder="dd/mm/aaaa"
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
                         @blur="normalizeCustomInput('to')"
                     />
                 </label>
 
-                <label class="flex flex-col min-w-[220px] flex-1">
+                <label class="flex w-full flex-col flex-1 sm:min-w-[16rem]">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Usuario</span>
                     <select
                         v-model="filters.user_id"
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                     >
                         <option value="">Todos</option>
                         <option
@@ -328,20 +337,20 @@ onMounted(() => {
                     </select>
                 </label>
 
-                <label class="flex flex-col">
+                <label class="flex w-full flex-col sm:w-auto sm:min-w-[16rem]">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Buscar</span>
                     <input
                         v-model="filters.q"
                         type="text"
                         placeholder="Accion, descripcion..."
-                        class="rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                         @keyup.enter="applyFilters"
                     />
                 </label>
 
-                <div class="flex items-end">
+                <div class="flex w-full items-end sm:w-auto">
                     <button
-                        class="rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app"
+                        class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
                         @click="applyFilters"
                     >
                         Aplicar filtro
@@ -358,9 +367,47 @@ onMounted(() => {
                 @update:perPage="handlePerPageChange"
             />
 
-            <div class="card overflow-hidden p-0">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-left text-sm">
+            <ErrorState
+                v-if="loadError && !loading"
+                title="No se pudo cargar la bitacora"
+                :message="loadError"
+                @retry="loadLogs(filters.page)"
+            />
+
+            <LoadingState v-else-if="loading" title="Cargando bitacora..." :rows="5" />
+
+            <EmptyState
+                v-else-if="!logs.length"
+                title="Sin eventos"
+                :message="`No hay eventos registrados para ${rangeLabel}.`"
+            />
+
+            <div v-else class="card overflow-hidden p-0">
+                <div class="space-y-3 p-3 sm:hidden">
+                    <article
+                        v-for="log in logs"
+                        :key="`mobile-${log.id}`"
+                        class="rounded-2xl border border-app bg-white p-3"
+                    >
+                        <p class="text-xs text-soft">{{ formatAuditDate(log) }}</p>
+                        <p class="mt-1 text-sm font-semibold text-app">{{ log.user?.name ?? 'Sistema' }}</p>
+                        <p class="truncate text-xs text-muted" :title="log.user?.email ?? ''">{{ log.user?.email ?? '' }}</p>
+                        <span class="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-soft dark:bg-slate-800">
+                            {{ log.event }}
+                        </span>
+                        <p class="mt-2 line-clamp-3 text-sm text-muted">{{ log.description ?? '' }}</p>
+                        <button
+                            type="button"
+                            class="mt-3 w-full rounded-2xl border border-app px-3 py-2 text-xs font-semibold text-indigo-600"
+                            @click="openDetail(log)"
+                        >
+                            Ver detalles
+                        </button>
+                    </article>
+                </div>
+
+                <div class="hidden overflow-x-auto sm:block">
+                    <table class="w-full min-w-[72rem] text-left text-sm">
                         <thead>
                             <tr class="text-xs uppercase tracking-[0.3em] text-soft">
                                 <th class="px-4 py-3">Fecha</th>
@@ -371,7 +418,7 @@ onMounted(() => {
                                 <th class="px-4 py-3 text-right">Detalles</th>
                             </tr>
                         </thead>
-                        <tbody v-if="logs.length">
+                        <tbody>
                             <tr
                                 v-for="log in logs"
                                 :key="log.id"
@@ -382,7 +429,7 @@ onMounted(() => {
                                 </td>
                                 <td class="px-4 py-3">
                                     <p class="font-semibold text-app">{{ log.user?.name ?? 'Sistema' }}</p>
-                                    <p class="text-xs text-muted">{{ log.user?.email ?? '' }}</p>
+                                    <p class="max-w-[14rem] truncate text-xs text-muted" :title="log.user?.email ?? ''">{{ log.user?.email ?? '' }}</p>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-soft dark:bg-slate-800">
@@ -409,13 +456,6 @@ onMounted(() => {
                                 </td>
                             </tr>
                         </tbody>
-                        <tbody v-else>
-                            <tr>
-                                <td colspan="6" class="px-4 py-10 text-center text-sm text-muted">
-                                    No hay eventos registrados para {{ rangeLabel }}.
-                                </td>
-                            </tr>
-                        </tbody>
                     </table>
                 </div>
             </div>
@@ -426,7 +466,7 @@ onMounted(() => {
             v-if="detailModal.show"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4 py-8"
         >
-            <div class="flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900">
+            <div class="flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900">
                 <header class="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -439,6 +479,7 @@ onMounted(() => {
                     <button
                         type="button"
                         class="rounded-full border border-app p-2 text-soft hover:text-app dark:hover:text-white"
+                        aria-label="Cerrar detalle de auditoria"
                         @click="closeDetail"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -447,7 +488,7 @@ onMounted(() => {
                         </svg>
                     </button>
                 </header>
-                <section class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-5 text-sm text-muted">
+                <section class="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 text-sm text-muted sm:px-6">
                     <div v-if="detailModal.loading">
                         Cargando detalle...
                     </div>

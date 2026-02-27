@@ -22,3 +22,6 @@ yarn-error.log
 /.vscode
 /.zed
 public/images/generated/
+/playwright-report
+/test-results
+/tests/e2e/.auth

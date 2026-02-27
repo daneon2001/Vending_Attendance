@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PaginationBar from '@/Components/PaginationBar.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 
@@ -221,6 +222,8 @@ const submitAdjustment = () => {
     });
 };
 
+useBodyScrollLock(() => showAdjustmentModal.value);
+
 watch(
     () => adjustmentForm.hasErrors,
     (hasErrors) => {
@@ -405,16 +408,16 @@ watch(
                         </select>
                     </label>
 
-                    <div class="flex flex-wrap items-end gap-2 lg:col-span-2">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:col-span-2">
                         <button
                             type="submit"
-                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white sm:w-auto"
                         >
                             Aplicar filtros
                         </button>
                         <button
                             type="button"
-                            class="rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted"
+                            class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
                             @click="clearFilters"
                         >
                             Limpiar
@@ -422,7 +425,7 @@ watch(
                         <button
                             v-if="canEdit"
                             type="button"
-                            class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700"
+                            class="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 sm:w-auto"
                             @click="openAdjustmentModal"
                         >
                             Ajuste manual
@@ -431,7 +434,7 @@ watch(
                 </form>
             </section>
 
-            <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-stretch justify-between gap-3 sm:items-center">
                 <PaginationBar
                     class="flex-1"
                     :meta="paginationMeta"
@@ -439,16 +442,16 @@ watch(
                     @update:page="handlePageChange"
                     @update:perPage="handlePerPageChange"
                 />
-                <div v-if="canExport" class="flex gap-2">
+                <div v-if="canExport" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <a
                         :href="exportCsvUrl"
-                        class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted"
+                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
                     >
                         Exportar CSV
                     </a>
                     <a
                         :href="exportExcelUrl"
-                        class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted"
+                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
                     >
                         Exportar Excel
                     </a>
@@ -456,8 +459,65 @@ watch(
             </div>
 
             <section class="card overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <div v-if="!records.length" class="p-4">
+                    <p class="text-center text-sm text-soft">No hay registros para los filtros seleccionados.</p>
+                </div>
+
+                <div v-else class="space-y-3 p-3 sm:hidden">
+                    <article
+                        v-for="record in records"
+                        :key="`mobile-${record.id}`"
+                        class="rounded-2xl border border-app bg-white p-3 shadow-sm"
+                    >
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <p class="font-semibold text-app">{{ record.employee?.name ?? 'N/A' }}</p>
+                                <p class="text-xs text-soft">ID {{ record.employee?.code ?? 'N/A' }}</p>
+                            </div>
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClass(record.attendance_status)">
+                                {{ record.status_label }}
+                            </span>
+                        </div>
+                        <dl class="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-xs">
+                            <div>
+                                <dt class="text-soft">Fecha</dt>
+                                <dd class="text-app">{{ record.log_date_display ?? 'N/A' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-soft">Tipo</dt>
+                                <dd class="text-app">{{ record.log_type_label }} ({{ record.log_type }})</dd>
+                            </div>
+                            <div>
+                                <dt class="text-soft">Unidad</dt>
+                                <dd class="truncate text-app" :title="record.location?.name ?? 'Sin unidad'">{{ record.location?.name ?? 'Sin unidad' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-soft">Reloj</dt>
+                                <dd class="truncate text-app" :title="record.clock?.name ?? 'N/A'">{{ record.clock?.name ?? 'N/A' }}</dd>
+                            </div>
+                        </dl>
+                        <div class="mt-3 flex flex-col gap-2">
+                            <Link
+                                :href="route('admin.asistencias.show', record.id)"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold text-muted"
+                            >
+                                Ver detalle
+                            </Link>
+                            <button
+                                v-if="canEdit && record.attendance_status !== 'anulada'"
+                                type="button"
+                                class="w-full rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"
+                                :disabled="annulForm.processing"
+                                @click="submitAnnulment(record.id)"
+                            >
+                                Anular
+                            </button>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="hidden overflow-x-auto sm:block">
+                    <table class="w-full min-w-[72rem] divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.3em] text-soft">
                             <tr>
                                 <th class="px-3 py-3">Fecha/hora</th>
@@ -471,11 +531,6 @@ watch(
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <tr v-if="!records.length">
-                                <td colspan="8" class="px-3 py-8 text-center text-sm text-soft">
-                                    No hay registros para los filtros seleccionados.
-                                </td>
-                            </tr>
                             <tr
                                 v-for="record in records"
                                 :key="record.id"
@@ -486,14 +541,18 @@ watch(
                                     <p class="text-xs text-soft">{{ record.log_date_timezone ?? 'UTC' }}</p>
                                 </td>
                                 <td class="px-3 py-3">
-                                    <p class="font-semibold text-app">{{ record.employee?.name ?? 'N/A' }}</p>
+                                    <p class="max-w-[14rem] truncate font-semibold text-app" :title="record.employee?.name ?? 'N/A'">{{ record.employee?.name ?? 'N/A' }}</p>
                                     <p class="text-xs text-soft">ID {{ record.employee?.code ?? 'N/A' }}</p>
                                 </td>
                                 <td class="px-3 py-3 text-muted">
-                                    {{ record.location?.name ?? 'Sin unidad' }}
+                                    <span class="block max-w-[12rem] truncate" :title="record.location?.name ?? 'Sin unidad'">
+                                        {{ record.location?.name ?? 'Sin unidad' }}
+                                    </span>
                                 </td>
                                 <td class="px-3 py-3 text-muted">
-                                    {{ record.clock?.name ?? 'N/A' }}
+                                    <span class="block max-w-[12rem] truncate" :title="record.clock?.name ?? 'N/A'">
+                                        {{ record.clock?.name ?? 'N/A' }}
+                                    </span>
                                 </td>
                                 <td class="px-3 py-3 text-muted">
                                     {{ record.log_type_label }} ({{ record.log_type }})
@@ -513,14 +572,14 @@ watch(
                                     <div class="flex flex-wrap gap-2">
                                         <Link
                                             :href="route('admin.asistencias.show', record.id)"
-                                            class="rounded-2xl border border-app px-3 py-1 text-xs font-semibold text-muted"
+                                            class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold text-muted"
                                         >
                                             Ver detalle
                                         </Link>
                                         <button
                                             v-if="canEdit && record.attendance_status !== 'anulada'"
                                             type="button"
-                                            class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700"
+                                            class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"
                                             :disabled="annulForm.processing"
                                             @click="submitAnnulment(record.id)"
                                         >
@@ -539,7 +598,7 @@ watch(
             v-if="canEdit && showAdjustmentModal"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl dark:bg-slate-900 sm:p-6">
                 <div class="mb-4 flex items-center justify-between">
                     <h3 class="text-lg font-semibold text-app">Nuevo ajuste manual</h3>
                     <button
@@ -669,17 +728,17 @@ watch(
                         </span>
                     </label>
 
-                    <div class="md:col-span-2 flex justify-end gap-2 pt-2">
+                    <div class="md:col-span-2 flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted"
+                            class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
                             @click="closeAdjustmentModal"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white disabled:opacity-60"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white disabled:opacity-60 sm:w-auto"
                             :disabled="adjustmentForm.processing"
                         >
                             <span v-if="adjustmentForm.processing">Guardando...</span>

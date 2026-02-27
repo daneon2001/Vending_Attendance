@@ -47,34 +47,34 @@ const changePerPage = (event) => {
 
 <template>
     <div
-        class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-app bg-white px-4 py-3 text-sm dark:bg-slate-900"
+        class="flex flex-col gap-3 rounded-xl border border-app bg-white px-4 py-3 text-sm dark:bg-slate-900 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
         :class="compact ? 'text-xs' : 'text-sm'"
     >
-        <div class="min-w-[150px] text-soft">
+        <div class="w-full text-soft sm:w-auto sm:min-w-[150px]">
             Mostrando
             <span class="font-semibold text-app">{{ from }}</span>
-            –
+            -
             <span class="font-semibold text-app">{{ to }}</span>
             de
             <span class="font-semibold text-app">{{ total }}</span>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <button
                 type="button"
-                class="rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+                class="w-full rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
                 :disabled="!canGoPrev || disabled"
                 aria-label="Pagina anterior"
                 @click="changePage(currentPage - 1)"
             >
                 Anterior
             </button>
-            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                Página {{ currentPage }} de {{ lastPage }}
+            <span class="text-center text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                Pagina {{ currentPage }} de {{ lastPage }}
             </span>
             <button
                 type="button"
-                class="rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+                class="w-full rounded-lg border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
                 :disabled="!canGoNext || disabled"
                 aria-label="Pagina siguiente"
                 @click="changePage(currentPage + 1)"
@@ -83,10 +83,10 @@ const changePerPage = (event) => {
             </button>
         </div>
 
-        <div class="flex items-center gap-2 text-soft">
+        <div class="flex w-full items-center justify-between gap-2 text-soft sm:w-auto sm:justify-end">
             <label class="text-xs uppercase tracking-[0.3em]">Registros</label>
             <select
-                class="rounded-lg border border-app bg-white px-6 py-2 text-sm dark:bg-slate-900"
+                class="w-24 rounded-lg border border-app bg-white px-3 py-2 text-sm dark:bg-slate-900"
                 :value="props.meta?.per_page ?? perPageOptions[0]"
                 :disabled="disabled"
                 @change="changePerPage"

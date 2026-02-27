@@ -100,10 +100,10 @@ const submitAnnulment = () => {
                 {{ flashWarning }}
             </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-stretch justify-between gap-2 sm:items-center">
                 <Link
                     :href="route('admin.asistencias.index')"
-                    class="rounded-2xl border border-app px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted"
+                    class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
                 >
                     Volver al listado
                 </Link>
@@ -111,7 +111,7 @@ const submitAnnulment = () => {
                 <button
                     v-if="canEdit && record.attendance_status !== 'anulada'"
                     type="button"
-                    class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-rose-700"
+                    class="w-full rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-rose-700 sm:w-auto"
                     :disabled="annulForm.processing"
                     @click="submitAnnulment"
                 >
@@ -210,8 +210,32 @@ const submitAnnulment = () => {
             <section class="card p-4">
                 <h3 class="mb-3 text-base font-semibold text-app">Bitacora de cambios</h3>
 
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <div v-if="!record.audits?.length" class="rounded-2xl border border-app p-4 text-sm text-soft">
+                    Sin auditoria para este registro.
+                </div>
+
+                <div v-else class="space-y-3 sm:hidden">
+                    <article
+                        v-for="audit in record.audits"
+                        :key="`mobile-${audit.id}`"
+                        class="rounded-2xl border border-app p-3"
+                    >
+                        <p class="text-xs text-soft">{{ audit.created_at_display ?? 'N/A' }}</p>
+                        <p class="mt-1 text-sm font-semibold text-app">{{ audit.action }}</p>
+                        <p class="text-xs text-muted">{{ audit.changed_by_name ?? 'N/A' }}</p>
+                        <p class="mt-2 text-sm text-app">{{ audit.reason ?? 'N/A' }}</p>
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-xs text-indigo-600">Ver diff</summary>
+                            <div class="mt-2 space-y-2">
+                                <pre class="overflow-x-auto rounded-xl bg-slate-900 p-2 text-[11px] text-slate-100">{{ prettyJson(audit.before_data) }}</pre>
+                                <pre class="overflow-x-auto rounded-xl bg-slate-900 p-2 text-[11px] text-slate-100">{{ prettyJson(audit.after_data) }}</pre>
+                            </div>
+                        </details>
+                    </article>
+                </div>
+
+                <div class="hidden overflow-x-auto sm:block">
+                    <table class="w-full min-w-[64rem] divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.3em] text-soft">
                             <tr>
                                 <th class="px-3 py-3">Fecha</th>
@@ -222,11 +246,6 @@ const submitAnnulment = () => {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <tr v-if="!record.audits?.length">
-                                <td colspan="5" class="px-3 py-6 text-center text-sm text-soft">
-                                    Sin auditoria para este registro.
-                                </td>
-                            </tr>
                             <tr v-for="audit in record.audits" :key="audit.id">
                                 <td class="px-3 py-3 text-muted">{{ audit.created_at_display ?? 'N/A' }}</td>
                                 <td class="px-3 py-3 text-app">{{ audit.action }}</td>

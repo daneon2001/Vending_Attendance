@@ -83,7 +83,7 @@ onBeforeUnmount(() => {
         <transition name="fade">
             <div
                 v-if="show"
-                class="pointer-events-auto fixed top-6 right-6 z-[70] w-full max-w-sm rounded-3xl border px-4 py-3 text-sm shadow-lg"
+                class="pointer-events-auto fixed left-4 right-4 top-4 z-[70] w-auto max-w-none rounded-3xl border px-4 py-3 text-sm shadow-lg sm:left-auto sm:right-6 sm:top-6 sm:w-full sm:max-w-sm"
                 :class="typeStyles.container"
             >
                 <div class="flex items-start gap-3">
@@ -91,7 +91,7 @@ onBeforeUnmount(() => {
                         <p class="text-base font-semibold" :class="typeStyles.title">
                             {{ title }}
                         </p>
-                        <p class="mt-1 text-slate-600 dark:text-slate-200">
+                        <p class="mt-1 break-words text-slate-600 dark:text-slate-200">
                             {{ message }}
                         </p>
                     </div>

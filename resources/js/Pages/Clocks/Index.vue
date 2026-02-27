@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
@@ -148,6 +149,11 @@ const logsDrawer = reactive({
     error: null,
     filters: createEmptyLogFilters(),
 });
+
+const anyOverlayOpen = computed(
+    () => importModal.open || formModal.open || assignModal.open || logsDrawer.open,
+);
+useBodyScrollLock(() => anyOverlayOpen.value);
 
 const formatDateInput = (date) => date.toISOString().split('T')[0];
 
@@ -643,8 +649,8 @@ const resetLogsFilters = () => {
                     <div
                         class="flex flex-col gap-4 rounded-3xl border border-slate-100 bg-white/80 p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:bg-slate-900/60"
                     >
-                        <div class="flex flex-wrap items-center justify-between gap-3 lg:flex-nowrap">
-                            <div class="min-w-[220px]">
+                        <div class="flex flex-wrap items-stretch justify-between gap-3 sm:items-center lg:flex-nowrap">
+                            <div class="min-w-0 w-full sm:w-auto">
                                 <p class="text-sm font-semibold text-app dark:text-slate-100">
                                     <span v-if="pageSummary.total">
                                         Mostrando {{ pageSummary.start }}–{{ pageSummary.end }} de {{ pageSummary.total }}
@@ -652,12 +658,12 @@ const resetLogsFilters = () => {
                                     <span v-else>Sin checadores registrados</span>
                                 </p>
                             </div>
-                            <div class="flex flex-wrap items-center gap-2">
+                            <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                                 <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                                     Registros por página
                                     <select
                                         v-model.number="perPage"
-                                        class="rounded-2xl border border-slate-200 px-6 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                                        class="w-full rounded-2xl border border-slate-200 px-3 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 sm:w-auto"
                                     >
                                         <option v-for="option in perPageOptions" :key="option" :value="option">
                                             {{ option }}
@@ -666,17 +672,17 @@ const resetLogsFilters = () => {
                                 </label>
                                 <button
                                     type="button"
-                                    class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                     :disabled="!canToggleAll"
                                     @click="toggleAll"
                                 >
                                     {{ collapseToggleLabel }}
                                 </button>
                             </div>
-                            <div class="flex flex-wrap items-center gap-2">
+                            <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                                 <button
                                     type="button"
-                                    class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                     :aria-label="'Página anterior'"
                                     :disabled="listLoading || currentPage <= 1"
                                     @click="goToPrevPage"
@@ -685,7 +691,7 @@ const resetLogsFilters = () => {
                                 </button>
                                 <button
                                     type="button"
-                                    class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                                    class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                     :aria-label="'Página siguiente'"
                                     :disabled="listLoading || currentPage >= totalPages"
                                     @click="goToNextPage"
@@ -701,7 +707,7 @@ const resetLogsFilters = () => {
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-stretch justify-between gap-3 sm:items-center">
                 <div>
                     <h2 class="text-app text-xl font-semibold leading-tight">
                         Catálogo
@@ -714,17 +720,17 @@ const resetLogsFilters = () => {
                         {{ totalLocations }} unidades monitoreadas
                     </p>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
                         type="button"
-                        class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:text-slate-900"
+                        class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:text-slate-900 sm:w-auto"
                         @click="triggerAction('import', { id: null })"
                     >
                         <span>Importar</span>
                     </button>
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 sm:w-auto"
                         @click="triggerAction('create', { id: null })"
                     >
                         <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
@@ -752,7 +758,7 @@ const resetLogsFilters = () => {
                     class="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition hover:border-indigo-100 hover:ring-indigo-50"
                 >
                     <header class="flex flex-wrap items-center justify-between gap-3">
-                        <div class="min-w-[12rem] flex-1">
+                        <div class="min-w-0 flex-1">
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                                 {{ clock.company?.name ?? 'Compañía' }}
                             </p>
@@ -862,24 +868,24 @@ const resetLogsFilters = () => {
                             </dl>
                         </div>
 
-                        <div class="mt-5 flex flex-wrap gap-2 text-sm font-medium text-slate-600">
+                        <div class="mt-5 flex flex-col gap-2 text-sm font-medium text-slate-600 sm:flex-row sm:flex-wrap">
                             <button
                                 type="button"
-                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                 @click="triggerAction('view', clock)"
                             >
                                 Consultar bitácora
                             </button>
                             <button
                                 type="button"
-                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                 @click="triggerAction('assign', clock)"
                             >
                                 Asignar a unidad
                             </button>
                             <button
                                 type="button"
-                                class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                                 @click="triggerAction('edit', clock)"
                             >
                                 Editar configuración
@@ -895,7 +901,7 @@ const resetLogsFilters = () => {
             v-if="importModal.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -906,6 +912,7 @@ const resetLogsFilters = () => {
                     <button
                         type="button"
                         class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                        aria-label="Cerrar importacion de relojes"
                         @click="importModal.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -941,17 +948,17 @@ const resetLogsFilters = () => {
                     </li>
                 </ul>
 
-                <div class="mt-6 flex justify-end gap-2">
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button
                         type="button"
-                        class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                        class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                         @click="importModal.open = false"
                     >
                         Cancelar
                     </button>
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                         :disabled="importModal.loading || !importModal.file"
                         @click="submitImport"
                     >
@@ -967,7 +974,7 @@ const resetLogsFilters = () => {
             v-if="formModal.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -980,6 +987,7 @@ const resetLogsFilters = () => {
                     <button
                         type="button"
                         class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                        aria-label="Cerrar formulario de reloj"
                         @click="formModal.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -1117,17 +1125,17 @@ const resetLogsFilters = () => {
                         </label>
                     </div>
 
-                    <div class="flex justify-end gap-2">
+                    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                             @click="formModal.open = false"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                             :disabled="formModal.loading"
                         >
                             <span v-if="formModal.loading">Guardando...</span>
@@ -1143,7 +1151,7 @@ const resetLogsFilters = () => {
             v-if="assignModal.open"
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
-            <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -1155,6 +1163,7 @@ const resetLogsFilters = () => {
                     <button
                         type="button"
                         class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                        aria-label="Cerrar asignacion de unidad"
                         @click="assignModal.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -1179,17 +1188,17 @@ const resetLogsFilters = () => {
                         </span>
                     </label>
 
-                    <div class="flex justify-end gap-2">
+                    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                             @click="assignModal.open = false"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            class="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-60 sm:w-auto"
                             :disabled="assignModal.loading"
                         >
                             <span v-if="assignModal.loading">Asignando...</span>
@@ -1201,9 +1210,9 @@ const resetLogsFilters = () => {
         </div>
 
         <!-- Logs drawer -->
-        <div v-if="logsDrawer.open" class="fixed inset-0 z-40 flex">
+        <div v-if="logsDrawer.open" class="fixed inset-0 z-40 flex overflow-hidden">
             <div class="flex-1 bg-slate-900/50" @click="logsDrawer.open = false" />
-            <div class="w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl">
+            <div class="w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl sm:p-6">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -1219,6 +1228,7 @@ const resetLogsFilters = () => {
                     <button
                         type="button"
                         class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
+                        aria-label="Cerrar bitacora de reloj"
                         @click="logsDrawer.open = false"
                     >
                         <span class="sr-only">Cerrar</span>
@@ -1263,17 +1273,17 @@ const resetLogsFilters = () => {
                             class="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2"
                         />
                     </label>
-                    <div class="flex gap-2 sm:col-span-2">
+                    <div class="flex flex-col gap-2 sm:col-span-2 sm:flex-row">
                         <button
                             type="submit"
-                            class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white sm:w-auto"
                             :disabled="logsDrawer.loading"
                         >
                             Aplicar filtros
                         </button>
                         <button
                             type="button"
-                            class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
+                            class="w-full rounded-2xl px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 sm:w-auto"
                             @click="resetLogsFilters"
                         >
                             Limpiar
@@ -1293,7 +1303,7 @@ const resetLogsFilters = () => {
                         :key="log.id"
                         class="rounded-2xl border border-slate-100 p-4 text-sm"
                     >
-                        <header class="flex items-center justify-between gap-2">
+                        <header class="flex items-start justify-between gap-2">
                             <div>
                                 <p class="text-xs uppercase tracking-[0.3em] text-slate-400">
                                     {{ log.event_type }}

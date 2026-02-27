@@ -124,15 +124,15 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                 </dl>
             </div>
 
-            <div class="mt-5 flex flex-wrap gap-2 text-sm font-medium text-slate-600">
-                <button class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900" @click="emit('view', unit)">
+            <div class="mt-5 flex flex-col gap-2 text-sm font-medium text-slate-600 sm:flex-row sm:flex-wrap">
+                <button class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto" @click="emit('view', unit)">
                     Ver detalle
                 </button>
-                <button class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900" @click="emit('edit', unit)">
+                <button class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto" @click="emit('edit', unit)">
                     Editar
                 </button>
                 <button
-                    class="inline-flex items-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900"
+                    class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto"
                     @click="emit('toggle', unit)"
                 >
                     {{ unit.status ? 'Desactivar' : 'Activar' }}
