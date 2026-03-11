@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AuditLogResource extends JsonResource
+{
+    public function toArray($request): array
+    {
+        $timezone = config('app.timezone', 'UTC');
+        $createdAt = $this->created_at ? $this->created_at->copy() : null;
+
+        return [
+            'id' => $this->id,
+            'event' => $this->event,
+            'action' => $this->action,
+            'entity' => $this->entity ?? $this->auditable_type,
+            'entity_id' => $this->entity_id ?? $this->auditable_id,
+            'description' => $this->description,
+            'reason' => $this->reason,
+            'created_at' => optional($createdAt)->toISOString(),
+            'created_at_local' => optional($createdAt)
+                ? $createdAt->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')
+                : null,
+            'request_id' => $this->request_id,
+            'correlation_id' => $this->correlation_id,
+            'user' => [
+                'id' => $this->actor_user_id ?? $this->user_id,
+                'name' => $this->user_name ?? optional($this->user)->name,
+                'email' => $this->user_email ?? optional($this->user)->email,
+                'type' => $this->actor_type ?? 'user',
+                'identifier' => $this->actor_identifier,
+            ],
+            'auditable_type' => $this->auditable_type,
+            'auditable_id' => $this->auditable_id,
+            'has_metadata' => ! empty($this->metadata),
+        ];
+    }
+}
