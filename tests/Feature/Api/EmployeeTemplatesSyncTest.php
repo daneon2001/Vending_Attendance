@@ -37,6 +37,7 @@ class EmployeeTemplatesSyncTest extends TestCase
                 $table->id();
                 $table->unsignedBigInteger('fortia_employee_id')->unique();
                 $table->unsignedBigInteger('base_location_id')->nullable();
+                $table->boolean('can_check_all_branches')->default(false);
                 $table->string('status', 20)->default('A');
                 $table->timestamps();
             });
@@ -51,6 +52,7 @@ class EmployeeTemplatesSyncTest extends TestCase
                 $table->string('vendor_template_id', 191)->nullable();
                 $table->longText('template_b64')->nullable();
                 $table->string('template_format', 40)->nullable();
+                $table->string('enrolment_type', 50)->nullable();
                 $table->string('status', 30)->default('enrolled');
                 $table->dateTime('performed_at')->nullable();
                 $table->dateTime('deleted_at')->nullable();
@@ -303,5 +305,245 @@ class EmployeeTemplatesSyncTest extends TestCase
         $inactiveResp->assertOk();
         $inactiveResp->assertJsonFragment(['vendor_template_id' => 'TPL-INACTIVE']);
         $inactiveResp->assertJsonMissing(['vendor_template_id' => 'TPL-ACTIVE']);
+    }
+
+    public function test_location_filter_includes_current_branch_and_multibranch_global_candidates_only(): void
+    {
+        $locA = DB::table('locations')->insertGetId(['name' => 'Unit Allowed A']);
+        $locB = DB::table('locations')->insertGetId(['name' => 'Unit Allowed B']);
+
+        $empLocal = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801101,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empGlobal = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801102,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => true,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empOther = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801103,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empInactive = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801104,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => true,
+            'status' => 'B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empWithoutTemplate = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801105,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            [
+                'employee_id' => $empLocal,
+                'vendor_template_id' => 'TPL-ALLOW-LOCAL',
+                'template_b64' => base64_encode('allow-local'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empGlobal,
+                'vendor_template_id' => 'TPL-ALLOW-GLOBAL',
+                'template_b64' => base64_encode('allow-global'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empOther,
+                'vendor_template_id' => 'TPL-DENY-OTHER',
+                'template_b64' => base64_encode('deny-other'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empInactive,
+                'vendor_template_id' => 'TPL-DENY-INACTIVE',
+                'template_b64' => base64_encode('deny-inactive'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empWithoutTemplate,
+                'vendor_template_id' => 'TPL-DENY-NO-TEMPLATE',
+                'template_b64' => null,
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empLocal,
+                'vendor_template_id' => 'TPL-DENY-PENDING',
+                'template_b64' => base64_encode('deny-pending'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'pending_delete',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FINGERPRINT');
+
+        $response->assertOk();
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'TPL-ALLOW-LOCAL',
+            'biometric_type' => 'FINGERPRINT',
+            'can_check_all_branches' => false,
+        ]);
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'TPL-ALLOW-GLOBAL',
+            'biometric_type' => 'FINGERPRINT',
+            'can_check_all_branches' => true,
+        ]);
+        $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-OTHER']);
+        $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-INACTIVE']);
+        $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-NO-TEMPLATE']);
+        $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-PENDING']);
+        $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_face_filter_uses_same_allowed_universe(): void
+    {
+        $locA = DB::table('locations')->insertGetId(['name' => 'Unit Face A']);
+        $locB = DB::table('locations')->insertGetId(['name' => 'Unit Face B']);
+
+        $empLocalFace = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801201,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empGlobalFace = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801202,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => true,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empOtherFace = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801203,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            [
+                'employee_id' => $empLocalFace,
+                'vendor_template_id' => 'FACE-LOCAL',
+                'template_b64' => base64_encode('face-local'),
+                'template_format' => 'FACE_EMBEDDING_V1',
+                'enrolment_type' => 'FACE',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empGlobalFace,
+                'vendor_template_id' => 'FACE-GLOBAL',
+                'template_b64' => base64_encode('face-global'),
+                'template_format' => 'FACE_EMBEDDING_V1',
+                'enrolment_type' => 'FACE',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empOtherFace,
+                'vendor_template_id' => 'FACE-OTHER',
+                'template_b64' => base64_encode('face-other'),
+                'template_format' => 'FACE_EMBEDDING_V1',
+                'enrolment_type' => 'FACE',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empLocalFace,
+                'vendor_template_id' => 'FP-LOCAL',
+                'template_b64' => base64_encode('fp-local'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FACE');
+
+        $response->assertOk();
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'FACE-LOCAL',
+            'biometric_type' => 'FACE',
+            'can_check_all_branches' => false,
+        ]);
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'FACE-GLOBAL',
+            'biometric_type' => 'FACE',
+            'can_check_all_branches' => true,
+        ]);
+        $response->assertJsonMissing(['vendor_template_id' => 'FACE-OTHER']);
+        $response->assertJsonMissing(['vendor_template_id' => 'FP-LOCAL']);
+        $response->assertJsonCount(2, 'data');
     }
 }

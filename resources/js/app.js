@@ -19,15 +19,9 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        const ziggy = {
-            ...(props.initialPage.props.ziggy ?? {}),
-            url: `${window.location.origin}/biometrico`,
-            location: new URL(props.initialPage.props.ziggy?.location ?? window.location.href),
-        };
-
         return createApp({ render: () => h(App, props) })
             .use(plugin)
-            .use(ZiggyVue, ziggy)
+            .use(ZiggyVue)
             .mount(el);
     },
     progress: {

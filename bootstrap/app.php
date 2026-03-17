@@ -22,7 +22,6 @@ use App\Http\Middleware\VerifyDeviceHmac;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Routing\Middleware\SubstituteBindings;
-use App\Http\Middleware\TrustProxies;
 
 // (Solo lo usarías si tuvieras SPA con cookies, para tokens Bearer no es necesario)
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -59,7 +58,6 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)
         $middleware->web(prepend: [
-		    TrustProxies::class,
             AssignRequestId::class,
         ]);
 

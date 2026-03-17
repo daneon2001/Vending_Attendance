@@ -9,8 +9,8 @@ const props = defineProps({
 });
 
 const logoMap = {
-    full: '/biometrico/images/medical-life-logo.png',
-    short: '/biometrico/images/medical-life-logo_short.png',
+    full: '/images/medical-life-logo.png',
+    short: '/images/medical-life-logo_short.png',
 };
 
 const assetVersion = import.meta.env.VITE_ASSET_VERSION ? `?v=${import.meta.env.VITE_ASSET_VERSION}` : '';

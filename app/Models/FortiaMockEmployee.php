@@ -23,6 +23,7 @@ class FortiaMockEmployee extends Model
         'status',
         'base_location_id',
         'base_location_name',
+        'can_check_all_branches',
         'department_id',
         'department_name',
         'rfc',
@@ -31,5 +32,9 @@ class FortiaMockEmployee extends Model
         'email_company',
         'created_at',
         'updated_at',
+    ];
+
+    protected $casts = [
+        'can_check_all_branches' => 'boolean',
     ];
 }

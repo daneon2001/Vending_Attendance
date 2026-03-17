@@ -110,7 +110,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
                        lg:order-2"
             >
                  <img
-                        src="/biometrico/images/medical-life-logo.png"
+                        src="/images/medical-life-logo.png"
                         alt="Medical Life Logo"
                         class="mx-auto h-16 w-auto sm:h-20 lg:h-24 drop-shadow-lg"
                     />

@@ -15,6 +15,7 @@ class Employee extends Model
         'company_name',
         'base_location_id',
         'base_location_name',
+        'can_check_all_branches',
         'department_id',
         'department_name',
         'name',
@@ -31,6 +32,7 @@ class Employee extends Model
 
     protected $casts = [
         'has_fingerprint' => 'boolean',
+        'can_check_all_branches' => 'boolean',
     ];
 
     protected $appends = [

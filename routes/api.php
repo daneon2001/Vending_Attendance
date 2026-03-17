@@ -145,3 +145,5 @@ Route::prefix('fortia-mock')->group(function () {
     Route::patch('employees/{employee}/status', [FortiaMockEmployeeController::class, 'updateStatus']);
     Route::post('sync-employees', [FortiaMockSyncController::class, 'sync']);
 });
+
+Route::get('dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');

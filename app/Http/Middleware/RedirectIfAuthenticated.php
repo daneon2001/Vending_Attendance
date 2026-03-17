@@ -14,7 +14,7 @@ class RedirectIfAuthenticated
 
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
-                return redirect('/dashboard');
+                return redirect()->to(url('/dashboard'));
             }
         }
 

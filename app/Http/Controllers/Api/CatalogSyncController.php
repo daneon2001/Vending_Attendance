@@ -7,12 +7,18 @@ use App\Models\Clock;
 use App\Models\Company;
 use App\Models\Employee;
 use App\Models\Location;
+use App\Services\Biometrics\AllowedBiometricCandidates;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class CatalogSyncController extends Controller
 {
+    public function __construct(protected AllowedBiometricCandidates $allowedCandidates)
+    {
+    }
+
     public function catalog(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -22,10 +28,7 @@ class CatalogSyncController extends Controller
         // Endpoint pensado para la app on-prem (Python) que consume catalogos biometricos.
         $locationId = $validated['location_id'] ?? null;
 
-        $employeesQuery = Employee::query()->whereIn('status', ['A', 'active']);
-        if ($locationId) {
-            $employeesQuery->where('base_location_id', $locationId);
-        }
+        $employeesQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId);
 
         $clocksQuery = Clock::query();
         if ($locationId) {
@@ -45,6 +48,11 @@ class CatalogSyncController extends Controller
         if (! $company) {
             $company = Company::query()->orderBy('name')->first();
         }
+
+        $this->allowedCandidates->logAllowedEmployees(
+            'onprem.catalog.allowed_employees.resolved',
+            $locationId
+        );
 
         return response()->json([
             'employees' => $employeesQuery->orderBy('full_name')->get(),
@@ -81,30 +89,23 @@ class CatalogSyncController extends Controller
 
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
         $locationId = $validated['location_id'] ?? null;
-
-        $activeStatuses = ['A', 'active'];
-        $inactiveStatuses = ['B', 'inactive'];
-
-        $baseDataQuery = Employee::query()
-            ->whereIn('status', $activeStatuses);
-        if ($locationId) {
-            $baseDataQuery->where('base_location_id', $locationId);
-        }
+        $baseDataQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'active');
 
         $dataQuery = clone $baseDataQuery;
         if ($since) {
             $dataQuery->where('updated_at', '>', $since);
         }
 
+        $employeeColumns = ['id', 'fortia_employee_id', 'full_name', 'name', 'last_name', 'status', 'base_location_id', 'updated_at'];
+        if (Schema::hasColumn('employees', 'can_check_all_branches')) {
+            $employeeColumns[] = 'can_check_all_branches';
+        }
+
         $rows = $dataQuery
             ->orderBy('updated_at')
-            ->get(['id', 'fortia_employee_id', 'full_name', 'name', 'last_name', 'status', 'base_location_id', 'updated_at']);
+            ->get($employeeColumns);
 
-        $baseTombstonesQuery = Employee::query()
-            ->whereIn('status', $inactiveStatuses);
-        if ($locationId) {
-            $baseTombstonesQuery->where('base_location_id', $locationId);
-        }
+        $baseTombstonesQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'inactive');
 
         $tombstonesQuery = clone $baseTombstonesQuery;
         if ($since) {
@@ -128,6 +129,11 @@ class CatalogSyncController extends Controller
             ->sort()
             ->last();
 
+        $this->allowedCandidates->logAllowedEmployees(
+            'onprem.employees_catalog.allowed_employees.resolved',
+            $locationId
+        );
+
         return response()->json([
             'version' => ($versionTime ?? now())->format('YmdHis'),
             'data' => $rows->map(function (Employee $employee): array {
@@ -142,6 +148,7 @@ class CatalogSyncController extends Controller
                     'name' => $name !== '' ? $name : 'Empleado '.$employee->id,
                     'status' => (string) $employee->status,
                     'location_id' => $employee->base_location_id ? (int) $employee->base_location_id : null,
+                    'can_check_all_branches' => (bool) ($employee->can_check_all_branches ?? false),
                     'updated_at' => optional($employee->updated_at)->toIso8601String(),
                 ];
             })->values(),

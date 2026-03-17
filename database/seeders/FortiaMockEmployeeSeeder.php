@@ -80,6 +80,7 @@ class FortiaMockEmployeeSeeder extends Seeder
                 'status' => $statusPool[array_rand($statusPool)],
                 'base_location_id' => $location[0],
                 'base_location_name' => $location[1],
+                'can_check_all_branches' => $idx % 6 === 0,
                 'department_id' => $department[0],
                 'department_name' => $department[1],
                 'rfc' => 'RFC' . str_pad((string) $idx, 5, '0', STR_PAD_LEFT),
