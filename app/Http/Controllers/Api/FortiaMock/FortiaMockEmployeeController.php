@@ -7,6 +7,7 @@ use App\Models\FortiaMockEmployee;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class FortiaMockEmployeeController extends Controller
@@ -59,6 +60,7 @@ class FortiaMockEmployeeController extends Controller
             'status' => ['required', 'string'],
             'base_location_id' => ['required', 'integer'],
             'base_location_name' => ['required', 'string'],
+            'can_check_all_branches' => ['nullable', 'boolean'],
             'department_id' => ['required', 'integer'],
             'department_name' => ['required', 'string'],
             'rfc' => ['nullable', 'string'],
@@ -70,6 +72,12 @@ class FortiaMockEmployeeController extends Controller
         $payload = array_merge([
             'company_name' => $validated['company_name'] ?? 'Medical Life Demo',
         ], $validated);
+
+        if (Schema::connection('fortia_mock')->hasColumn('fortia_employees', 'can_check_all_branches')) {
+            $payload['can_check_all_branches'] = (bool) ($validated['can_check_all_branches'] ?? false);
+        } else {
+            unset($payload['can_check_all_branches']);
+        }
 
         $record = FortiaMockEmployee::on('fortia_mock')->updateOrCreate(
             [

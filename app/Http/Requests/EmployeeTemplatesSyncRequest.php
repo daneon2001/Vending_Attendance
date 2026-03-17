@@ -7,6 +7,21 @@ use Illuminate\Validation\Rule;
 
 class EmployeeTemplatesSyncRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('status')) {
+            $this->merge([
+                'status' => strtolower((string) $this->input('status')),
+            ]);
+        }
+
+        if ($this->has('biometric_type')) {
+            $this->merge([
+                'biometric_type' => strtoupper((string) $this->input('biometric_type')),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -35,6 +50,7 @@ class EmployeeTemplatesSyncRequest extends FormRequest
             ],
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'all'])],
+            'biometric_type' => ['nullable', Rule::in(['FINGERPRINT', 'FACE', 'ALL'])],
         ];
     }
 }

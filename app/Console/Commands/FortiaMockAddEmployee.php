@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\FortiaMockEmployee;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 
 class FortiaMockAddEmployee extends Command
 {
@@ -18,6 +19,7 @@ class FortiaMockAddEmployee extends Command
         {--status=A : Status value}
         {--base_location_id= : Base location id}
         {--base_location_name= : Base location name}
+        {--can_check_all_branches=0 : Allow employee to check in all branches}
         {--department_id= : Department id}
         {--department_name= : Department name}
         {--email_company= : Corporate email}';
@@ -49,6 +51,10 @@ class FortiaMockAddEmployee extends Command
             'email_company' => $this->option('email_company') ?? 'demo@medical.test',
             'updated_at' => Carbon::now(),
         ];
+
+        if (Schema::connection('fortia_mock')->hasColumn('fortia_employees', 'can_check_all_branches')) {
+            $payload['can_check_all_branches'] = (bool) ((int) ($this->option('can_check_all_branches') ?? 0));
+        }
 
         $existing = FortiaMockEmployee::on('fortia_mock')
             ->where('company_id', $companyId)

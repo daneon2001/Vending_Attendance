@@ -8,6 +8,7 @@ use App\Models\EmployeeSyncState;
 use App\Models\FortiaMockEmployee;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class FortiaMockSyncService
@@ -126,7 +127,7 @@ class FortiaMockSyncService
     {
         $fullName = trim(collect([$remote['name'] ?? '', $remote['last_name'] ?? '', $remote['second_last_name'] ?? ''])->filter()->implode(' '));
 
-        return [
+        $payload = [
             'fortia_employee_id' => $remote['employee_id'],
             'company_id' => $remote['company_id'],
             'company_name' => $remote['company_name'],
@@ -144,6 +145,12 @@ class FortiaMockSyncService
             'curp' => $remote['curp'],
             'email_company' => $remote['email_company'] ?? null,
         ];
+
+        if (Schema::hasColumn('employees', 'can_check_all_branches')) {
+            $payload['can_check_all_branches'] = (bool) ($remote['can_check_all_branches'] ?? false);
+        }
+
+        return $payload;
     }
 
     protected function updateSyncStateSuccess(EmployeeSyncState $state, ?Carbon $maxUpdatedAt, array $summary): void

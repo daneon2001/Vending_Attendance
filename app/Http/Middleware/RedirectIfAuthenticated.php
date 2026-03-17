@@ -8,20 +8,13 @@ use Illuminate\Support\Facades\Auth;
 
 class RedirectIfAuthenticated
 {
-    private const HOME = '/dashboard';
-
-    /**
-     * Handle an incoming request.
-     *
-     * @param  array<int, string|null>  $guards
-     */
     public function handle(Request $request, Closure $next, string ...$guards)
     {
         $guards = empty($guards) ? [null] : $guards;
 
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
-                return redirect(self::HOME);
+                return redirect()->to(url('/dashboard'));
             }
         }
 

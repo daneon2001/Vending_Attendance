@@ -6,40 +6,29 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\EmployeeTemplatesSyncRequest;
 use App\Models\EmployeeFingerprint;
 use App\Models\EmployeeTemplateDeletion;
+use App\Services\Biometrics\AllowedBiometricCandidates;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
 class EmployeeTemplatesController extends Controller
 {
+    public function __construct(protected AllowedBiometricCandidates $allowedCandidates)
+    {
+    }
+
     public function index(EmployeeTemplatesSyncRequest $request): JsonResponse
     {
         $validated = $request->validated();
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
         $locationId = $validated['location_id'] ?? null;
         $status = $validated['status'] ?? 'active';
+        $biometricType = $validated['biometric_type'] ?? null;
 
-        $baseTemplatesQuery = EmployeeFingerprint::query()
-            ->with('employee:id,base_location_id,status')
-            ->whereNotNull('vendor_template_id')
-            ->whereNotNull('template_b64')
-            ->whereNull('deleted_at')
-            ->where('status', 'enrolled');
-
-        if ($locationId) {
-            $baseTemplatesQuery->whereHas('employee', function ($q) use ($locationId): void {
-                $q->where('base_location_id', $locationId);
-            });
-        }
-
-        if ($status === 'active') {
-            $baseTemplatesQuery->whereHas('employee', function ($q): void {
-                $q->whereIn('status', ['A', 'active']);
-            });
-        } elseif ($status === 'inactive') {
-            $baseTemplatesQuery->whereHas('employee', function ($q): void {
-                $q->whereIn('status', ['B', 'inactive']);
-            });
-        }
+        $baseTemplatesQuery = $this->allowedCandidates->getAllowedCandidatesQuery(
+            $locationId,
+            $biometricType,
+            $status
+        );
 
         $templatesQuery = clone $baseTemplatesQuery;
         if ($since) {
@@ -57,16 +46,12 @@ class EmployeeTemplatesController extends Controller
         if ($locationId || $status !== 'all') {
             $baseTombstonesQuery->where(function ($query) use ($locationId, $status): void {
                 $query->whereNull('employee_id')
-                    ->orWhereHas('employee', function ($q) use ($locationId, $status): void {
-                        if ($locationId) {
-                            $q->where('base_location_id', $locationId);
-                        }
-                        if ($status === 'active') {
-                            $q->whereIn('status', ['A', 'active']);
-                        } elseif ($status === 'inactive') {
-                            $q->whereIn('status', ['B', 'inactive']);
-                        }
-                    });
+                    ->orWhereIn(
+                        'employee_id',
+                        $this->allowedCandidates
+                            ->getAllowedEmployeesQuery($locationId, $status)
+                            ->select('id')
+                    );
             });
         }
 
@@ -95,16 +80,28 @@ class EmployeeTemplatesController extends Controller
             ->sort()
             ->last();
 
+        $this->allowedCandidates->logAllowedCandidates(
+            'onprem.biometric_candidates.resolved',
+            $locationId,
+            $biometricType,
+            $status
+        );
+
         return response()->json([
             'version' => ($versionTime ?? now())->format('YmdHis'),
             'data' => $templates->map(function (EmployeeFingerprint $fingerprint): array {
+                $biometricType = strtoupper((string) ($fingerprint->enrolment_type ?: 'FINGERPRINT'));
+
                 return [
                     'employee_id' => (int) $fingerprint->employee_id,
                     'vendor' => 'digitalpersona',
                     'vendor_template_id' => (string) $fingerprint->vendor_template_id,
+                    'biometric_type' => $biometricType,
                     'template_format' => (string) ($fingerprint->template_format ?: 'DPFP_PROPRIETARY'),
                     'template_b64' => (string) $fingerprint->template_b64,
                     'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),
+                    'location_id' => $fingerprint->employee?->base_location_id ? (int) $fingerprint->employee->base_location_id : null,
+                    'can_check_all_branches' => (bool) ($fingerprint->employee?->can_check_all_branches ?? false),
                     'captured_at' => optional($fingerprint->performed_at)?->toIso8601String(),
                     'updated_at' => optional($fingerprint->updated_at)?->toIso8601String(),
                 ];

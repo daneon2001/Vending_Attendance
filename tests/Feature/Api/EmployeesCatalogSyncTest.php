@@ -35,6 +35,7 @@ class EmployeesCatalogSyncTest extends TestCase
                 $table->id();
                 $table->unsignedBigInteger('fortia_employee_id')->unique();
                 $table->unsignedBigInteger('base_location_id')->nullable();
+                $table->boolean('can_check_all_branches')->default(false);
                 $table->string('name')->nullable();
                 $table->string('last_name')->nullable();
                 $table->string('full_name')->nullable();
@@ -83,7 +84,8 @@ class EmployeesCatalogSyncTest extends TestCase
 
         $response->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonCount(0, 'tombstones');
+            ->assertJsonCount(0, 'tombstones')
+            ->assertJsonPath('data.0.can_check_all_branches', false);
 
         $version = $response->json('version');
         $this->assertMatchesRegularExpression('/^\d{14}$/', (string) $version);
@@ -141,5 +143,86 @@ class EmployeesCatalogSyncTest extends TestCase
         $response->assertJsonMissing(['fortia_employee_id' => 7004]);
         $response->assertJsonCount(1, 'tombstones');
         $response->assertJsonPath('tombstones.0.employee_id', DB::table('employees')->where('fortia_employee_id', 7003)->value('id'));
+    }
+
+    public function test_catalog_includes_current_branch_and_multibranch_global_employees(): void
+    {
+        $locA = DB::table('locations')->insertGetId([
+            'name' => 'Unit A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locB = DB::table('locations')->insertGetId([
+            'name' => 'Unit B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 7101,
+                'base_location_id' => $locA,
+                'can_check_all_branches' => false,
+                'name' => 'Local',
+                'last_name' => 'Activo',
+                'full_name' => 'Local Activo',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 7102,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => true,
+                'name' => 'Global',
+                'last_name' => 'Activo',
+                'full_name' => 'Global Activo',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 7103,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => false,
+                'name' => 'Otro',
+                'last_name' => 'Activo',
+                'full_name' => 'Otro Activo',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 7104,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => true,
+                'name' => 'Global',
+                'last_name' => 'Inactivo',
+                'full_name' => 'Global Inactivo',
+                'status' => 'B',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locA);
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJsonFragment([
+            'fortia_employee_id' => 7101,
+            'can_check_all_branches' => false,
+        ]);
+        $response->assertJsonFragment([
+            'fortia_employee_id' => 7102,
+            'can_check_all_branches' => true,
+        ]);
+        $response->assertJsonMissing(['fortia_employee_id' => 7103]);
+        $response->assertJsonMissing(['fortia_employee_id' => 7104]);
+        $response->assertJsonCount(1, 'tombstones');
+        $response->assertJsonPath(
+            'tombstones.0.employee_id',
+            DB::table('employees')->where('fortia_employee_id', 7104)->value('id')
+        );
     }
 }
