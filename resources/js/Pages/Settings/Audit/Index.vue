@@ -5,6 +5,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import { apiUrl } from '@/utils/url';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -151,7 +152,7 @@ const loadLogs = async (pageNumber = filters.page) => {
     filters.page = pageNumber;
 
     try {
-        const { data } = await axios.get('/api/audit-logs', {
+        const { data } = await axios.get(apiUrl('/api/audit-logs'), {
             params: buildRequestParams(),
         });
 
@@ -176,7 +177,7 @@ const openDetail = async (log) => {
     detailModal.metadata = null;
 
     try {
-        const { data } = await axios.get(`/api/audit-logs/${log.id}`);
+        const { data } = await axios.get(apiUrl(`/api/audit-logs/${log.id}`));
         detailModal.metadata = data.data ?? null;
     } catch (error) {
         detailModal.metadata = null;

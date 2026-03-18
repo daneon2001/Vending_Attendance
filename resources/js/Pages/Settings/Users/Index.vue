@@ -6,6 +6,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import { apiUrl } from '@/utils/url';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -115,7 +116,7 @@ const loadUsers = async (pageNumber = filters.page) => {
     loadError.value = '';
     filters.page = pageNumber;
     try {
-        const { data } = await axios.get('/api/users', {
+        const { data } = await axios.get(apiUrl('/api/users'), {
             params: {
                 search: filters.search || undefined,
                 status: filters.status !== 'todos' ? filters.status : undefined,
@@ -189,13 +190,13 @@ const submitUser = async () => {
 
     try {
         if (userModal.mode === 'create') {
-            await axios.post('/api/users', payload);
+            await axios.post(apiUrl('/api/users'), payload);
             showToast({
                 title: 'Usuario creado',
                 message: 'El usuario se registro correctamente.',
             });
         } else {
-            await axios.put(`/api/users/${userModal.form.id}`, payload);
+            await axios.put(apiUrl(`/api/users/${userModal.form.id}`), payload);
             showToast({
                 title: 'Usuario actualizado',
                 message: 'Los cambios fueron guardados.',
@@ -229,7 +230,7 @@ const confirmStatusChange = async () => {
     if (!confirmModal.user) return;
     confirmModal.loading = true;
     try {
-        await axios.patch(`/api/users/${confirmModal.user.id}/status`, {
+        await axios.patch(apiUrl(`/api/users/${confirmModal.user.id}/status`), {
             status: confirmModal.activate ? 'active' : 'inactive',
         });
         showToast({
