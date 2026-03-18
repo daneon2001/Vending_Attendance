@@ -3,20 +3,7 @@ stages:
 
 deploy_qa:
   stage: deploy
-  tags:stages:
-  - deploy
-
-deploy_qa:
-  stage: deploy
   tags:
-    - qa-windows
-  only:
-    - qa
-  script:
-    - pwsh -ExecutionPolicy Bypass -File scripts/deploy_qa.ps1
-  environment:
-    name: qa
-    url: https://desarrollo.sybiml3.com/biometrico
     - qa-windows
   only:
     - qa
