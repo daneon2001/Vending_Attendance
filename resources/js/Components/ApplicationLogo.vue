@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { assetUrl } from '@/utils/url';
 
 const props = defineProps({
     variant: {
@@ -9,15 +10,15 @@ const props = defineProps({
 });
 
 const logoMap = {
-    full: '/images/medical-life-logo.png',
-    short: '/images/medical-life-logo_short.png',
+    full: 'images/medical-life-logo.png',
+    short: 'images/medical-life-logo_short.png',
 };
 
 const assetVersion = import.meta.env.VITE_ASSET_VERSION ? `?v=${import.meta.env.VITE_ASSET_VERSION}` : '';
 
 const logoSrc = computed(() => {
     const base = logoMap[props.variant] ?? logoMap.full;
-    return `${base}${assetVersion}`;
+    return `${assetUrl(base)}${assetVersion}`;
 });
 </script>
 

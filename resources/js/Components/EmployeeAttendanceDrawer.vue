@@ -1,4 +1,5 @@
 <script setup>
+import { apiUrl } from '@/utils/url';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
@@ -135,7 +136,7 @@ const search = async () => {
             to: normalizeBoundary(to.value, false),
         };
 
-        const { data } = await axios.get(`/api/attendance/employee/${props.employee.id}`, { params });
+        const { data } = await axios.get(apiUrl(`/api/attendance/employee/${props.employee.id}`), { params });
         logs.value = data.data ?? [];
         expandedDays.value = new Set();
     } catch (error) {

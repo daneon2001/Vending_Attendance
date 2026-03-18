@@ -54,6 +54,14 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'asset_url' => env('ASSET_URL'),
+
+    'base_path' => (($basePath = trim((string) env('APP_BASE_PATH', ''), '/')) !== '')
+        ? '/'.$basePath
+        : '',
+
+    'api_base_url' => env('API_BASE_URL', env('VITE_API_BASE_URL', '')),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

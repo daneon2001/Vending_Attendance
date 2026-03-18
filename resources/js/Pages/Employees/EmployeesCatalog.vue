@@ -7,6 +7,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import { apiUrl, appUrl } from '@/utils/url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
@@ -134,7 +135,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
     loadError.value = '';
     filters.page = pageNumber;
     try {
-        const { data } = await axios.get('/api/admin/employees', {
+        const { data } = await axios.get(apiUrl('/api/admin/employees'), {
             params: {
                 status: filters.status || undefined,
                 q: filters.search || undefined,
@@ -162,7 +163,7 @@ const syncNow = async () => {
     syncing.value = true;
     statusChanges.value = [];
     try {
-        const { data } = await axios.post('/api/employees/sync-fortia-mock');
+        const { data } = await axios.post(apiUrl('/api/employees/sync-fortia-mock'));
         statusChanges.value = data.status_changed || [];
         await loadEmployees(filters.page);
         showToast({
@@ -229,7 +230,7 @@ const executeModalAction = async () => {
 
     try {
         if (action === 'status') {
-            const { data } = await axios.patch(`/api/employees/${context.employee.id}/status`, {
+            const { data } = await axios.patch(apiUrl(`/api/employees/${context.employee.id}/status`), {
                 status: context.nextStatus,
             });
             updateEmployeeInList(data);
@@ -239,8 +240,8 @@ const executeModalAction = async () => {
                 message: `Estado de ${data.full_name ?? data.name} actualizado correctamente.`,
             });
         } else if (action === 'fingerprint') {
-            await axios.get('/sanctum/csrf-cookie');
-            const { data } = await axios.delete(`/api/admin/employees/${context.employee.id}/fingerprints`);
+            await axios.get(appUrl('/sanctum/csrf-cookie'));
+            const { data } = await axios.delete(apiUrl(`/api/admin/employees/${context.employee.id}/fingerprints`));
             updateEmployeeInList({
                 id: context.employee.id,
                 has_fingerprint: false,

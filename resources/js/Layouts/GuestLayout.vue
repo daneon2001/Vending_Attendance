@@ -109,11 +109,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
                        shadow-xl shadow-slate-900/5
                        lg:order-2"
             >
-                 <img
-                        src="/images/medical-life-logo.png"
-                        alt="Medical Life Logo"
-                        class="mx-auto h-16 w-auto sm:h-20 lg:h-24 drop-shadow-lg"
-                    />
+                <ApplicationLogo class="mx-auto h-16 w-auto sm:h-20 lg:h-24 drop-shadow-lg" />
                 <div class="text-center">
                     <p
                         class="text-[0.7rem] sm:text-xs font-semibold uppercase 
