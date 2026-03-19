@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ClockController;
 use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EmployeeFaceProfileController;
 use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
 use App\Http\Controllers\Api\EmployeeFingerprintDeleteController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
@@ -106,6 +107,18 @@ Route::prefix('admin')
     ])
     ->group(function (): void {
         Route::delete('employees/{employee}/fingerprints', [EmployeeFingerprintDeleteController::class, 'destroy']);
+    });
+
+Route::prefix('admin')
+    ->middleware([
+        'auth:web,sanctum',
+        'role:administrador,admin,superadmin',
+        'perm.strict:biometrics,face.manage',
+        'throttle:biometrics-face',
+    ])
+    ->group(function (): void {
+        Route::patch('employees/{employee}/face-profile', [EmployeeFaceProfileController::class, 'update']);
+        Route::delete('employees/{employee}/face-profile', [EmployeeFaceProfileController::class, 'destroy']);
     });
 
 Route::prefix('superadmin')

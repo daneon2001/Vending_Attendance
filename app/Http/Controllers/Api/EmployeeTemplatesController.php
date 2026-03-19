@@ -9,6 +9,7 @@ use App\Models\EmployeeTemplateDeletion;
 use App\Services\Biometrics\AllowedBiometricCandidates;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Schema;
 
 class EmployeeTemplatesController extends Controller
 {
@@ -43,6 +44,14 @@ class EmployeeTemplatesController extends Controller
             ->whereNotNull('vendor_template_id')
             ->whereNotNull('deleted_at');
 
+        if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
+            $normalizedBiometricType = strtoupper((string) $biometricType);
+
+            if ($normalizedBiometricType !== '' && $normalizedBiometricType !== 'ALL') {
+                $baseTombstonesQuery->where('biometric_type', $normalizedBiometricType);
+            }
+        }
+
         if ($locationId || $status !== 'all') {
             $baseTombstonesQuery->where(function ($query) use ($locationId, $status): void {
                 $query->whereNull('employee_id')
@@ -60,11 +69,17 @@ class EmployeeTemplatesController extends Controller
             $tombstonesQuery->where('deleted_at', '>', $since);
         }
 
+        $tombstoneColumns = ['vendor', 'vendor_template_id', 'deleted_at'];
+        if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
+            $tombstoneColumns[] = 'biometric_type';
+        }
+
         $tombstones = $tombstonesQuery
             ->orderBy('deleted_at')
-            ->get(['vendor', 'vendor_template_id', 'deleted_at'])
+            ->get($tombstoneColumns)
             ->map(fn (EmployeeTemplateDeletion $fingerprint): array => [
                 'vendor' => (string) ($fingerprint->vendor ?: 'digitalpersona'),
+                'biometric_type' => (string) ($fingerprint->biometric_type ?: 'FINGERPRINT'),
                 'vendor_template_id' => (string) $fingerprint->vendor_template_id,
                 'deleted_at' => optional($fingerprint->deleted_at)?->toIso8601String(),
             ])
@@ -102,6 +117,29 @@ class EmployeeTemplatesController extends Controller
                     'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),
                     'location_id' => $fingerprint->employee?->base_location_id ? (int) $fingerprint->employee->base_location_id : null,
                     'can_check_all_branches' => (bool) ($fingerprint->employee?->can_check_all_branches ?? false),
+                    'sync_ready' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? (bool) ($fingerprint->employee?->face_sync_ready ?? false)
+                        : true,
+                    'face_status' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? (string) ($fingerprint->employee?->face_status ?? 'none')
+                        : null,
+                    'face_enabled' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? (bool) ($fingerprint->employee?->face_enabled ?? false)
+                        : null,
+                    'face_samples_count' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? (int) ($fingerprint->employee?->face_samples_count ?? 0)
+                        : null,
+                    'face_template_version' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? ($fingerprint->employee?->face_template_version ?? null)
+                        : null,
+                    'face_quality_score' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? (is_numeric($fingerprint->employee?->face_quality_score)
+                            ? (int) $fingerprint->employee?->face_quality_score
+                            : null)
+                        : null,
+                    'face_updated_at' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                        ? optional($fingerprint->employee?->face_updated_at)?->toIso8601String()
+                        : null,
                     'captured_at' => optional($fingerprint->performed_at)?->toIso8601String(),
                     'updated_at' => optional($fingerprint->updated_at)?->toIso8601String(),
                 ];

@@ -31,6 +31,10 @@ class EnrolmentCompleteRequest extends FormRequest
             'template_b64' => ['nullable', 'string'],
             'template_format' => ['nullable', 'string', 'max:40'],
             'device_serial' => ['nullable', 'string', 'max:191'],
+            'samples_count' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'quality_score' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'template_version' => ['nullable', 'string', 'max:80'],
+            'metadata' => ['nullable', 'array'],
             'performed_at' => ['required', 'date'],
         ];
     }

@@ -16,6 +16,8 @@ class AllowedBiometricCandidates
 
     private const ACTIVE_ENROLMENT_STATUSES = ['enrolled', 'active'];
 
+    private const FACE_SYNC_READY_STATUSES = ['enrolled', 'ready'];
+
     public function getAllowedEmployeesQuery(?int $currentBranchId, string $employeeScope = 'active'): Builder
     {
         $query = Employee::query();
@@ -134,15 +136,31 @@ class AllowedBiometricCandidates
         $normalizedType = $this->normalizeBiometricType($biometricType);
 
         if ($normalizedType === null) {
+            $query->where(function (Builder $candidateQuery): void {
+                $candidateQuery->where(function (Builder $fingerprintQuery): void {
+                    $fingerprintQuery->where('enrolment_type', EmployeeFingerprint::TYPE_FINGERPRINT)
+                        ->orWhereNull('enrolment_type');
+                });
+
+                $candidateQuery->orWhere(function (Builder $faceQuery): void {
+                    $faceQuery->where('enrolment_type', EmployeeFingerprint::TYPE_FACE);
+                    $this->applyFaceAvailabilityScope($faceQuery);
+                });
+            });
+
             return;
         }
 
-        $query->where(function (Builder $typeQuery) use ($normalizedType): void {
-            $typeQuery->where('enrolment_type', $normalizedType);
+        if ($normalizedType === EmployeeFingerprint::TYPE_FACE) {
+            $query->where('enrolment_type', EmployeeFingerprint::TYPE_FACE);
+            $this->applyFaceAvailabilityScope($query);
 
-            if ($normalizedType === 'FINGERPRINT') {
-                $typeQuery->orWhereNull('enrolment_type');
-            }
+            return;
+        }
+
+        $query->where(function (Builder $typeQuery): void {
+            $typeQuery->where('enrolment_type', EmployeeFingerprint::TYPE_FINGERPRINT)
+                ->orWhereNull('enrolment_type');
         });
     }
 
@@ -168,6 +186,20 @@ class AllowedBiometricCandidates
             $columns[] = 'can_check_all_branches';
         }
 
+        foreach ([
+            'has_face_enrollment',
+            'face_status',
+            'face_samples_count',
+            'face_enabled',
+            'face_template_version',
+            'face_quality_score',
+            'face_updated_at',
+        ] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $columns[] = $column;
+            }
+        }
+
         return [
             'employee' => function ($employee) use ($columns): void {
                 $employee->select($columns);
@@ -178,5 +210,33 @@ class AllowedBiometricCandidates
     private function hasGlobalBranchFlag(): bool
     {
         return Schema::hasColumn('employees', 'can_check_all_branches');
+    }
+
+    private function applyFaceAvailabilityScope(Builder $query): void
+    {
+        if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
+            return;
+        }
+
+        $query->whereIn('employee_id', $this->faceReadyEmployeesQuery()->select('id'));
+    }
+
+    private function faceReadyEmployeesQuery(): Builder
+    {
+        $query = Employee::query()->where('has_face_enrollment', true);
+
+        if (Schema::hasColumn('employees', 'face_enabled')) {
+            $query->where('face_enabled', true);
+        }
+
+        if (Schema::hasColumn('employees', 'face_status')) {
+            $query->whereIn('face_status', self::FACE_SYNC_READY_STATUSES);
+        }
+
+        if (Schema::hasColumn('employees', 'face_samples_count')) {
+            $query->where('face_samples_count', '>', 0);
+        }
+
+        return $query;
     }
 }

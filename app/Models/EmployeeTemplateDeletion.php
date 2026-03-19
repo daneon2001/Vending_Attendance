@@ -11,6 +11,7 @@ class EmployeeTemplateDeletion extends Model
 
     protected $fillable = [
         'vendor',
+        'biometric_type',
         'vendor_template_id',
         'employee_id',
         'deleted_at',

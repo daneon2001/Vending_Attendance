@@ -2,10 +2,10 @@
 
 namespace App\Actions;
 
-use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 
 class EnsureSuperAdmin
 {
@@ -36,6 +36,13 @@ class EnsureSuperAdmin
             return ['user' => null, 'role' => null, 'permission_count' => 0];
         }
 
+        $permissionsMap = SyncPermissionCatalog::run();
+        $permissionIds = collect($permissionsMap)
+            ->flatten()
+            ->unique()
+            ->values()
+            ->all();
+
         $role = Role::firstOrCreate(
             ['name' => 'Administrador'],
             [
@@ -44,8 +51,20 @@ class EnsureSuperAdmin
             ],
         );
 
-        $permissionIds = Permission::pluck('id')->all();
-        $role->permissions()->sync($permissionIds);
+        $adminRoles = Role::query()
+            ->whereIn(DB::raw('LOWER(name)'), ['administrador', 'admin', 'superadmin', 'super admin'])
+            ->get();
+
+        if ($adminRoles->isEmpty()) {
+            $adminRoles = collect([$role]);
+        } elseif (! $adminRoles->contains('id', $role->id)) {
+            $adminRoles->push($role);
+        }
+
+        $adminRoles->each(function (Role $adminRole) use ($permissionIds): void {
+            $adminRole->permissions()->sync($permissionIds);
+        });
+
         $user->roles()->syncWithoutDetaching([$role->id]);
 
         return [
