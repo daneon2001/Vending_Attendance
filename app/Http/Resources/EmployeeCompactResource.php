@@ -24,8 +24,17 @@ class EmployeeCompactResource extends JsonResource
             'unit_id' => $this->base_location_id ? (int) $this->base_location_id : null,
             'unit_name' => $this->unit?->name ?? $this->base_location_name,
             'status' => $this->normalizeStatus($this->status),
-            'fingerprint_status' => (bool) $this->has_fingerprint,
+            'fingerprint_status' => (string) $this->fingerprint_status,
             'has_fingerprint' => (bool) $this->has_fingerprint,
+            'has_face_enrollment' => (bool) ($this->has_face_enrollment ?? false),
+            'face_status' => (string) ($this->face_status ?? 'none'),
+            'face_enabled' => (bool) ($this->face_enabled ?? false),
+            'face_samples_count' => (int) ($this->face_samples_count ?? 0),
+            'face_template_version' => $this->face_template_version,
+            'face_updated_at' => optional($this->face_updated_at)->toISOString(),
+            'face_quality_score' => is_numeric($this->face_quality_score) ? (int) $this->face_quality_score : null,
+            'face_meta' => is_array($this->face_meta) ? $this->face_meta : null,
+            'face_sync_ready' => (bool) ($this->face_sync_ready ?? false),
             'updated_at' => optional($this->updated_at)->toISOString(),
         ];
     }

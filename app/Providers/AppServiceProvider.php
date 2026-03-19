@@ -47,6 +47,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(30)->by('biometrics-delete:'.$identifier);
         });
 
+        RateLimiter::for('biometrics-face', function (Request $request) {
+            $identifier = $request->user()?->id ?: $request->ip();
+
+            return Limit::perMinute(30)->by('biometrics-face:'.$identifier);
+        });
+
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
     }

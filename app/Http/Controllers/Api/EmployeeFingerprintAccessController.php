@@ -13,7 +13,7 @@ class EmployeeFingerprintAccessController extends Controller
 {
     public function index(Request $request, Employee $employee): JsonResponse
     {
-        $fingerprintsQuery = $employee->fingerprints()
+        $fingerprintsQuery = $employee->fingerprintTemplates()
             ->select([
                 'id',
                 'employee_id',
@@ -43,7 +43,7 @@ class EmployeeFingerprintAccessController extends Controller
 
     public function templates(Request $request, Employee $employee): JsonResponse
     {
-        $fingerprintsQuery = $employee->fingerprints()
+        $fingerprintsQuery = $employee->fingerprintTemplates()
             ->select([
                 'id',
                 'employee_id',

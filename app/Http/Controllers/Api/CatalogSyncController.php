@@ -96,9 +96,33 @@ class CatalogSyncController extends Controller
             $dataQuery->where('updated_at', '>', $since);
         }
 
-        $employeeColumns = ['id', 'fortia_employee_id', 'full_name', 'name', 'last_name', 'status', 'base_location_id', 'updated_at'];
+        $employeeColumns = [
+            'id',
+            'fortia_employee_id',
+            'full_name',
+            'name',
+            'last_name',
+            'status',
+            'base_location_id',
+            'has_fingerprint',
+            'updated_at',
+        ];
         if (Schema::hasColumn('employees', 'can_check_all_branches')) {
             $employeeColumns[] = 'can_check_all_branches';
+        }
+
+        foreach ([
+            'has_face_enrollment',
+            'face_status',
+            'face_samples_count',
+            'face_template_version',
+            'face_updated_at',
+            'face_enabled',
+            'face_quality_score',
+        ] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $employeeColumns[] = $column;
+            }
         }
 
         $rows = $dataQuery
@@ -149,6 +173,16 @@ class CatalogSyncController extends Controller
                     'status' => (string) $employee->status,
                     'location_id' => $employee->base_location_id ? (int) $employee->base_location_id : null,
                     'can_check_all_branches' => (bool) ($employee->can_check_all_branches ?? false),
+                    'has_fingerprint' => (bool) $employee->has_fingerprint,
+                    'fingerprint_status' => (string) $employee->fingerprint_status,
+                    'has_face_enrollment' => (bool) ($employee->has_face_enrollment ?? false),
+                    'face_status' => (string) ($employee->face_status ?? 'none'),
+                    'face_enabled' => (bool) ($employee->face_enabled ?? false),
+                    'face_samples_count' => (int) ($employee->face_samples_count ?? 0),
+                    'face_template_version' => $employee->face_template_version,
+                    'face_quality_score' => is_numeric($employee->face_quality_score) ? (int) $employee->face_quality_score : null,
+                    'face_updated_at' => optional($employee->face_updated_at)->toIso8601String(),
+                    'face_sync_ready' => (bool) ($employee->face_sync_ready ?? false),
                     'updated_at' => optional($employee->updated_at)->toIso8601String(),
                 ];
             })->values(),

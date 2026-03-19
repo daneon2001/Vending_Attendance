@@ -44,6 +44,30 @@ class EmployeeTemplatesSyncTest extends TestCase
             $this->createdEmployeesTable = true;
         }
 
+        Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
+                $table->boolean('has_face_enrollment')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_status')) {
+                $table->string('face_status', 30)->default('none');
+            }
+            if (! Schema::hasColumn('employees', 'face_samples_count')) {
+                $table->unsignedInteger('face_samples_count')->default(0);
+            }
+            if (! Schema::hasColumn('employees', 'face_template_version')) {
+                $table->string('face_template_version', 80)->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_updated_at')) {
+                $table->dateTime('face_updated_at')->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_enabled')) {
+                $table->boolean('face_enabled')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_quality_score')) {
+                $table->unsignedSmallInteger('face_quality_score')->nullable();
+            }
+        });
+
         if (! Schema::hasTable('employee_fingerprints')) {
             Schema::create('employee_fingerprints', function (Blueprint $table): void {
                 $table->id();
@@ -72,6 +96,12 @@ class EmployeeTemplatesSyncTest extends TestCase
             });
             $this->createdTemplateDeletionsTable = true;
         }
+
+        Schema::table('employee_template_deletions', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
+                $table->string('biometric_type', 50)->nullable();
+            }
+        });
 
         DB::table('employee_template_deletions')->delete();
         DB::table('employee_fingerprints')->delete();
@@ -458,6 +488,11 @@ class EmployeeTemplatesSyncTest extends TestCase
             'base_location_id' => $locA,
             'can_check_all_branches' => false,
             'status' => 'A',
+            'has_face_enrollment' => true,
+            'face_status' => 'enrolled',
+            'face_samples_count' => 3,
+            'face_enabled' => true,
+            'face_template_version' => 'FACE_V1',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -466,6 +501,11 @@ class EmployeeTemplatesSyncTest extends TestCase
             'base_location_id' => $locB,
             'can_check_all_branches' => true,
             'status' => 'A',
+            'has_face_enrollment' => true,
+            'face_status' => 'enrolled',
+            'face_samples_count' => 2,
+            'face_enabled' => true,
+            'face_template_version' => 'FACE_V1',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -474,6 +514,11 @@ class EmployeeTemplatesSyncTest extends TestCase
             'base_location_id' => $locB,
             'can_check_all_branches' => false,
             'status' => 'A',
+            'has_face_enrollment' => true,
+            'face_status' => 'enrolled',
+            'face_samples_count' => 2,
+            'face_enabled' => true,
+            'face_template_version' => 'FACE_V1',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -545,5 +590,76 @@ class EmployeeTemplatesSyncTest extends TestCase
         $response->assertJsonMissing(['vendor_template_id' => 'FACE-OTHER']);
         $response->assertJsonMissing(['vendor_template_id' => 'FP-LOCAL']);
         $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_face_templates_require_face_sync_ready_flags(): void
+    {
+        $locA = DB::table('locations')->insertGetId(['name' => 'Unit Face Ready']);
+
+        $readyEmployee = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801301,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'has_face_enrollment' => true,
+            'face_status' => 'enrolled',
+            'face_samples_count' => 2,
+            'face_enabled' => true,
+            'face_template_version' => 'FACE_V2',
+            'face_quality_score' => 95,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $disabledEmployee = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801302,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'has_face_enrollment' => true,
+            'face_status' => 'disabled',
+            'face_samples_count' => 2,
+            'face_enabled' => false,
+            'face_template_version' => 'FACE_V2',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            [
+                'employee_id' => $readyEmployee,
+                'vendor_template_id' => 'FACE-READY',
+                'template_b64' => base64_encode('face-ready'),
+                'template_format' => 'FACE_EMBEDDING_V2',
+                'enrolment_type' => 'FACE',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $disabledEmployee,
+                'vendor_template_id' => 'FACE-DISABLED',
+                'template_b64' => base64_encode('face-disabled'),
+                'template_format' => 'FACE_EMBEDDING_V2',
+                'enrolment_type' => 'FACE',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FACE');
+
+        $response->assertOk();
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'FACE-READY',
+            'sync_ready' => true,
+            'face_template_version' => 'FACE_V2',
+            'face_quality_score' => 95,
+        ]);
+        $response->assertJsonMissing(['vendor_template_id' => 'FACE-DISABLED']);
     }
 }
