@@ -19,6 +19,7 @@ class EnrolmentController extends Controller
         $validated = $request->validated();
         $employeeId = (int) $validated['employee_id'];
         $clockId = (int) $validated['clock_id'];
+        $enrolmentType = (string) $validated['enrolment_type'];
         $vendorTemplateId = (string) $validated['template_vendor_id'];
 
         $employee = Employee::query()->findOrFail($employeeId);
@@ -91,7 +92,7 @@ class EnrolmentController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($validated, $employee): void {
+            DB::transaction(function () use ($validated, $employee, $enrolmentType, $vendorTemplateId): void {
                 EmployeeFingerprint::updateOrCreate(
                     [
                         'employee_id' => (int) $validated['employee_id'],
@@ -111,6 +112,28 @@ class EnrolmentController extends Controller
                 );
 
                 $employee->refreshFingerprintFlag();
+
+                if ($enrolmentType === EmployeeFingerprint::TYPE_FACE) {
+                    $faceMeta = $employee->face_meta;
+                    if (! is_array($faceMeta)) {
+                        $faceMeta = [];
+                    }
+
+                    if (! empty($validated['metadata']) && is_array($validated['metadata'])) {
+                        $faceMeta = array_merge($faceMeta, $validated['metadata']);
+                    }
+
+                    $employee->markFaceEnrolled([
+                        'face_samples_count' => (int) ($validated['samples_count'] ?? 1),
+                        'face_template_version' => $validated['template_version'] ?? null,
+                        'face_updated_at' => $validated['performed_at'],
+                        'face_quality_score' => isset($validated['quality_score']) ? (int) $validated['quality_score'] : null,
+                        'vendor_template_id' => $vendorTemplateId,
+                        'template_format' => $validated['template_format'] ?? null,
+                        'device_serial' => $validated['device_serial'] ?? null,
+                        'face_meta' => $faceMeta,
+                    ]);
+                }
             });
         } catch (QueryException $e) {
             $this->audit($validated, EnrolmentAudit::STATUS_CONFLICT, 'Unique constraint conflict while creating enrolment.');

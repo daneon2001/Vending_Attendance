@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Employee extends Model
 {
     use HasFactory;
+
+    private const ACTIVE_TEMPLATE_STATUSES = ['enrolled', 'active'];
+
+    private const SYNC_READY_FACE_STATUSES = ['enrolled', 'ready'];
 
     protected $fillable = [
         'fortia_employee_id',
@@ -27,16 +32,31 @@ class Employee extends Model
         'imss_number',
         'curp',
         'has_fingerprint',
+        'has_face_enrollment',
+        'face_status',
+        'face_samples_count',
+        'face_template_version',
+        'face_updated_at',
+        'face_enabled',
+        'face_quality_score',
+        'face_meta',
         'email_company',
     ];
 
     protected $casts = [
         'has_fingerprint' => 'boolean',
+        'has_face_enrollment' => 'boolean',
+        'face_enabled' => 'boolean',
+        'face_samples_count' => 'integer',
+        'face_updated_at' => 'datetime',
+        'face_quality_score' => 'integer',
+        'face_meta' => 'array',
         'can_check_all_branches' => 'boolean',
     ];
 
     protected $appends = [
         'fingerprint_status',
+        'face_sync_ready',
     ];
 
     public function attendanceLogs()
@@ -49,6 +69,18 @@ class Employee extends Model
         return $this->hasMany(EmployeeFingerprint::class);
     }
 
+    public function fingerprintTemplates()
+    {
+        return $this->hasMany(EmployeeFingerprint::class)
+            ->fingerprint();
+    }
+
+    public function faceTemplates()
+    {
+        return $this->hasMany(EmployeeFingerprint::class)
+            ->face();
+    }
+
     public function unit()
     {
         return $this->belongsTo(Location::class, 'base_location_id');
@@ -56,13 +88,17 @@ class Employee extends Model
 
     public function getFingerprintStatusAttribute(): string
     {
-        if (! $this->relationLoaded('fingerprints')) {
+        $fingerprints = $this->resolveLoadedBiometrics('FINGERPRINT');
+
+        if ($fingerprints === null) {
             return $this->has_fingerprint ? 'enrolled' : 'none';
         }
 
-        $fingerprints = $this->fingerprints;
-
-        if ($fingerprints->firstWhere('status', 'enrolled')) {
+        if ($fingerprints->first(fn (EmployeeFingerprint $template) => in_array(
+            strtolower((string) $template->status),
+            self::ACTIVE_TEMPLATE_STATUSES,
+            true
+        ))) {
             return 'enrolled';
         }
 
@@ -75,13 +111,127 @@ class Employee extends Model
 
     public function refreshFingerprintFlag(): void
     {
-        $hasFingerprint = $this->fingerprints()
-            ->where('status', 'enrolled')
+        $hasFingerprint = $this->fingerprintTemplates()
+            ->active()
+            ->whereNull('deleted_at')
             ->exists();
 
         if ($this->has_fingerprint !== $hasFingerprint) {
             $this->forceFill(['has_fingerprint' => $hasFingerprint])->saveQuietly();
         }
+    }
+
+    public function getFaceSyncReadyAttribute(): bool
+    {
+        return (bool) $this->has_face_enrollment
+            && (bool) $this->face_enabled
+            && in_array($this->normalizedFaceStatus(), self::SYNC_READY_FACE_STATUSES, true)
+            && (int) ($this->face_samples_count ?? 0) > 0;
+    }
+
+    public function scopeFaceSyncReady(Builder $query): Builder
+    {
+        return $query
+            ->where('has_face_enrollment', true)
+            ->where('face_enabled', true)
+            ->whereIn('face_status', self::SYNC_READY_FACE_STATUSES)
+            ->where('face_samples_count', '>', 0);
+    }
+
+    public function markFaceEnrolled(array $attributes = []): void
+    {
+        $currentMeta = $this->face_meta;
+        if (! is_array($currentMeta)) {
+            $currentMeta = [];
+        }
+
+        $hasCurrentEnrollment = (bool) $this->has_face_enrollment;
+        $status = strtolower((string) ($attributes['face_status'] ?? $this->face_status ?? ''));
+        $faceEnabled = array_key_exists('face_enabled', $attributes)
+            ? (bool) $attributes['face_enabled']
+            : ($hasCurrentEnrollment ? (bool) $this->face_enabled : true);
+
+        if (! in_array($status, ['disabled', 'review_required', 'pending', 'ready', 'enrolled'], true)) {
+            $status = $faceEnabled ? 'enrolled' : 'disabled';
+        }
+
+        if ($status === 'disabled') {
+            $faceEnabled = false;
+        }
+
+        $samplesCount = (int) ($attributes['face_samples_count'] ?? $this->face_samples_count ?? 0);
+        if ($samplesCount < 1) {
+            $samplesCount = 1;
+        }
+
+        $meta = array_filter(array_merge(
+            $currentMeta,
+            is_array($attributes['face_meta'] ?? null) ? $attributes['face_meta'] : [],
+            [
+            'last_vendor_template_id' => $attributes['vendor_template_id'] ?? ($currentMeta['last_vendor_template_id'] ?? null),
+            'last_template_format' => $attributes['template_format'] ?? ($currentMeta['last_template_format'] ?? null),
+            'last_device_serial' => $attributes['device_serial'] ?? ($currentMeta['last_device_serial'] ?? null),
+            'last_enrolment_type' => 'FACE',
+            ]
+        ), fn ($value) => $value !== null && $value !== '');
+
+        $this->forceFill([
+            'has_face_enrollment' => true,
+            'face_enabled' => $faceEnabled,
+            'face_status' => $status,
+            'face_samples_count' => $samplesCount,
+            'face_template_version' => $attributes['face_template_version'] ?? $this->face_template_version,
+            'face_updated_at' => $attributes['face_updated_at'] ?? now(),
+            'face_quality_score' => $attributes['face_quality_score'] ?? $this->face_quality_score,
+            'face_meta' => $meta !== [] ? $meta : null,
+        ])->saveQuietly();
+    }
+
+    public function refreshFaceEnrollmentState(): void
+    {
+        $latestTemplate = $this->faceTemplates()
+            ->active()
+            ->whereNull('deleted_at')
+            ->orderByDesc('performed_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $latestTemplate) {
+            $currentMeta = $this->face_meta;
+            if (! is_array($currentMeta)) {
+                $currentMeta = [];
+            }
+
+            $currentMeta['last_face_cleared_at'] = now()->toIso8601String();
+
+            $this->forceFill([
+                'has_face_enrollment' => false,
+                'face_status' => 'none',
+                'face_samples_count' => 0,
+                'face_template_version' => null,
+                'face_updated_at' => null,
+                'face_enabled' => false,
+                'face_quality_score' => null,
+                'face_meta' => $currentMeta,
+            ])->saveQuietly();
+
+            return;
+        }
+
+        $this->markFaceEnrolled([
+            'face_enabled' => (bool) $this->face_enabled,
+            'face_status' => $this->normalizedFaceStatus() === 'none'
+                ? 'enrolled'
+                : $this->normalizedFaceStatus(),
+            'face_samples_count' => max(1, (int) ($this->face_samples_count ?? 0)),
+            'face_template_version' => $this->face_template_version,
+            'face_updated_at' => $latestTemplate->performed_at ?? $latestTemplate->updated_at ?? now(),
+            'face_quality_score' => $this->face_quality_score,
+            'vendor_template_id' => $latestTemplate->vendor_template_id,
+            'template_format' => $latestTemplate->template_format,
+            'device_serial' => $latestTemplate->device_serial,
+        ]);
     }
 
     public function resolveRouteBinding($value, $field = null): ?Model
@@ -100,5 +250,37 @@ class Employee extends Model
         }
 
         return $query->where($this->getRouteKeyName(), $value)->first();
+    }
+
+    private function normalizedFaceStatus(): string
+    {
+        $status = strtolower((string) ($this->face_status ?? 'none'));
+
+        return $status !== '' ? $status : 'none';
+    }
+
+    private function resolveLoadedBiometrics(string $type)
+    {
+        if ($this->relationLoaded('fingerprintTemplates') && $type === 'FINGERPRINT') {
+            return $this->fingerprintTemplates;
+        }
+
+        if ($this->relationLoaded('faceTemplates') && $type === 'FACE') {
+            return $this->faceTemplates;
+        }
+
+        if (! $this->relationLoaded('fingerprints')) {
+            return null;
+        }
+
+        return $this->fingerprints->filter(function (EmployeeFingerprint $template) use ($type): bool {
+            $enrolmentType = strtoupper((string) $template->enrolment_type);
+
+            if ($type === 'FINGERPRINT') {
+                return $enrolmentType === '' || $enrolmentType === 'FINGERPRINT';
+            }
+
+            return $enrolmentType === 'FACE';
+        })->values();
     }
 }

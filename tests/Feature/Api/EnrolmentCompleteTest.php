@@ -54,6 +54,33 @@ class EnrolmentCompleteTest extends TestCase
             $this->createdEmployeesTable = true;
         }
 
+        Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
+                $table->boolean('has_face_enrollment')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_status')) {
+                $table->string('face_status', 30)->default('none');
+            }
+            if (! Schema::hasColumn('employees', 'face_samples_count')) {
+                $table->unsignedInteger('face_samples_count')->default(0);
+            }
+            if (! Schema::hasColumn('employees', 'face_template_version')) {
+                $table->string('face_template_version', 80)->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_updated_at')) {
+                $table->dateTime('face_updated_at')->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_enabled')) {
+                $table->boolean('face_enabled')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_quality_score')) {
+                $table->unsignedSmallInteger('face_quality_score')->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_meta')) {
+                $table->json('face_meta')->nullable();
+            }
+        });
+
         if (! Schema::hasTable('employee_fingerprints')) {
             Schema::create('employee_fingerprints', function (Blueprint $table): void {
                 $table->id();
@@ -283,6 +310,62 @@ class EnrolmentCompleteTest extends TestCase
             'employee_id' => $employeeId,
             'vendor_template_id' => 'TPL-NEW-NO-B64',
             'status' => 'REJECTED',
+        ]);
+    }
+
+    public function test_face_enrolment_updates_face_summary_without_marking_fingerprint(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Unit Face',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId(['location_id' => $locationId, 'clock_name' => 'Clock Face']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 800006,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+            'has_face_enrollment' => 0,
+            'face_enabled' => 0,
+            'face_status' => 'none',
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'enrolment_type' => 'FACE',
+            'template_vendor_id' => 'FACE-001',
+            'template_b64' => base64_encode('face-template'),
+            'template_format' => 'FACE_EMBEDDING_V1',
+            'device_serial' => 'FACE-DEVICE-123',
+            'samples_count' => 4,
+            'quality_score' => 91,
+            'template_version' => 'FACE_EMBEDDING_V1',
+            'metadata' => [
+                'capture_source' => 'enroller-app',
+            ],
+            'performed_at' => '2026-02-03T13:00:00Z',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('action', 'CREATED');
+
+        $this->assertDatabaseHas('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'FACE-001',
+            'enrolment_type' => 'FACE',
+            'status' => 'enrolled',
+        ]);
+
+        $this->assertDatabaseHas('employees', [
+            'id' => $employeeId,
+            'has_fingerprint' => 0,
+            'has_face_enrollment' => 1,
+            'face_status' => 'enrolled',
+            'face_enabled' => 1,
+            'face_samples_count' => 4,
+            'face_template_version' => 'FACE_EMBEDDING_V1',
+            'face_quality_score' => 91,
         ]);
     }
 }

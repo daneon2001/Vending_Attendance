@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\Permission;
+use App\Actions\SyncPermissionCatalog;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -12,28 +12,7 @@ class RolePermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        $modules = config('permissions.modules', []);
-        $standardActions = config('permissions.standard_actions', []);
-
-        $permissionsMap = [];
-
-        foreach ($modules as $moduleKey => $moduleMeta) {
-            $actions = $moduleMeta['actions'] ?? $standardActions;
-            foreach ($actions as $action) {
-                $permission = Permission::firstOrCreate(
-                    [
-                        'module' => $moduleKey,
-                        'action' => $action,
-                    ],
-                    [
-                        'name' => ucfirst($moduleMeta['label']).' - '.ucfirst($action),
-                        'description' => sprintf('Permite %s en el módulo %s', $action, $moduleMeta['label']),
-                    ],
-                );
-
-                $permissionsMap[$moduleKey][$action] = $permission->id;
-            }
-        }
+        $permissionsMap = SyncPermissionCatalog::run();
 
         $rolesConfig = [
             'admin' => [
@@ -44,7 +23,7 @@ class RolePermissionSeeder extends Seeder
             ],
             'capturista' => [
                 'name' => 'Capturista',
-                'description' => 'Gestiona catálogos, sin eliminar ni desactivar',
+                'description' => 'Gestiona catalogos, sin eliminar ni desactivar',
                 'is_system' => true,
                 'permissions' => [
                     'dashboard' => ['view'],
@@ -57,7 +36,7 @@ class RolePermissionSeeder extends Seeder
             ],
             'supervisor' => [
                 'name' => 'Supervisor',
-                'description' => 'Monitorea y exporta información, puede desactivar equipos',
+                'description' => 'Monitorea y exporta informacion, puede desactivar equipos',
                 'is_system' => true,
                 'permissions' => [
                     'dashboard' => ['view'],

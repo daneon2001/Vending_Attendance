@@ -20,7 +20,8 @@ class EmployeeFingerprintDeleteController extends Controller
         ]);
 
         $fingerprintsQuery = EmployeeFingerprint::query()
-            ->where('employee_id', $employee->id);
+            ->where('employee_id', $employee->id)
+            ->fingerprint();
 
         if (! empty($validated['fingerprint_id'])) {
             $fingerprintsQuery->whereKey((int) $validated['fingerprint_id']);
@@ -47,6 +48,7 @@ class EmployeeFingerprintDeleteController extends Controller
                 if (! empty($fingerprint->vendor_template_id)) {
                     EmployeeTemplateDeletion::query()->create([
                         'vendor' => 'digitalpersona',
+                        'biometric_type' => EmployeeFingerprint::TYPE_FINGERPRINT,
                         'vendor_template_id' => (string) $fingerprint->vendor_template_id,
                         'employee_id' => $employee->id,
                         'deleted_at' => $deletedAt,

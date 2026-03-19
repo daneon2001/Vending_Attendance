@@ -102,10 +102,11 @@ class EmployeeCompactApiTest extends TestCase
 
         $payload = (string) $response->getContent();
         $this->assertIsBool($response->json('data.0.has_fingerprint'));
-        $this->assertIsBool($response->json('data.0.fingerprint_status'));
+        $this->assertIsString($response->json('data.0.fingerprint_status'));
+        $this->assertIsBool($response->json('data.0.has_face_enrollment'));
+        $this->assertIsBool($response->json('data.0.face_sync_ready'));
 
-        $this->assertStringNotContainsStringIgnoringCase('template', $payload);
-        $this->assertStringNotContainsStringIgnoringCase('biometric', $payload);
+        $this->assertStringNotContainsStringIgnoringCase('template_b64', $payload);
         $this->assertStringNotContainsStringIgnoringCase('base64', $payload);
         $this->assertLessThan(50 * 1024, strlen($payload), 'Compact payload exceeded 50KB target.');
     }
@@ -173,6 +174,70 @@ class EmployeeCompactApiTest extends TestCase
             ->assertJsonPath('data.0.full_name', 'Ana Ruiz')
             ->assertJsonPath('data.0.unit_id', $unitA)
             ->assertJsonPath('data.0.status', 'ACTIVE');
+    }
+
+    public function test_compact_endpoint_filters_face_enrollment_and_sync_ready(): void
+    {
+        $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
+        $this->authenticate();
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 93001,
+                'name' => 'Face',
+                'last_name' => 'Lista',
+                'full_name' => 'Face Lista',
+                'status' => 'A',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => true,
+                'face_status' => 'enrolled',
+                'face_enabled' => true,
+                'face_samples_count' => 3,
+                'created_at' => now()->subMinutes(10),
+                'updated_at' => now()->subMinutes(10),
+            ],
+            [
+                'fortia_employee_id' => 93002,
+                'name' => 'Face',
+                'last_name' => 'Deshabilitada',
+                'full_name' => 'Face Deshabilitada',
+                'status' => 'A',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => true,
+                'face_status' => 'disabled',
+                'face_enabled' => false,
+                'face_samples_count' => 2,
+                'created_at' => now()->subMinutes(5),
+                'updated_at' => now()->subMinutes(5),
+            ],
+            [
+                'fortia_employee_id' => 93003,
+                'name' => 'Sin',
+                'last_name' => 'Face',
+                'full_name' => 'Sin Face',
+                'status' => 'A',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => false,
+                'face_status' => 'none',
+                'face_enabled' => false,
+                'face_samples_count' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $withFaceResponse = $this->getJson(self::URI.'?face=with&sync_ready=1&per_page=50');
+
+        $withFaceResponse->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '93001')
+            ->assertJsonPath('data.0.face_sync_ready', true);
+
+        $withoutFaceResponse = $this->getJson(self::URI.'?face=without&per_page=50');
+
+        $withoutFaceResponse->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '93003');
     }
 
     public function test_compact_endpoint_stays_below_100kb_for_15_items_and_never_exposes_template_b64(): void
@@ -265,6 +330,33 @@ class EmployeeCompactApiTest extends TestCase
             });
             $this->createdEmployeesTable = true;
         }
+
+        Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
+                $table->boolean('has_face_enrollment')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_status')) {
+                $table->string('face_status', 30)->default('none');
+            }
+            if (! Schema::hasColumn('employees', 'face_samples_count')) {
+                $table->unsignedInteger('face_samples_count')->default(0);
+            }
+            if (! Schema::hasColumn('employees', 'face_template_version')) {
+                $table->string('face_template_version', 80)->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_updated_at')) {
+                $table->dateTime('face_updated_at')->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_enabled')) {
+                $table->boolean('face_enabled')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'face_quality_score')) {
+                $table->unsignedSmallInteger('face_quality_score')->nullable();
+            }
+            if (! Schema::hasColumn('employees', 'face_meta')) {
+                $table->json('face_meta')->nullable();
+            }
+        });
 
         if (! Schema::hasTable('employee_fingerprints')) {
             Schema::create('employee_fingerprints', function (Blueprint $table): void {
