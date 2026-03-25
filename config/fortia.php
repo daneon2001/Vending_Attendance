@@ -6,4 +6,7 @@ return [
     'password'    => env('FORTIA_PASSWORD', 'fortia_pass'),
     'company_id'  => env('FORTIA_COMPANY_ID', 1),
     'dummy_token' => env('FORTIA_DUMMY_TOKEN', 'FORTIA-DUMMY-TOKEN'),
+    'sync_driver' => env('FORTIA_SYNC_DRIVER', env('APP_ENV', 'production') === 'local' ? 'mock' : 'fortia'),
+    'sync_connection' => env('FORTIA_SYNC_CONNECTION', 'fortia'),
+    'sync_table' => env('FORTIA_SYNC_TABLE', 'fortia_employees'),
 ];

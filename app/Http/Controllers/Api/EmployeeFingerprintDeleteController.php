@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
-use App\Models\EmployeeTemplateDeletion;
+use App\Services\Biometrics\TemplateDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Schema;
 
 class EmployeeFingerprintDeleteController extends Controller
 {
+    public function __construct(private readonly TemplateDeletionService $templateDeletionService)
+    {
+    }
+
     public function destroy(Employee $employee, Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -29,9 +33,15 @@ class EmployeeFingerprintDeleteController extends Controller
             $fingerprintsQuery->where('is_active', true);
         }
 
-        $fingerprints = $fingerprintsQuery
-            ->select(['id', 'vendor_template_id'])
-            ->get();
+        $fingerprintColumns = ['id', 'vendor_template_id', 'enrolment_type'];
+        if (Schema::hasColumn('employee_fingerprints', 'template_vendor')) {
+            $fingerprintColumns[] = 'template_vendor';
+        }
+        if (Schema::hasColumn('employee_fingerprints', 'template_source')) {
+            $fingerprintColumns[] = 'template_source';
+        }
+
+        $fingerprints = $fingerprintsQuery->select($fingerprintColumns)->get();
 
         $fingerprintIds = $fingerprints
             ->pluck('id')
@@ -45,15 +55,11 @@ class EmployeeFingerprintDeleteController extends Controller
             $deletedAt = now();
 
             foreach ($fingerprints as $fingerprint) {
-                if (! empty($fingerprint->vendor_template_id)) {
-                    EmployeeTemplateDeletion::query()->create([
-                        'vendor' => 'digitalpersona',
-                        'biometric_type' => EmployeeFingerprint::TYPE_FINGERPRINT,
-                        'vendor_template_id' => (string) $fingerprint->vendor_template_id,
-                        'employee_id' => $employee->id,
-                        'deleted_at' => $deletedAt,
-                    ]);
-                }
+                $this->templateDeletionService->recordForTemplate(
+                    template: $fingerprint,
+                    employeeId: (int) $employee->id,
+                    deletedAt: $deletedAt,
+                );
             }
 
             if ($fingerprintIds !== []) {

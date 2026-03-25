@@ -5,15 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\EmployeeTemplatesSyncRequest;
 use App\Models\EmployeeFingerprint;
+use App\Models\EmployeeScopeDeletion;
 use App\Models\EmployeeTemplateDeletion;
 use App\Services\Biometrics\AllowedBiometricCandidates;
+use App\Services\Biometrics\TemplateMetadataResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Schema;
 
 class EmployeeTemplatesController extends Controller
 {
-    public function __construct(protected AllowedBiometricCandidates $allowedCandidates)
+    public function __construct(
+        protected AllowedBiometricCandidates $allowedCandidates,
+        protected TemplateMetadataResolver $templateMetadataResolver
+    )
     {
     }
 
@@ -52,7 +57,36 @@ class EmployeeTemplatesController extends Controller
             }
         }
 
-        if ($locationId || $status !== 'all') {
+        if (Schema::hasColumn('employee_template_deletions', 'scope_location_id')) {
+            if ($locationId !== null) {
+                $baseTombstonesQuery->where(function ($query) use ($locationId, $status): void {
+                    $query->where('scope_location_id', $locationId)
+                        ->orWhere(function ($globalScopeQuery) use ($locationId, $status): void {
+                            $globalScopeQuery->whereNull('scope_location_id')
+                                ->where(function ($employeeQuery) use ($locationId, $status): void {
+                                    $employeeQuery->whereNull('employee_id')
+                                        ->orWhereIn(
+                                            'employee_id',
+                                            $this->allowedCandidates
+                                                ->getAllowedEmployeesQuery($locationId, $status)
+                                                ->select('id')
+                                        );
+
+                                    if (Schema::hasTable('employee_scope_deletions')) {
+                                        $employeeQuery->orWhereIn(
+                                            'employee_id',
+                                            EmployeeScopeDeletion::query()
+                                                ->where('scope_location_id', $locationId)
+                                                ->select('employee_id')
+                                        );
+                                    }
+                                });
+                        });
+                });
+            } else {
+                $baseTombstonesQuery->whereNull('scope_location_id');
+            }
+        } elseif ($locationId || $status !== 'all') {
             $baseTombstonesQuery->where(function ($query) use ($locationId, $status): void {
                 $query->whereNull('employee_id')
                     ->orWhereIn(
@@ -73,16 +107,30 @@ class EmployeeTemplatesController extends Controller
         if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
             $tombstoneColumns[] = 'biometric_type';
         }
+        if (Schema::hasColumn('employee_template_deletions', 'template_source')) {
+            $tombstoneColumns[] = 'template_source';
+        }
+        if (Schema::hasColumn('employee_template_deletions', 'scope_location_id')) {
+            $tombstoneColumns[] = 'scope_location_id';
+        }
 
         $tombstones = $tombstonesQuery
             ->orderBy('deleted_at')
             ->get($tombstoneColumns)
-            ->map(fn (EmployeeTemplateDeletion $fingerprint): array => [
-                'vendor' => (string) ($fingerprint->vendor ?: 'digitalpersona'),
-                'biometric_type' => (string) ($fingerprint->biometric_type ?: 'FINGERPRINT'),
-                'vendor_template_id' => (string) $fingerprint->vendor_template_id,
-                'deleted_at' => optional($fingerprint->deleted_at)?->toIso8601String(),
-            ])
+            ->map(function (EmployeeTemplateDeletion $fingerprint): array {
+                $biometricType = (string) ($fingerprint->biometric_type ?: EmployeeFingerprint::TYPE_FINGERPRINT);
+                $defaults = $this->templateMetadataResolver->defaultsFor($biometricType);
+
+                return [
+                    'vendor' => (string) ($fingerprint->vendor ?: $defaults['vendor']),
+                    'biometric_type' => $biometricType,
+                    'template_source' => (string) ($fingerprint->template_source ?: $defaults['source']),
+                    'vendor_template_id' => (string) $fingerprint->vendor_template_id,
+                    'deleted_at' => optional($fingerprint->deleted_at)?->toIso8601String(),
+                ];
+            })
+            ->groupBy('vendor_template_id')
+            ->map(fn ($items) => collect($items)->sortByDesc('deleted_at')->first())
             ->values();
 
         $maxUpdatedAt = (clone $baseTemplatesQuery)->max('updated_at');
@@ -105,13 +153,15 @@ class EmployeeTemplatesController extends Controller
         return response()->json([
             'version' => ($versionTime ?? now())->format('YmdHis'),
             'data' => $templates->map(function (EmployeeFingerprint $fingerprint): array {
-                $biometricType = strtoupper((string) ($fingerprint->enrolment_type ?: 'FINGERPRINT'));
+                $metadata = $this->templateMetadataResolver->fromTemplate($fingerprint);
+                $biometricType = $metadata['biometric_type'];
 
                 return [
                     'employee_id' => (int) $fingerprint->employee_id,
-                    'vendor' => 'digitalpersona',
+                    'vendor' => $metadata['vendor'],
                     'vendor_template_id' => (string) $fingerprint->vendor_template_id,
                     'biometric_type' => $biometricType,
+                    'template_source' => $metadata['source'],
                     'template_format' => (string) ($fingerprint->template_format ?: 'DPFP_PROPRIETARY'),
                     'template_b64' => (string) $fingerprint->template_b64,
                     'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),

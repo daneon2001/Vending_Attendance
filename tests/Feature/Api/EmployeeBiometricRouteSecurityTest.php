@@ -90,7 +90,7 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
         $templateMiddleware = $templateRoute->middleware();
         $this->assertContains('api', $templateMiddleware);
         $this->assertNotContains('web', $templateMiddleware);
-        $this->assertContains('auth:sanctum', $templateMiddleware);
+        $this->assertContains('auth:web,sanctum', $templateMiddleware);
         $this->assertContains('audit.biometric', $templateMiddleware);
         $this->assertContains('perm.strict:biometrics,templates.read', $templateMiddleware);
         $this->assertContains('throttle:biometrics-templates', $templateMiddleware);
@@ -101,9 +101,13 @@ class EmployeeBiometricRouteSecurityTest extends TestCase
         $this->assertContains('api', $faceMiddleware);
         $this->assertNotContains('web', $faceMiddleware);
         $this->assertContains('auth:web,sanctum', $faceMiddleware);
+        $this->assertContains('audit.biometric', $faceMiddleware);
         $this->assertContains('role:administrador,admin,superadmin', $faceMiddleware);
         $this->assertContains('perm.strict:biometrics,face.manage', $faceMiddleware);
         $this->assertContains('throttle:biometrics-face', $faceMiddleware);
+
+        $this->assertNull($this->findRoute('GET', 'api/employees/{employee}'));
+        $this->assertNull($this->findRoute('POST', 'api/employees/{employee}/fingerprints'));
     }
 
     public function test_templates_endpoint_has_basic_throttle_limit(): void

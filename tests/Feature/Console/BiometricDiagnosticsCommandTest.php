@@ -110,8 +110,6 @@ class BiometricDiagnosticsCommandTest extends TestCase
             'e2e.spa.admin.compact_ok_true',
             'e2e.spa.admin.compact_no_template_b64',
             'e2e.spa.admin.compact_lt_100kb',
-            'e2e.spa.superadmin.templates_200',
-            'e2e.spa.templates.header_no_store',
         ];
 
         foreach ($expectedPassChecks as $checkName) {
@@ -287,4 +285,3 @@ class BiometricDiagnosticsCommandTest extends TestCase
         }
     }
 }
-

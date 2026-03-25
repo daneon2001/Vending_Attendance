@@ -26,9 +26,50 @@ class AuditBiometricAccess
         $path = trim($request->path(), '/');
         $isDeleteRoute = $request->isMethod('DELETE')
             && preg_match('#^api/admin/employees/[^/]+/fingerprints$#', $path) === 1;
+        $isFaceRoute = preg_match('#^api/admin/employees/[^/]+/face-profile$#', $path) === 1;
+        $isFaceDeleteRoute = $isFaceRoute && $request->isMethod('DELETE');
+        $isFaceUpdateRoute = $isFaceRoute && $request->isMethod('PATCH');
         $includeTemplates = str_contains($path, '/templates');
         $statusCode = $response->getStatusCode();
         $granted = $statusCode >= 200 && $statusCode < 300;
+
+        if ($isFaceRoute) {
+            if (! in_array($statusCode, [401, 403], true)) {
+                return $response;
+            }
+
+            $requestId = (string) ($request->attributes->get('request_id') ?? '');
+            $correlationId = (string) ($request->attributes->get('correlation_id') ?? '');
+
+            AuditLogger::log(
+                event: $isFaceDeleteRoute ? 'biometric.face.deleted' : 'biometric.face.updated',
+                auditable: $employee,
+                description: $isFaceDeleteRoute
+                    ? 'Biometric face delete denied'
+                    : 'Biometric face update denied',
+                metadata: [
+                    'action' => 'biometric.face.manage',
+                    'entity' => 'employees',
+                    'entity_id' => $employeeId !== null ? (string) $employeeId : null,
+                    'reason' => 'access_denied',
+                    'new_values' => [
+                        'employee_id' => $employeeId,
+                        'user_id' => optional($request->user())->id,
+                        'ip' => $request->ip(),
+                        'user_agent' => $request->userAgent(),
+                        'route' => $request->path(),
+                        'request_id' => $requestId,
+                        'correlation_id' => $correlationId,
+                        'is_delete' => $isFaceDeleteRoute,
+                        'is_update' => $isFaceUpdateRoute,
+                        'access_granted' => false,
+                        'response_status' => $statusCode,
+                    ],
+                ],
+            );
+
+            return $response;
+        }
 
         $event = $isDeleteRoute
             ? 'biometric.fingerprint.deleted'
