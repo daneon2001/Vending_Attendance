@@ -14,6 +14,7 @@ class EmployeesCatalogSyncTest extends TestCase
 
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
+    private bool $createdEmployeeScopeDeletionsTable = false;
 
     protected function setUp(): void
     {
@@ -45,12 +46,28 @@ class EmployeesCatalogSyncTest extends TestCase
             $this->createdEmployeesTable = true;
         }
 
+        if (! Schema::hasTable('employee_scope_deletions')) {
+            Schema::create('employee_scope_deletions', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->unsignedBigInteger('scope_location_id');
+                $table->dateTime('deleted_at');
+                $table->string('reason', 80)->nullable();
+                $table->timestamps();
+            });
+            $this->createdEmployeeScopeDeletionsTable = true;
+        }
+
+        DB::table('employee_scope_deletions')->delete();
         DB::table('employees')->delete();
         DB::table('locations')->delete();
     }
 
     protected function tearDown(): void
     {
+        if ($this->createdEmployeeScopeDeletionsTable && Schema::hasTable('employee_scope_deletions')) {
+            Schema::drop('employee_scope_deletions');
+        }
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
             Schema::drop('employees');
         }
@@ -224,5 +241,48 @@ class EmployeesCatalogSyncTest extends TestCase
             'tombstones.0.employee_id',
             DB::table('employees')->where('fortia_employee_id', 7104)->value('id')
         );
+    }
+
+    public function test_catalog_returns_scope_tombstones_when_employee_leaves_branch(): void
+    {
+        $locA = DB::table('locations')->insertGetId([
+            'name' => 'Unit Scope A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locB = DB::table('locations')->insertGetId([
+            'name' => 'Unit Scope B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 7201,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'name' => 'Cambio',
+            'last_name' => 'Sucursal',
+            'full_name' => 'Cambio Sucursal',
+            'status' => 'A',
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_scope_deletions')->insert([
+            'employee_id' => $employeeId,
+            'scope_location_id' => $locA,
+            'deleted_at' => now(),
+            'reason' => 'scope_lost',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locA);
+
+        $response->assertOk();
+        $response->assertJsonMissing(['fortia_employee_id' => 7201]);
+        $response->assertJsonFragment([
+            'employee_id' => $employeeId,
+        ]);
     }
 }

@@ -71,18 +71,27 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
     });
 });
 
-Route::prefix('employees')->group(function () {
-    Route::get('/', [EmployeeController::class, 'index']);
-    Route::get('{employee}', [EmployeeController::class, 'show']);
-    Route::post('sync-fortia', [EmployeeController::class, 'syncFromFortia']);
-    Route::post('sync-fortia-mock', [EmployeeController::class, 'syncFortiaMock']);
-    Route::patch('{employee}/status', [EmployeeController::class, 'updateStatus']);
-    Route::post('{employee}/fingerprints', [EmployeeController::class, 'storeFingerprint']);
-});
+Route::prefix('employees')
+    ->middleware([
+        'auth:web,sanctum',
+        'role:administrador,admin,superadmin',
+    ])
+    ->group(function (): void {
+        Route::get('/', [EmployeeController::class, 'index'])
+            ->middleware('perm.strict:employees,view');
+        Route::post('sync-fortia', [EmployeeController::class, 'syncFromFortia'])
+            ->middleware('perm.strict:employees,sync');
+        Route::patch('{employee}/status', [EmployeeController::class, 'updateStatus'])
+            ->middleware('perm.strict:employees,disable');
+    });
 
 Route::prefix('admin')->group(function (): void {
     Route::get('employees', [AdminEmployeeController::class, 'index'])
-        ->middleware(['web', 'auth', 'perm:employees,view']);
+        ->middleware([
+            'auth:web,sanctum',
+            'role:administrador,admin,superadmin',
+            'perm.strict:employees,view',
+        ]);
 });
 
 Route::prefix('admin')
@@ -112,6 +121,7 @@ Route::prefix('admin')
 Route::prefix('admin')
     ->middleware([
         'auth:web,sanctum',
+        'audit.biometric',
         'role:administrador,admin,superadmin',
         'perm.strict:biometrics,face.manage',
         'throttle:biometrics-face',
@@ -123,7 +133,7 @@ Route::prefix('admin')
 
 Route::prefix('superadmin')
     ->middleware([
-        'auth:sanctum',
+        'auth:web,sanctum',
         'audit.biometric',
         'role:superadmin',
         'perm.strict:biometrics,templates.read',
@@ -152,7 +162,7 @@ Route::prefix('biometrico')->group(function () {
     Route::get('catalog', [CatalogSyncController::class, 'catalog'])->middleware('dev.only.api');
 });
 
-Route::prefix('fortia-mock')->group(function () {
+Route::prefix('fortia-mock')->middleware('dev.only.api')->group(function () {
     Route::get('employees', [FortiaMockEmployeeController::class, 'index']);
     Route::post('employees', [FortiaMockEmployeeController::class, 'store']);
     Route::patch('employees/{employee}/status', [FortiaMockEmployeeController::class, 'updateStatus']);

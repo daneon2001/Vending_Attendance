@@ -1,12 +1,28 @@
 import axios from 'axios';
+<<<<<<< HEAD
 import { appUrl, getApiBaseUrl } from '@/utils/url';
 
+=======
+import { appBasePath, toAppUrl } from './lib/app-url';
+>>>>>>> dev
 window.axios = axios;
 window.axios.defaults.baseURL = getApiBaseUrl();
 
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 window.axios.defaults.withCredentials = true;
 window.axios.defaults.withXSRFToken = true;
+
+window.axios.interceptors.request.use((config) => {
+    if (typeof config.url === 'string' && config.url.startsWith('/')) {
+        if (appBasePath && (config.url === appBasePath || config.url.startsWith(`${appBasePath}/`))) {
+            return config;
+        }
+
+        config.url = toAppUrl(config.url);
+    }
+
+    return config;
+});
 
 window.axios.interceptors.response.use(
     (response) => response,
@@ -21,7 +37,11 @@ window.axios.interceptors.response.use(
         originalRequest.__csrfRetry = true;
 
         try {
+<<<<<<< HEAD
             await window.axios.get(appUrl('/sanctum/csrf-cookie'));
+=======
+            await window.axios.get(toAppUrl('/sanctum/csrf-cookie'));
+>>>>>>> dev
             if (originalRequest.headers && originalRequest.headers['X-CSRF-TOKEN']) {
                 delete originalRequest.headers['X-CSRF-TOKEN'];
             }

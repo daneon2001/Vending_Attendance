@@ -85,6 +85,15 @@ class EmployeeTemplatesSyncTest extends TestCase
             $this->createdEmployeeFingerprintsTable = true;
         }
 
+        Schema::table('employee_fingerprints', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employee_fingerprints', 'template_vendor')) {
+                $table->string('template_vendor', 80)->nullable();
+            }
+            if (! Schema::hasColumn('employee_fingerprints', 'template_source')) {
+                $table->string('template_source', 80)->nullable();
+            }
+        });
+
         if (! Schema::hasTable('employee_template_deletions')) {
             Schema::create('employee_template_deletions', function (Blueprint $table): void {
                 $table->id();
@@ -100,6 +109,12 @@ class EmployeeTemplatesSyncTest extends TestCase
         Schema::table('employee_template_deletions', function (Blueprint $table): void {
             if (! Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
                 $table->string('biometric_type', 50)->nullable();
+            }
+            if (! Schema::hasColumn('employee_template_deletions', 'template_source')) {
+                $table->string('template_source', 80)->nullable();
+            }
+            if (! Schema::hasColumn('employee_template_deletions', 'scope_location_id')) {
+                $table->unsignedBigInteger('scope_location_id')->nullable();
             }
         });
 
@@ -661,5 +676,56 @@ class EmployeeTemplatesSyncTest extends TestCase
             'face_quality_score' => 95,
         ]);
         $response->assertJsonMissing(['vendor_template_id' => 'FACE-DISABLED']);
+    }
+
+    public function test_location_specific_tombstones_are_emitted_when_template_leaves_branch_scope(): void
+    {
+        $locA = DB::table('locations')->insertGetId(['name' => 'Unit Scope A']);
+        $locB = DB::table('locations')->insertGetId(['name' => 'Unit Scope B']);
+
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 801401,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-SCOPE-REMOVE',
+            'template_vendor' => 'digitalpersona',
+            'template_source' => 'scanner',
+            'template_b64' => base64_encode('scope-remove'),
+            'template_format' => 'DPFP_PROPRIETARY',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'performed_at' => now(),
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_template_deletions')->insert([
+            'vendor' => 'digitalpersona',
+            'template_source' => 'scanner',
+            'biometric_type' => 'FINGERPRINT',
+            'vendor_template_id' => 'TPL-SCOPE-REMOVE',
+            'employee_id' => $employeeId,
+            'scope_location_id' => $locA,
+            'deleted_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FINGERPRINT');
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'TPL-SCOPE-REMOVE',
+            'template_source' => 'scanner',
+        ]);
     }
 }

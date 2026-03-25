@@ -70,16 +70,20 @@ class EmployeeFaceProfileApiTest extends TestCase
         $user = $this->createUserWithRoleAndPermission('Administrador', 'biometrics', 'face.manage');
         Sanctum::actingAs($user);
 
-        $response = $this->patchJson("/api/admin/employees/{$employeeId}/face-profile", [
-            'face_enabled' => true,
-            'face_status' => 'ready',
-            'face_samples_count' => 5,
-            'face_template_version' => 'FACE_V3',
-            'face_quality_score' => 96,
-            'face_meta' => [
-                'capture_source' => 'enroller-app',
-            ],
-        ]);
+        $response = $this
+            ->withHeaders([
+                'X-Correlation-Id' => 'corr-face-update-001',
+            ])
+            ->patchJson("/api/admin/employees/{$employeeId}/face-profile", [
+                'face_enabled' => true,
+                'face_status' => 'ready',
+                'face_samples_count' => 5,
+                'face_template_version' => 'FACE_V3',
+                'face_quality_score' => 96,
+                'face_meta' => [
+                    'capture_source' => 'enroller-app',
+                ],
+            ]);
 
         $response->assertOk()
             ->assertJsonPath('ok', true)
@@ -94,6 +98,27 @@ class EmployeeFaceProfileApiTest extends TestCase
             'face_template_version' => 'FACE_V3',
             'face_quality_score' => 96,
         ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'biometric.face.updated',
+            'reason' => 'face_profile_updated',
+            'correlation_id' => 'corr-face-update-001',
+        ]);
+
+        $oldValues = json_decode((string) DB::table('audit_logs')
+            ->where('action', 'biometric.face.updated')
+            ->latest('id')
+            ->value('old_values'), true);
+        $newValues = json_decode((string) DB::table('audit_logs')
+            ->where('action', 'biometric.face.updated')
+            ->latest('id')
+            ->value('new_values'), true);
+
+        $this->assertIsArray($oldValues);
+        $this->assertIsArray($newValues);
+        $this->assertSame('enrolled', $oldValues['face_status'] ?? null);
+        $this->assertSame('ready', $newValues['face_status'] ?? null);
+        $this->assertSame('enroller-app', $newValues['face_meta']['capture_source'] ?? null);
     }
 
     public function test_admin_can_delete_face_templates_and_generates_face_tombstones(): void
@@ -135,6 +160,31 @@ class EmployeeFaceProfileApiTest extends TestCase
                 ->where('biometric_type', 'FACE')
                 ->count()
         );
+    }
+
+    public function test_user_without_face_manage_permission_gets_403_and_denial_is_audited(): void
+    {
+        $employeeId = $this->seedEmployeeWithFaceTemplate();
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'employees', 'view');
+        Sanctum::actingAs($user);
+
+        $response = $this
+            ->withHeaders([
+                'X-Correlation-Id' => 'corr-face-denied-001',
+            ])
+            ->patchJson("/api/admin/employees/{$employeeId}/face-profile", [
+                'face_enabled' => false,
+                'face_status' => 'disabled',
+            ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'biometric.face.manage',
+            'entity' => 'employees',
+            'reason' => 'access_denied',
+            'correlation_id' => 'corr-face-denied-001',
+        ]);
     }
 
     private function seedEmployeeWithFaceTemplate(): int

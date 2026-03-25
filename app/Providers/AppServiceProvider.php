@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Models\AttendanceAudit;
 use App\Models\AttendanceRecord;
+use App\Models\Employee;
 use App\Observers\AttendanceAuditObserver;
 use App\Observers\AttendanceRecordObserver;
+use App\Observers\EmployeeObserver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -55,5 +57,6 @@ class AppServiceProvider extends ServiceProvider
 
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
+        Employee::observe(EmployeeObserver::class);
     }
 }

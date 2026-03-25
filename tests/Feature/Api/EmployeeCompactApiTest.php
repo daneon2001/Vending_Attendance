@@ -16,6 +16,10 @@ class EmployeeCompactApiTest extends TestCase
     private const URI = '/api/admin/employees';
 
     private bool $createdUsersTable = false;
+    private bool $createdRolesTable = false;
+    private bool $createdRoleUserTable = false;
+    private bool $createdPermissionsTable = false;
+    private bool $createdPermissionRoleTable = false;
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeFingerprintsTable = false;
@@ -42,6 +46,18 @@ class EmployeeCompactApiTest extends TestCase
         }
         if ($this->createdUsersTable && Schema::hasTable('users')) {
             Schema::drop('users');
+        }
+        if ($this->createdPermissionRoleTable && Schema::hasTable('permission_role')) {
+            Schema::drop('permission_role');
+        }
+        if ($this->createdPermissionsTable && Schema::hasTable('permissions')) {
+            Schema::drop('permissions');
+        }
+        if ($this->createdRoleUserTable && Schema::hasTable('role_user')) {
+            Schema::drop('role_user');
+        }
+        if ($this->createdRolesTable && Schema::hasTable('roles')) {
+            Schema::drop('roles');
         }
 
         parent::tearDown();
@@ -288,6 +304,37 @@ class EmployeeCompactApiTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $roleId = DB::table('roles')->insertGetId([
+            'name' => 'Administrador',
+            'description' => 'Rol de prueba',
+            'is_system' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $permissionId = DB::table('permissions')->insertGetId([
+            'module' => 'employees',
+            'action' => 'view',
+            'name' => 'employees.view',
+            'description' => 'Permiso de prueba',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('role_user')->insert([
+            'role_id' => $roleId,
+            'user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('permission_role')->insert([
+            'role_id' => $roleId,
+            'permission_id' => $permissionId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->actingAs(User::query()->findOrFail($userId));
     }
 
@@ -303,6 +350,49 @@ class EmployeeCompactApiTest extends TestCase
                 $table->timestamps();
             });
             $this->createdUsersTable = true;
+        }
+
+        if (! Schema::hasTable('roles')) {
+            Schema::create('roles', function (Blueprint $table): void {
+                $table->id();
+                $table->string('name')->unique();
+                $table->string('description')->nullable();
+                $table->boolean('is_system')->default(false);
+                $table->timestamps();
+            });
+            $this->createdRolesTable = true;
+        }
+
+        if (! Schema::hasTable('role_user')) {
+            Schema::create('role_user', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('role_id');
+                $table->unsignedBigInteger('user_id');
+                $table->timestamps();
+            });
+            $this->createdRoleUserTable = true;
+        }
+
+        if (! Schema::hasTable('permissions')) {
+            Schema::create('permissions', function (Blueprint $table): void {
+                $table->id();
+                $table->string('module');
+                $table->string('action');
+                $table->string('name');
+                $table->string('description')->nullable();
+                $table->timestamps();
+            });
+            $this->createdPermissionsTable = true;
+        }
+
+        if (! Schema::hasTable('permission_role')) {
+            Schema::create('permission_role', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('role_id');
+                $table->unsignedBigInteger('permission_id');
+                $table->timestamps();
+            });
+            $this->createdPermissionRoleTable = true;
         }
 
         if (! Schema::hasTable('locations')) {
@@ -388,6 +478,22 @@ class EmployeeCompactApiTest extends TestCase
 
         if (Schema::hasTable('users')) {
             DB::table('users')->delete();
+        }
+
+        if (Schema::hasTable('permission_role')) {
+            DB::table('permission_role')->delete();
+        }
+
+        if (Schema::hasTable('permissions')) {
+            DB::table('permissions')->delete();
+        }
+
+        if (Schema::hasTable('role_user')) {
+            DB::table('role_user')->delete();
+        }
+
+        if (Schema::hasTable('roles')) {
+            DB::table('roles')->delete();
         }
     }
 }

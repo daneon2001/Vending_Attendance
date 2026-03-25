@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\EmployeeCompactResource;
 use App\Models\Employee;
+use App\Services\Fortia\FortiaEmployeeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rule;
 
 class AdminEmployeeController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, FortiaEmployeeService $fortiaService): JsonResponse
     {
         $validated = $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
@@ -112,6 +113,7 @@ class AdminEmployeeController extends Controller
                 'total' => $paginator->total(),
                 'last_page' => $paginator->lastPage(),
             ],
+            'sync' => $fortiaService->describeMode(),
         ]);
     }
 

@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\EmployeeCompactResource;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
 use App\Services\Audit\AuditLogger;
+use App\Services\Fortia\FortiaEmployeeService;
 use App\Services\FortiaMock\FortiaMockSyncService;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
@@ -77,35 +80,40 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function show(Employee $employee): JsonResponse
-    {
-        return response()->json([
-            'employee' => $employee->load('fingerprints'),
-        ]);
-    }
-
-    public function syncFromFortia(): JsonResponse
-    {
-        // TODO: llamar FortiaEmployeeService::syncEmployees()
-        return response()->json([
-            'message' => 'Sync from Fortia scheduled/TODO',
-        ], 202);
-    }
-
-    public function syncFortiaMock(Request $request, FortiaMockSyncService $syncService): JsonResponse
+    public function syncFromFortia(
+        Request $request,
+        FortiaEmployeeService $fortiaService,
+        FortiaMockSyncService $mockSyncService
+    ): JsonResponse
     {
         $filters = [];
         if ($request->filled('company_id')) {
             $filters['company_id'] = (int) $request->input('company_id');
         }
 
-        $summary = $syncService->syncIncremental($filters);
+        $syncMode = $fortiaService->describeMode();
+
+        try {
+            $summary = $fortiaService->usingMockMode()
+                ? $mockSyncService->syncIncremental($filters)
+                : $fortiaService->syncEmployees($filters);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'sync' => $syncMode,
+            ], 503);
+        }
 
         AuditLogger::log(
-            'employees.sync_mock',
+            'employees.sync',
             null,
-            'Sincronizacion con Fortia Mock',
-            $summary
+            'Sincronizacion de empleados',
+            array_merge($summary, [
+                'action' => 'employees.sync',
+                'entity' => 'employees',
+                'reason' => 'sync_completed',
+                'sync' => $syncMode,
+            ])
         );
 
         return response()->json([
@@ -114,6 +122,7 @@ class EmployeeController extends Controller
             'unchanged_count' => $summary['unchanged'] ?? 0,
             'status_changed_count' => $summary['status_changed'] ?? 0,
             'status_changed' => $summary['changed'] ?? [],
+            'sync' => $syncMode,
         ]);
     }
 
@@ -137,38 +146,9 @@ class EmployeeController extends Controller
             ]
         );
 
-        return response()->json($employee->refresh());
-    }
-
-    public function storeFingerprint(Employee $employee, Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'clock_id' => ['required', 'integer', 'exists:clocks,id'],
-        ]);
-
-        $fingerprint = EmployeeFingerprint::create([
-            'employee_id' => $employee->id,
-            'clock_id' => $validated['clock_id'],
-            'status' => 'enrolled',
-            'enrolled_at' => now(),
-        ]);
-
-        $employee->refreshFingerprintFlag();
-
-        AuditLogger::log(
-            'employees.fingerprint_registered',
-            $employee,
-            'Huella registrada',
-            [
-                'clock_id' => $validated['clock_id'],
-                'fingerprint_id' => $fingerprint->id,
-            ]
+        return response()->json(
+            (new EmployeeCompactResource($employee->refresh()->loadMissing('unit:id,name')))->resolve()
         );
-
-        return response()->json([
-            'message' => 'Huella registrada correctamente.',
-            'fingerprint' => $fingerprint,
-        ], 201);
     }
 
     private function normalizeStatus(string $status): string
@@ -226,10 +206,11 @@ class EmployeeController extends Controller
     private function transformFingerprintMetadata(EmployeeFingerprint $fingerprint): array
     {
         $quality = $fingerprint->quality ?? null;
+        $enrolmentType = strtoupper(trim((string) ($fingerprint->enrolment_type ?? '')));
 
         return [
             'id' => (int) $fingerprint->id,
-            'type' => $fingerprint->enrolment_type ?: ($fingerprint->status ?: 'FINGERPRINT'),
+            'type' => $enrolmentType !== '' ? $enrolmentType : EmployeeFingerprint::TYPE_FINGERPRINT,
             'quality' => is_numeric($quality) ? (int) $quality : null,
             'created_at' => optional($fingerprint->created_at)->toISOString(),
         ];

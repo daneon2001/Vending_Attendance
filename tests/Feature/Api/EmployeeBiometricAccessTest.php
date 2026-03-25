@@ -62,6 +62,9 @@ class EmployeeBiometricAccessTest extends TestCase
 
     public function test_employees_index_never_exposes_template_b64_even_with_include_fingerprints(): void
     {
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'employees', 'view');
+        Sanctum::actingAs($user);
+
         $employeeId = DB::table('employees')->insertGetId([
             'fortia_employee_id' => 55001,
             'name' => 'Biometria',
@@ -103,6 +106,9 @@ class EmployeeBiometricAccessTest extends TestCase
 
     public function test_employees_index_does_not_include_fingerprints_by_default(): void
     {
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'employees', 'view');
+        Sanctum::actingAs($user);
+
         $employeeId = DB::table('employees')->insertGetId([
             'fortia_employee_id' => 56001,
             'name' => 'Listado',
