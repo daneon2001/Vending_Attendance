@@ -135,6 +135,25 @@ class EmployeeFingerprintDeleteTest extends TestCase
         ]);
     }
 
+    public function test_delete_is_compatible_with_legacy_template_deletions_schema_without_biometric_type(): void
+    {
+        $employeeId = $this->seedEmployeeWithFingerprints(1);
+        $user = $this->createUserWithRoleAndPermission('Administrador', 'biometrics', 'fingerprints.delete');
+        Sanctum::actingAs($user);
+
+        $response = $this->deleteJson("/api/admin/employees/{$employeeId}/fingerprints");
+
+        $response->assertOk()
+            ->assertJsonPath('deleted_count', 1);
+
+        $this->assertSame(
+            1,
+            DB::table('employee_template_deletions')
+                ->where('employee_id', $employeeId)
+                ->count()
+        );
+    }
+
     public function test_user_without_delete_permission_gets_403_and_audit_is_logged(): void
     {
         $employeeId = $this->seedEmployeeWithFingerprints(1);

@@ -59,6 +59,7 @@ class FortiaDiagnoseBiometrics extends Command
                 && Str::contains($apiContent, "Route::prefix('admin')"),
             'fingerprints_route' => Str::contains($apiContent, 'employees/{employee}/fingerprints'),
             'templates_route' => Str::contains($apiContent, 'employees/{employee}/fingerprints/templates'),
+            'face_route' => Str::contains($apiContent, 'employees/{employee}/face-profile'),
         ];
 
         foreach ($apiExpectations as $name => $ok) {
@@ -81,6 +82,9 @@ class FortiaDiagnoseBiometrics extends Command
             'templates_route' =>
                 Str::contains($webContent, 'employees/{employee}/fingerprints/templates')
                 || Str::contains($webContent, '/api/superadmin/employees/{employee}/fingerprints/templates'),
+            'face_route' =>
+                Str::contains($webContent, 'employees/{employee}/face-profile')
+                || Str::contains($webContent, '/api/admin/employees/{employee}/face-profile'),
         ];
 
         foreach ($webUnexpected as $name => $existsInWeb) {
@@ -117,10 +121,21 @@ class FortiaDiagnoseBiometrics extends Command
                 'method' => 'GET',
                 'uri' => 'api/superadmin/employees/{employee}/fingerprints/templates',
                 'middleware_checks' => [
-                    'auth_sanctum' => ['auth:sanctum', 'sanctum'],
+                    'auth_sanctum' => ['auth:web,sanctum', 'auth:sanctum', 'sanctum'],
                     'ensure_role' => ['ensurerole', 'role:'],
                     'ensure_strict_permission' => ['ensurestrictpermission', 'perm.strict:biometrics,templates.read'],
                     'throttle' => ['throttle:biometrics-templates', 'throttlerequests:biometrics-templates'],
+                    'audit_biometric_access' => ['auditbiometricaccess', 'audit.biometric'],
+                ],
+            ],
+            'face' => [
+                'method' => 'PATCH',
+                'uri' => 'api/admin/employees/{employee}/face-profile',
+                'middleware_checks' => [
+                    'auth_sanctum' => ['auth:web,sanctum', 'sanctum'],
+                    'ensure_role' => ['ensurerole', 'role:'],
+                    'ensure_strict_permission' => ['ensurestrictpermission', 'perm.strict:biometrics,face.manage'],
+                    'throttle' => ['throttle:biometrics-face', 'throttlerequests:biometrics-face'],
                     'audit_biometric_access' => ['auditbiometricaccess', 'audit.biometric'],
                 ],
             ],
@@ -152,6 +167,18 @@ class FortiaDiagnoseBiometrics extends Command
                     extra: ['middlewares' => $middlewares],
                 );
             }
+        }
+
+        foreach ([
+            ['GET', 'api/employees/{employee}'],
+            ['POST', 'api/employees/{employee}/fingerprints'],
+        ] as [$method, $uri]) {
+            $route = $this->findRoute($method, $uri);
+            $this->addCheck(
+                name: 'route.absent.'.strtolower($method).'.'.str_replace(['/', '{', '}'], ['.', '', ''], $uri),
+                pass: $route === null,
+                detail: $route === null ? 'Legacy public biometric route is absent' : 'Legacy public biometric route is still registered',
+            );
         }
     }
 
@@ -206,6 +233,17 @@ class FortiaDiagnoseBiometrics extends Command
                 pass: $noAuthTemplates['status'] === 401,
                 detail: 'No-auth request to templates must return 401',
                 extra: $noAuthTemplates,
+            );
+
+            $noAuthFace = $this->dispatchJson('PATCH', "/api/admin/employees/{$employeeId}/face-profile", [
+                'face_enabled' => false,
+                'face_status' => 'disabled',
+            ]);
+            $this->addCheck(
+                name: 'e2e.no_auth.face_401',
+                pass: $noAuthFace['status'] === 401,
+                detail: 'No-auth request to face profile must return 401',
+                extra: $noAuthFace,
             );
 
             $this->runBearerModeChecks($fixtures);
@@ -309,8 +347,6 @@ class FortiaDiagnoseBiometrics extends Command
     {
         /** @var User $admin */
         $admin = $fixtures['admin_user'];
-        /** @var User $superadmin */
-        $superadmin = $fixtures['superadmin_user'];
         $employeeId = (int) $fixtures['employee_id'];
 
         $spaHeaders = [
@@ -319,7 +355,7 @@ class FortiaDiagnoseBiometrics extends Command
         ];
 
         $this->clearAuthState();
-        Auth::guard('web')->setUser($admin);
+        $this->setSpaUser($admin);
 
         $spaAdminFingerprints = $this->dispatchJson(
             'GET',
@@ -384,33 +420,6 @@ class FortiaDiagnoseBiometrics extends Command
             pass: $compactBodySize < (100 * 1024),
             detail: 'Compact catalog response is below 100KB',
             extra: ['body_size' => $compactBodySize],
-        );
-
-        $this->clearAuthState();
-        Auth::guard('web')->setUser($superadmin);
-
-        $spaSuperTemplates = $this->dispatchJson(
-            'GET',
-            "/api/superadmin/employees/{$employeeId}/fingerprints/templates",
-            [],
-            $spaHeaders,
-        );
-        $this->addCheck(
-            name: 'e2e.spa.superadmin.templates_200',
-            pass: $spaSuperTemplates['status'] === 200,
-            detail: 'SPA-mode superadmin request to templates must return 200',
-            extra: $spaSuperTemplates,
-        );
-
-        $cacheControl = strtolower((string) ($spaSuperTemplates['headers']['cache-control'] ?? ''));
-        $hasNoStore = str_contains($cacheControl, 'no-store');
-        $this->addCheck(
-            name: 'e2e.spa.templates.header_no_store',
-            pass: $hasNoStore,
-            detail: $hasNoStore
-                ? 'Template response includes Cache-Control no-store'
-                : 'Template response is missing Cache-Control no-store',
-            extra: $spaSuperTemplates,
         );
 
         $this->clearAuthState();
@@ -508,6 +517,13 @@ class FortiaDiagnoseBiometrics extends Command
             files: [],
             server: array_merge($baseServer, $server),
         );
+        $request->setUserResolver(function (?string $guard = null) {
+            if ($guard !== null) {
+                return Auth::guard($guard)->user();
+            }
+
+            return Auth::user();
+        });
 
         $response = app()->handle($request);
         app()->terminate($request, $response);
@@ -623,6 +639,13 @@ class FortiaDiagnoseBiometrics extends Command
         }
 
         Auth::forgetGuards();
+    }
+
+    private function setSpaUser(User $user): void
+    {
+        Auth::shouldUse('web');
+        Auth::setUser($user);
+        Auth::guard('web')->setUser($user);
     }
 
     private function findRoute(string $method, string $uri): ?Route

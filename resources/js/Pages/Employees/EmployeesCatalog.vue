@@ -8,6 +8,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import { toAppUrl } from '@/lib/app-url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
@@ -35,6 +36,11 @@ const toast = reactive({
     title: '',
     message: '',
     duration: 5000,
+});
+const syncConfig = reactive({
+    mode: 'fortia',
+    label: 'Fortia',
+    is_mock: false,
 });
 
 const faceFormDefaults = () => ({
@@ -193,6 +199,14 @@ const modalDefaults = {
 };
 
 const modalState = ref({ ...modalDefaults });
+const syncButtonLabel = computed(() =>
+    syncConfig.label ? `Sincronizar con ${syncConfig.label}` : 'Sincronizar empleados',
+);
+const syncModeCaption = computed(() =>
+    syncConfig.is_mock
+        ? 'Modo local con fuente mock.'
+        : `Fuente configurada: ${syncConfig.label}.`,
+);
 
 const setMeta = (payload) => {
     if (!payload) {
@@ -223,7 +237,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
     filters.page = pageNumber;
 
     try {
-        const { data } = await axios.get('/api/admin/employees', {
+        const { data } = await axios.get(toAppUrl('/api/admin/employees'), {
             params: {
                 status: filters.status || undefined,
                 q: filters.search || undefined,
@@ -237,6 +251,13 @@ const loadEmployees = async (pageNumber = filters.page) => {
 
         employees.value = (data.data ?? []).map(normalizeEmployee);
         setMeta(data.meta);
+        if (data.sync && typeof data.sync === 'object') {
+            Object.assign(syncConfig, {
+                mode: data.sync.mode ?? syncConfig.mode,
+                label: data.sync.label ?? syncConfig.label,
+                is_mock: Boolean(data.sync.is_mock),
+            });
+        }
     } catch (error) {
         loadError.value = error?.response?.data?.message ?? 'Intenta nuevamente.';
         showToast({
@@ -256,13 +277,20 @@ const syncNow = async () => {
     statusChanges.value = [];
 
     try {
-        const { data } = await axios.post('/api/employees/sync-fortia-mock');
+        const { data } = await axios.post(toAppUrl('/api/employees/sync-fortia'));
         statusChanges.value = data.status_changed || [];
+        if (data.sync && typeof data.sync === 'object') {
+            Object.assign(syncConfig, {
+                mode: data.sync.mode ?? syncConfig.mode,
+                label: data.sync.label ?? syncConfig.label,
+                is_mock: Boolean(data.sync.is_mock),
+            });
+        }
         await loadEmployees(filters.page);
         showToast({
             type: 'success',
             title: 'Sincronizacion lista',
-            message: `Nuevos: ${data.created_count}, Actualizados: ${data.updated_count}, Sin cambios: ${data.unchanged_count}, Cambios de estatus: ${data.status_changed_count}`,
+            message: `${syncConfig.label}: Nuevos ${data.created_count}, Actualizados ${data.updated_count}, Sin cambios ${data.unchanged_count}, Cambios de estatus ${data.status_changed_count}`,
         });
     } catch (error) {
         showToast({
@@ -384,7 +412,7 @@ const saveFaceProfile = async () => {
             face_meta: parseFaceMeta(),
         };
 
-        const { data } = await axios.patch(`/api/admin/employees/${faceModal.employee.id}/face-profile`, payload);
+        const { data } = await axios.patch(toAppUrl(`/api/admin/employees/${faceModal.employee.id}/face-profile`), payload);
         updateEmployeeInList(data.employee ?? {});
         showToast({
             type: 'success',
@@ -414,7 +442,7 @@ const executeModalAction = async () => {
 
     try {
         if (action === 'status') {
-            const { data } = await axios.patch(`/api/employees/${context.employee.id}/status`, {
+            const { data } = await axios.patch(toAppUrl(`/api/employees/${context.employee.id}/status`), {
                 status: context.nextStatus,
             });
             updateEmployeeInList(data);
@@ -424,8 +452,8 @@ const executeModalAction = async () => {
                 message: `Estado de ${data.full_name ?? data.name} actualizado correctamente.`,
             });
         } else if (action === 'fingerprint') {
-            await axios.get('/sanctum/csrf-cookie');
-            const { data } = await axios.delete(`/api/admin/employees/${context.employee.id}/fingerprints`);
+            await axios.get(toAppUrl('/sanctum/csrf-cookie'));
+            const { data } = await axios.delete(toAppUrl(`/api/admin/employees/${context.employee.id}/fingerprints`));
             updateEmployeeInList({
                 ...context.employee,
                 has_fingerprint: false,
@@ -437,8 +465,8 @@ const executeModalAction = async () => {
                 message: `Se eliminaron ${data.deleted_count ?? 0} huella(s).`,
             });
         } else if (action === 'face-delete') {
-            await axios.get('/sanctum/csrf-cookie');
-            const { data } = await axios.delete(`/api/admin/employees/${context.employee.id}/face-profile`);
+            await axios.get(toAppUrl('/sanctum/csrf-cookie'));
+            const { data } = await axios.delete(toAppUrl(`/api/admin/employees/${context.employee.id}/face-profile`));
             updateEmployeeInList(data.employee ?? {});
             closeFaceModal();
             showToast({
@@ -508,6 +536,9 @@ onMounted(loadEmployees);
             <div class="flex flex-wrap items-stretch justify-between gap-4 sm:items-center">
                 <div>
                     <p class="text-sm text-muted">Control de estados, huellas y Face ID biometricos.</p>
+                    <p class="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                        {{ syncModeCaption }}
+                    </p>
                 </div>
                 <button
                     v-if="canSyncEmployees"
@@ -516,7 +547,7 @@ onMounted(loadEmployees);
                     @click="syncNow"
                 >
                     <span v-if="syncing">Sincronizando...</span>
-                    <span v-else>Sincronizar con Sistema de Nomina</span>
+                    <span v-else>{{ syncButtonLabel }}</span>
                 </button>
             </div>
 

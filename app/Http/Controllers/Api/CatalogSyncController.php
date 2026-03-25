@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Clock;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeScopeDeletion;
 use App\Models\Location;
 use App\Services\Biometrics\AllowedBiometricCandidates;
 use Carbon\Carbon;
@@ -136,7 +137,7 @@ class CatalogSyncController extends Controller
             $tombstonesQuery->where('updated_at', '>', $since);
         }
 
-        $tombstones = $tombstonesQuery
+        $inactiveTombstones = $tombstonesQuery
             ->orderBy('updated_at')
             ->get(['id', 'updated_at'])
             ->map(fn (Employee $employee): array => [
@@ -145,9 +146,48 @@ class CatalogSyncController extends Controller
             ])
             ->values();
 
+        $scopeTombstones = collect();
+        if ($locationId !== null && Schema::hasTable('employee_scope_deletions')) {
+            $scopeTombstonesQuery = EmployeeScopeDeletion::query()
+                ->where('scope_location_id', $locationId);
+
+            if ($since) {
+                $scopeTombstonesQuery->where('deleted_at', '>', $since);
+            }
+
+            $scopeTombstones = $scopeTombstonesQuery
+                ->orderBy('deleted_at')
+                ->get(['employee_id', 'deleted_at'])
+                ->map(fn (EmployeeScopeDeletion $deletion): array => [
+                    'employee_id' => (int) $deletion->employee_id,
+                    'deleted_at' => optional($deletion->deleted_at)->toIso8601String(),
+                ]);
+        }
+
+        $tombstones = collect($inactiveTombstones->all())
+            ->merge($scopeTombstones)
+            ->sortBy('deleted_at')
+            ->groupBy('employee_id')
+            ->map(function ($items): array {
+                $latest = collect($items)->sortByDesc('deleted_at')->first();
+
+                return [
+                    'employee_id' => (int) $latest['employee_id'],
+                    'deleted_at' => $latest['deleted_at'],
+                ];
+            })
+            ->values();
+
         $maxUpdatedAt = (clone $baseDataQuery)->max('updated_at');
         $maxInactiveAt = (clone $baseTombstonesQuery)->max('updated_at');
-        $versionTime = collect([$maxUpdatedAt, $maxInactiveAt, $since])
+        $maxScopeDeletedAt = null;
+        if ($locationId !== null && Schema::hasTable('employee_scope_deletions')) {
+            $maxScopeDeletedAt = EmployeeScopeDeletion::query()
+                ->where('scope_location_id', $locationId)
+                ->max('deleted_at');
+        }
+
+        $versionTime = collect([$maxUpdatedAt, $maxInactiveAt, $maxScopeDeletedAt, $since])
             ->filter()
             ->map(fn ($value) => Carbon::parse($value))
             ->sort()

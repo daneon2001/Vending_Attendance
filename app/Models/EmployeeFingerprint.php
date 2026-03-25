@@ -20,6 +20,8 @@ class EmployeeFingerprint extends Model
         'employee_id',
         'clock_id',
         'vendor_template_id',
+        'template_vendor',
+        'template_source',
         'template_b64',
         'template_format',
         'enrolment_type',

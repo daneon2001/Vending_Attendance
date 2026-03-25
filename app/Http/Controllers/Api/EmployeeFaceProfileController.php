@@ -7,14 +7,18 @@ use App\Http\Requests\UpdateEmployeeFaceProfileRequest;
 use App\Http\Resources\EmployeeCompactResource;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
-use App\Models\EmployeeTemplateDeletion;
 use App\Services\Audit\AuditLogger;
+use App\Services\Biometrics\TemplateDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class EmployeeFaceProfileController extends Controller
 {
+    public function __construct(private readonly TemplateDeletionService $templateDeletionService)
+    {
+    }
+
     public function update(UpdateEmployeeFaceProfileRequest $request, Employee $employee): JsonResponse
     {
         $before = $this->snapshot($employee);
@@ -46,16 +50,19 @@ class EmployeeFaceProfileController extends Controller
             $payload['face_status'] = 'enrolled';
         }
 
-        $employee->forceFill($payload)->save();
+        $after = DB::transaction(function () use ($employee, $payload, $before): array {
+            $employee->forceFill($payload)->save();
+            $this->touchFaceTemplates($employee);
 
-        $this->touchFaceTemplates($employee);
+            $employee->refresh();
+            $after = $this->snapshot($employee);
 
-        $employee->refresh();
-        $after = $this->snapshot($employee);
+            if ($before['face_sync_ready'] && ! $after['face_sync_ready']) {
+                $this->recordFaceTombstones($employee);
+            }
 
-        if ($before['face_sync_ready'] && ! $after['face_sync_ready']) {
-            $this->recordFaceTombstones($employee);
-        }
+            return $after;
+        });
 
         AuditLogger::log(
             event: 'employees.face_profile_updated',
@@ -81,7 +88,7 @@ class EmployeeFaceProfileController extends Controller
         $before = $this->snapshot($employee);
 
         $templates = $employee->faceTemplates()
-            ->select(['id', 'vendor_template_id'])
+            ->select($this->faceTemplateColumns())
             ->get();
 
         $templateIds = $templates
@@ -94,20 +101,11 @@ class EmployeeFaceProfileController extends Controller
             $deletedAt = now();
 
             foreach ($templates as $template) {
-                if (! empty($template->vendor_template_id)) {
-                    $payload = [
-                        'vendor' => 'digitalpersona',
-                        'vendor_template_id' => (string) $template->vendor_template_id,
-                        'employee_id' => $employee->id,
-                        'deleted_at' => $deletedAt,
-                    ];
-
-                    if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
-                        $payload['biometric_type'] = EmployeeFingerprint::TYPE_FACE;
-                    }
-
-                    EmployeeTemplateDeletion::query()->create($payload);
-                }
+                $this->templateDeletionService->recordForTemplate(
+                    template: $template,
+                    employeeId: (int) $employee->id,
+                    deletedAt: $deletedAt,
+                );
             }
 
             if ($templateIds !== []) {
@@ -162,7 +160,7 @@ class EmployeeFaceProfileController extends Controller
     {
         $templates = $employee->faceTemplates()
             ->whereNotNull('vendor_template_id')
-            ->get(['vendor_template_id']);
+            ->get($this->faceTemplateColumns());
 
         if ($templates->isEmpty()) {
             return;
@@ -171,18 +169,11 @@ class EmployeeFaceProfileController extends Controller
         $deletedAt = now();
 
         foreach ($templates as $template) {
-            $payload = [
-                'vendor' => 'digitalpersona',
-                'vendor_template_id' => (string) $template->vendor_template_id,
-                'employee_id' => $employee->id,
-                'deleted_at' => $deletedAt,
-            ];
-
-            if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
-                $payload['biometric_type'] = EmployeeFingerprint::TYPE_FACE;
-            }
-
-            EmployeeTemplateDeletion::query()->create($payload);
+            $this->templateDeletionService->recordForTemplate(
+                template: $template,
+                employeeId: (int) $employee->id,
+                deletedAt: $deletedAt,
+            );
         }
     }
 
@@ -200,6 +191,25 @@ class EmployeeFaceProfileController extends Controller
             'face_quality_score' => is_numeric($employee->face_quality_score) ? (int) $employee->face_quality_score : null,
             'face_updated_at' => optional($employee->face_updated_at)->toISOString(),
             'face_sync_ready' => (bool) ($employee->face_sync_ready ?? false),
+            'face_meta' => is_array($employee->face_meta) ? $employee->face_meta : null,
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function faceTemplateColumns(): array
+    {
+        $columns = ['id', 'vendor_template_id', 'enrolment_type'];
+
+        if (Schema::hasColumn('employee_fingerprints', 'template_vendor')) {
+            $columns[] = 'template_vendor';
+        }
+
+        if (Schema::hasColumn('employee_fingerprints', 'template_source')) {
+            $columns[] = 'template_source';
+        }
+
+        return $columns;
     }
 }
