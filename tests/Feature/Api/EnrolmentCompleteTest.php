@@ -313,6 +313,102 @@ class EnrolmentCompleteTest extends TestCase
         ]);
     }
 
+    public function test_complete_rejects_invalid_base64_for_new_fingerprint_enrolment(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Unit Invalid B64',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId(['location_id' => $locationId, 'clock_name' => 'Clock 1']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 800051,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'TPL-INVALID-B64',
+            'template_b64' => 'not-base64@@@',
+            'template_format' => 'zkteco-v1',
+            'performed_at' => '2026-02-03T12:00:00Z',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.template_b64.0', 'The template_b64 field must be valid Base64.');
+
+        $this->assertDatabaseMissing('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-INVALID-B64',
+        ]);
+    }
+
+    public function test_complete_rejects_invalid_template_format_for_new_fingerprint_enrolment(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Unit Invalid Format',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId(['location_id' => $locationId, 'clock_name' => 'Clock 1']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 800052,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'TPL-INVALID-FORMAT',
+            'template_b64' => base64_encode('template'),
+            'template_format' => 'unsupported-v9',
+            'performed_at' => '2026-02-03T12:00:00Z',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.template_format.0', 'The selected template_format is invalid for fingerprint enrolments.');
+
+        $this->assertDatabaseMissing('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-INVALID-FORMAT',
+        ]);
+    }
+
+    public function test_complete_rejects_empty_template_b64_for_new_fingerprint_enrolment(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Unit Empty Template',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId(['location_id' => $locationId, 'clock_name' => 'Clock 1']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 800053,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'TPL-EMPTY-B64',
+            'template_b64' => '   ',
+            'template_format' => 'DPFP_PROPRIETARY',
+            'performed_at' => '2026-02-03T12:00:00Z',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.template_b64.0', 'The template_b64 field is required for new enrolments.');
+
+        $this->assertDatabaseMissing('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-EMPTY-B64',
+        ]);
+    }
+
     public function test_face_enrolment_updates_face_summary_without_marking_fingerprint(): void
     {
         $locationId = DB::table('locations')->insertGetId([

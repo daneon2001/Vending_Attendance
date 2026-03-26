@@ -80,13 +80,18 @@ class EnrolmentController extends Controller
             ]);
         }
 
-        if (! $request->filled('template_b64')) {
+        if ($enrolmentType === EmployeeFingerprint::TYPE_FINGERPRINT) {
+            $invalidFingerprintResponse = $this->validateNewFingerprintTemplate($request, $validated);
+            if ($invalidFingerprintResponse instanceof JsonResponse) {
+                return $invalidFingerprintResponse;
+            }
+        } elseif (! $request->filled('template_b64')) {
             $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_b64 is required for new enrolments.');
 
             return response()->json([
-                'message' => 'The template_b64 field is required for new enrolments.',
+                'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE,
                 'errors' => [
-                    'template_b64' => ['The template_b64 field is required for new enrolments.'],
+                    'template_b64' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE],
                 ],
             ], 422);
         }
@@ -162,6 +167,57 @@ class EnrolmentController extends Controller
     private function isActiveEmployee(?string $status): bool
     {
         return in_array(strtoupper((string) $status), ['A', 'ACTIVE'], true);
+    }
+
+    private function validateNewFingerprintTemplate(EnrolmentCompleteRequest $request, array $validated): ?JsonResponse
+    {
+        if (! $request->filled('template_b64')) {
+            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_b64 is required for new fingerprint enrolments.');
+
+            return response()->json([
+                'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE,
+                'errors' => [
+                    'template_b64' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE],
+                ],
+            ], 422);
+        }
+
+        if (! $request->filled('template_format')) {
+            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_format is required for fingerprint enrolments.');
+
+            return response()->json([
+                'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_FORMAT_REQUIRED_MESSAGE,
+                'errors' => [
+                    'template_format' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_FORMAT_REQUIRED_MESSAGE],
+                ],
+            ], 422);
+        }
+
+        $templateB64 = (string) ($validated['template_b64'] ?? '');
+        if (! $request->fingerprintTemplateB64IsValid($templateB64)) {
+            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_b64 is not valid Base64 for fingerprint enrolment.');
+
+            return response()->json([
+                'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_INVALID_B64_MESSAGE,
+                'errors' => [
+                    'template_b64' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_INVALID_B64_MESSAGE],
+                ],
+            ], 422);
+        }
+
+        $templateFormat = (string) ($validated['template_format'] ?? '');
+        if (! $request->fingerprintTemplateFormatIsAllowed($templateFormat)) {
+            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_format is not allowed for fingerprint enrolment.');
+
+            return response()->json([
+                'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_FORMAT_INVALID_MESSAGE,
+                'errors' => [
+                    'template_format' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_FORMAT_INVALID_MESSAGE],
+                ],
+            ], 422);
+        }
+
+        return null;
     }
 
     private function audit(array $payload, string $status, string $reason): void

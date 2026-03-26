@@ -218,6 +218,110 @@ class EmployeeTemplatesSyncTest extends TestCase
         $response->assertJsonFragment(['vendor_template_id' => 'TPL-NEW']);
     }
 
+    public function test_sync_exposes_legacy_huellas_when_template_format_is_compatible(): void
+    {
+        $locationId = DB::table('locations')->insertGetId(['name' => 'Unit Legacy']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 8010021,
+            'base_location_id' => $locationId,
+            'status' => 'A',
+        ]);
+
+        $legacyFingerprint = base64_encode("\x00\x01DPFP-LEGACY\x02\x03");
+
+        DB::table('employee_fingerprints')->insert([
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-LEGACY-001',
+            'template_b64' => $legacyFingerprint,
+            'template_format' => 'DPFP_PROPRIETARY',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'performed_at' => now(),
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI . '?status=all&biometric_type=FINGERPRINT');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.vendor_template_id', 'TPL-LEGACY-001')
+            ->assertJsonPath('data.0.template_format', 'DPFP_PROPRIETARY')
+            ->assertJsonPath('data.0.template_b64', $legacyFingerprint)
+            ->assertJsonPath('huellas.0.vendor_template_id', 'TPL-LEGACY-001')
+            ->assertJsonPath('huellas.0.template_format', 'DPFP_PROPRIETARY')
+            ->assertJsonPath('huellas.0.fingerprint', $legacyFingerprint)
+            ->assertJsonCount(1, 'huellas');
+    }
+
+    public function test_sync_keeps_new_payload_and_leaves_legacy_fingerprint_empty_when_format_is_not_compatible(): void
+    {
+        $locationId = DB::table('locations')->insertGetId(['name' => 'Unit New Only']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 8010022,
+            'base_location_id' => $locationId,
+            'status' => 'A',
+        ]);
+
+        $templateB64 = base64_encode('new-only-template');
+
+        DB::table('employee_fingerprints')->insert([
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-NEW-ONLY-001',
+            'template_b64' => $templateB64,
+            'template_format' => 'zkteco-v1',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'performed_at' => now(),
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI . '?status=all&biometric_type=FINGERPRINT');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.vendor_template_id', 'TPL-NEW-ONLY-001')
+            ->assertJsonPath('data.0.template_format', 'zkteco-v1')
+            ->assertJsonPath('data.0.template_b64', $templateB64)
+            ->assertJsonPath('huellas.0.vendor_template_id', 'TPL-NEW-ONLY-001')
+            ->assertJsonPath('huellas.0.template_format', 'zkteco-v1')
+            ->assertJsonPath('huellas.0.fingerprint', null)
+            ->assertJsonCount(1, 'huellas');
+    }
+
+    public function test_sync_leaves_legacy_fingerprint_empty_when_payload_is_not_valid_base64(): void
+    {
+        $locationId = DB::table('locations')->insertGetId(['name' => 'Unit Invalid B64']);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 8010023,
+            'base_location_id' => $locationId,
+            'status' => 'A',
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'TPL-INVALID-B64-001',
+            'template_b64' => 'not-base64@@@',
+            'template_format' => 'DPFP_PROPRIETARY',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'performed_at' => now(),
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI . '?status=all&biometric_type=FINGERPRINT');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.vendor_template_id', 'TPL-INVALID-B64-001')
+            ->assertJsonPath('data.0.template_b64', 'not-base64@@@')
+            ->assertJsonPath('huellas.0.vendor_template_id', 'TPL-INVALID-B64-001')
+            ->assertJsonPath('huellas.0.fingerprint', null)
+            ->assertJsonCount(1, 'huellas');
+    }
+
     public function test_sync_tombstones_returns_deleted_since(): void
     {
         $locationId = DB::table('locations')->insertGetId(['name' => 'Unit C']);

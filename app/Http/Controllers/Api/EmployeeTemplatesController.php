@@ -150,50 +150,21 @@ class EmployeeTemplatesController extends Controller
             $status
         );
 
-        return response()->json([
-            'version' => ($versionTime ?? now())->format('YmdHis'),
-            'data' => $templates->map(function (EmployeeFingerprint $fingerprint): array {
-                $metadata = $this->templateMetadataResolver->fromTemplate($fingerprint);
-                $biometricType = $metadata['biometric_type'];
+        $templatePayloads = $templates
+            ->map(function (EmployeeFingerprint $fingerprint): array {
+                $data = $this->transformTemplate($fingerprint);
 
                 return [
-                    'employee_id' => (int) $fingerprint->employee_id,
-                    'vendor' => $metadata['vendor'],
-                    'vendor_template_id' => (string) $fingerprint->vendor_template_id,
-                    'biometric_type' => $biometricType,
-                    'template_source' => $metadata['source'],
-                    'template_format' => (string) ($fingerprint->template_format ?: 'DPFP_PROPRIETARY'),
-                    'template_b64' => (string) $fingerprint->template_b64,
-                    'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),
-                    'location_id' => $fingerprint->employee?->base_location_id ? (int) $fingerprint->employee->base_location_id : null,
-                    'can_check_all_branches' => (bool) ($fingerprint->employee?->can_check_all_branches ?? false),
-                    'sync_ready' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? (bool) ($fingerprint->employee?->face_sync_ready ?? false)
-                        : true,
-                    'face_status' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? (string) ($fingerprint->employee?->face_status ?? 'none')
-                        : null,
-                    'face_enabled' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? (bool) ($fingerprint->employee?->face_enabled ?? false)
-                        : null,
-                    'face_samples_count' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? (int) ($fingerprint->employee?->face_samples_count ?? 0)
-                        : null,
-                    'face_template_version' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? ($fingerprint->employee?->face_template_version ?? null)
-                        : null,
-                    'face_quality_score' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? (is_numeric($fingerprint->employee?->face_quality_score)
-                            ? (int) $fingerprint->employee?->face_quality_score
-                            : null)
-                        : null,
-                    'face_updated_at' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                        ? optional($fingerprint->employee?->face_updated_at)?->toIso8601String()
-                        : null,
-                    'captured_at' => optional($fingerprint->performed_at)?->toIso8601String(),
-                    'updated_at' => optional($fingerprint->updated_at)?->toIso8601String(),
+                    'data' => $data,
+                    'legacy' => $this->transformLegacyFingerprint($fingerprint, $data),
                 ];
-            })->values(),
+            })
+            ->values();
+
+        return response()->json([
+            'version' => ($versionTime ?? now())->format('YmdHis'),
+            'data' => $templatePayloads->pluck('data')->values(),
+            'huellas' => $templatePayloads->pluck('legacy')->filter()->values(),
             'tombstones' => $tombstones,
         ]);
     }
@@ -210,6 +181,113 @@ class EmployeeTemplatesController extends Controller
         }
 
         return Carbon::parse($raw);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transformTemplate(EmployeeFingerprint $fingerprint): array
+    {
+        $metadata = $this->templateMetadataResolver->fromTemplate($fingerprint);
+        $biometricType = $metadata['biometric_type'];
+
+        return [
+            'employee_id' => (int) $fingerprint->employee_id,
+            'vendor' => $metadata['vendor'],
+            'vendor_template_id' => (string) $fingerprint->vendor_template_id,
+            'biometric_type' => $biometricType,
+            'template_source' => $metadata['source'],
+            'template_format' => (string) ($fingerprint->template_format ?: 'DPFP_PROPRIETARY'),
+            'template_b64' => (string) $fingerprint->template_b64,
+            'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),
+            'location_id' => $fingerprint->employee?->base_location_id ? (int) $fingerprint->employee?->base_location_id : null,
+            'can_check_all_branches' => (bool) ($fingerprint->employee?->can_check_all_branches ?? false),
+            'sync_ready' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? (bool) ($fingerprint->employee?->face_sync_ready ?? false)
+                : true,
+            'face_status' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? (string) ($fingerprint->employee?->face_status ?? 'none')
+                : null,
+            'face_enabled' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? (bool) ($fingerprint->employee?->face_enabled ?? false)
+                : null,
+            'face_samples_count' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? (int) ($fingerprint->employee?->face_samples_count ?? 0)
+                : null,
+            'face_template_version' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? ($fingerprint->employee?->face_template_version ?? null)
+                : null,
+            'face_quality_score' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? (is_numeric($fingerprint->employee?->face_quality_score)
+                    ? (int) $fingerprint->employee?->face_quality_score
+                    : null)
+                : null,
+            'face_updated_at' => $biometricType === EmployeeFingerprint::TYPE_FACE
+                ? optional($fingerprint->employee?->face_updated_at)?->toIso8601String()
+                : null,
+            'captured_at' => optional($fingerprint->performed_at)?->toIso8601String(),
+            'updated_at' => optional($fingerprint->updated_at)?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>|null
+     */
+    private function transformLegacyFingerprint(EmployeeFingerprint $fingerprint, array $data): ?array
+    {
+        if (($data['biometric_type'] ?? EmployeeFingerprint::TYPE_FINGERPRINT) !== EmployeeFingerprint::TYPE_FINGERPRINT) {
+            return null;
+        }
+
+        $templateB64 = trim((string) ($fingerprint->template_b64 ?? ''));
+
+        return [
+            'employee_id' => $data['employee_id'],
+            'vendor_template_id' => $data['vendor_template_id'],
+            'template_format' => $data['template_format'],
+            'fingerprint' => $this->isLegacyFingerprintContractCompatible(
+                $templateB64,
+                (string) ($data['template_format'] ?? '')
+            ) ? $templateB64 : null,
+            'captured_at' => $data['captured_at'],
+            'updated_at' => $data['updated_at'],
+        ];
+    }
+
+    private function isLegacyFingerprintContractCompatible(string $templateB64, string $templateFormat): bool
+    {
+        if (! $this->isLegacyCompatibleFormat($templateFormat)) {
+            return false;
+        }
+
+        return $this->isBase64Payload($templateB64);
+    }
+
+    private function isLegacyCompatibleFormat(string $templateFormat): bool
+    {
+        $normalizedFormat = strtoupper(trim($templateFormat));
+
+        if ($normalizedFormat === '') {
+            return false;
+        }
+
+        $compatibleFormats = collect((array) config('biometrics.fingerprint.legacy_compatible_formats', ['DPFP_PROPRIETARY']))
+            ->map(static fn (mixed $format): string => strtoupper(trim((string) $format)))
+            ->filter()
+            ->values()
+            ->all();
+
+        return in_array($normalizedFormat, $compatibleFormats, true);
+    }
+
+    private function isBase64Payload(string $payload): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        return base64_decode($payload, true) !== false;
     }
 
     private function hashTemplate(string $templateB64): string
