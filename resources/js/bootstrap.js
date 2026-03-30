@@ -33,11 +33,7 @@ window.axios.interceptors.response.use(
         originalRequest.__csrfRetry = true;
 
         try {
-<<<<<<< HEAD
             await window.axios.get(appUrl('/sanctum/csrf-cookie'));
-=======
-            await window.axios.get(toAppUrl('/sanctum/csrf-cookie'));
->>>>>>> dev
             if (originalRequest.headers && originalRequest.headers['X-CSRF-TOKEN']) {
                 delete originalRequest.headers['X-CSRF-TOKEN'];
             }

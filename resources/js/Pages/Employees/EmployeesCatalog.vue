@@ -442,11 +442,7 @@ const executeModalAction = async () => {
 
     try {
         if (action === 'status') {
-<<<<<<< HEAD
             const { data } = await axios.patch(apiUrl(`/api/employees/${context.employee.id}/status`), {
-=======
-            const { data } = await axios.patch(toAppUrl(`/api/employees/${context.employee.id}/status`), {
->>>>>>> dev
                 status: context.nextStatus,
             });
             updateEmployeeInList(data);
