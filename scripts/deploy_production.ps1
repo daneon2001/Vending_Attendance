@@ -6,9 +6,16 @@ $backupRoot = "D:\backups\biometrico_production"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupPath = Join-Path $backupRoot $timestamp
 
+$php = "D:\PHP\php-8.4\php.exe"
+$composer = "C:\ProgramData\ComposerSetup\bin\composer.phar"
+
 Write-Host "=== Deploy PRODUCCION iniciado ==="
 Write-Host "Origen: $source"
 Write-Host "Destino: $target"
+
+if (!(Test-Path $php)) {
+    throw "No se encontró PHP 8.4 en la ruta: $php"
+}
 
 if (!(Test-Path $backupRoot)) {
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
@@ -40,13 +47,22 @@ if ($LASTEXITCODE -gt 7) {
 
 Set-Location $target
 
+Write-Host "Validando binarios..."
+& $php -v
+where.exe php
+where.exe composer
+
 Write-Host "Ejecutando tareas Laravel..."
 
 if (Test-Path "composer.json") {
-    if (-not (Get-Command composer -ErrorAction SilentlyContinue)) {
-        throw "composer no está disponible en el PATH."
+    if (Test-Path $composer) {
+        & $php $composer install --no-dev --optimize-autoloader
+    } else {
+        if (-not (Get-Command composer -ErrorAction SilentlyContinue)) {
+            throw "composer no está disponible en el PATH ni se encontró composer.phar en $composer"
+        }
+        composer install --no-dev --optimize-autoloader
     }
-    composer install --no-dev --optimize-autoloader
 }
 
 if (Test-Path "package-lock.json") {
@@ -63,14 +79,10 @@ if (Test-Path "package-lock.json") {
     npm run build
 }
 
-if (-not (Get-Command php -ErrorAction SilentlyContinue)) {
-    throw "php no está disponible en el PATH."
-}
-
-php artisan migrate --force
-php artisan optimize:clear
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+& $php artisan migrate --force
+& $php artisan optimize:clear
+& $php artisan config:cache
+& $php artisan route:cache
+& $php artisan view:cache
 
 Write-Host "=== Deploy PRODUCCION finalizado ==="
