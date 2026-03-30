@@ -237,11 +237,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
     filters.page = pageNumber;
 
     try {
-<<<<<<< HEAD
         const { data } = await axios.get(apiUrl('/api/admin/employees'), {
-=======
-        const { data } = await axios.get(toAppUrl('/api/admin/employees'), {
->>>>>>> dev
             params: {
                 status: filters.status || undefined,
                 q: filters.search || undefined,
@@ -281,11 +277,7 @@ const syncNow = async () => {
     statusChanges.value = [];
 
     try {
-<<<<<<< HEAD
         const { data } = await axios.post(apiUrl('/api/employees/sync-fortia-mock'));
-=======
-        const { data } = await axios.post(toAppUrl('/api/employees/sync-fortia'));
->>>>>>> dev
         statusChanges.value = data.status_changed || [];
         if (data.sync && typeof data.sync === 'object') {
             Object.assign(syncConfig, {
@@ -450,11 +442,7 @@ const executeModalAction = async () => {
 
     try {
         if (action === 'status') {
-<<<<<<< HEAD
             const { data } = await axios.patch(apiUrl(`/api/employees/${context.employee.id}/status`), {
-=======
-            const { data } = await axios.patch(toAppUrl(`/api/employees/${context.employee.id}/status`), {
->>>>>>> dev
                 status: context.nextStatus,
             });
             updateEmployeeInList(data);
@@ -464,13 +452,8 @@ const executeModalAction = async () => {
                 message: `Estado de ${data.full_name ?? data.name} actualizado correctamente.`,
             });
         } else if (action === 'fingerprint') {
-<<<<<<< HEAD
             await axios.get(appUrl('/sanctum/csrf-cookie'));
             const { data } = await axios.delete(apiUrl(`/api/admin/employees/${context.employee.id}/fingerprints`));
-=======
-            await axios.get(toAppUrl('/sanctum/csrf-cookie'));
-            const { data } = await axios.delete(toAppUrl(`/api/admin/employees/${context.employee.id}/fingerprints`));
->>>>>>> dev
             updateEmployeeInList({
                 ...context.employee,
                 has_fingerprint: false,
