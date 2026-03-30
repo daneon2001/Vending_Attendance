@@ -8,7 +8,7 @@ deploy_qa:
   only:
     - qa
   script:
-    - pwsh -ExecutionPolicy Bypass -File scripts/deploy_qa.ps1
+    - powershell -ExecutionPolicy Bypass -File scripts/deploy_qa.ps1
   environment:
     name: qa
     url: https://desarrollo.sybiml3.com/biometrico
@@ -23,7 +23,19 @@ deploy_production:
     - main
   when: manual
   script:
-    - pwsh -ExecutionPolicy Bypass -File scripts/deploy_production.ps1
+    - 'Write-Host "=== DEPLOY PRODUCCION BIOMETRICO ==="'
+    - 'cd D:\biometrico\biometrico'
+    - 'git fetch origin'
+    - 'git checkout main'
+    - 'git reset --hard origin/main'
+    - 'composer install --no-dev --optimize-autoloader'
+    - 'npm ci'
+    - 'npm run build'
+    - 'php artisan optimize:clear'
+    - 'php artisan config:cache'
+    - 'php artisan route:cache'
+    - 'php artisan view:cache'
+    - 'Write-Host "=== DEPLOY FINALIZADO ==="'
   environment:
     name: production
     url: https://biometrico.sybiml.com
