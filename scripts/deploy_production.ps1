@@ -7,7 +7,7 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupPath = Join-Path $backupRoot $timestamp
 
 $php = "D:\PHP\php-8.4\php.exe"
-$composer = "C:\ProgramData\ComposerSetup\bin\composer.phar"
+$composer = "C:\Composer\composer.phar"
 
 Write-Host "=== Deploy PRODUCCION iniciado ==="
 Write-Host "Origen: $source"

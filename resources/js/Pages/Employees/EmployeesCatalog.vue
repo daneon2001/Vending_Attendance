@@ -8,11 +8,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
-<<<<<<< HEAD
 import { apiUrl, appUrl } from '@/utils/url';
-=======
-import { toAppUrl } from '@/lib/app-url';
->>>>>>> dev
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
