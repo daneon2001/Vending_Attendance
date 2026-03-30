@@ -1,10 +1,6 @@
 import axios from 'axios';
-<<<<<<< HEAD
 import { appUrl, getApiBaseUrl } from '@/utils/url';
 
-=======
-import { appBasePath, toAppUrl } from './lib/app-url';
->>>>>>> dev
 window.axios = axios;
 window.axios.defaults.baseURL = getApiBaseUrl();
 
