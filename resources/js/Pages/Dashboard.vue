@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ChartCard from '@/Components/ChartCard.vue';
 import Toast from '@/Components/Toast.vue';
 import { hasChartData } from '@/utils/chart';
+import { apiUrl } from '@/utils/url';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -153,7 +154,7 @@ const fetchSummary = async () => {
     errorMessage.value = '';
 
     try {
-        const { data } = await axios.get(route('dashboard.summary'), { params });
+        const { data } = await axios.get(apiUrl('/api/dashboard/summary'), { params });
         if (requestId !== requestCounter.value) {
             return;
         }

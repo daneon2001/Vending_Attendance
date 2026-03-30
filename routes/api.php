@@ -56,7 +56,7 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
         Route::post('/time-and-assistance/clock-catalog/{clock}/assign', [ClockController::class, 'assign']);
         Route::post('/time-and-assistance/clock-catalog/heartbeat', [ClockController::class, 'heartbeat']);
 
-        Route::get('/dashboard/summary', DashboardSummaryController::class)->name('dashboard.summary');
+        Route::get('/dashboard/summary', DashboardSummaryController::class)->name('fortia.dashboard.summary');
 
         Route::post('/enrolments/complete', [EnrolmentController::class, 'complete']);
         Route::get('/biometrico/catalog', [CatalogSyncController::class, 'catalog']);
