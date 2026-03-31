@@ -29,4 +29,22 @@ class RoleRequest extends FormRequest
             'permissions.*.*' => ['string'],
         ];
     }
+
+    protected function prepareForValidation(): void
+    {
+        $payload = [];
+
+        if ($this->has('name')) {
+            $payload['name'] = trim((string) $this->input('name', ''));
+        }
+
+        if ($this->has('description')) {
+            $description = $this->input('description');
+            $payload['description'] = is_string($description) ? trim($description) : $description;
+        }
+
+        if ($payload !== []) {
+            $this->merge($payload);
+        }
+    }
 }

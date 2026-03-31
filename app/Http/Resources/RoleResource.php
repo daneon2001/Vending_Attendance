@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\SyncPermissionCatalog;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class RoleResource extends JsonResource
@@ -10,8 +11,8 @@ class RoleResource extends JsonResource
     {
         $permissions = $this->whenLoaded('permissions', function () {
             return $this->permissions
-                ->groupBy('module')
-                ->map(fn ($items) => $items->pluck('action')->values())
+                ->groupBy(fn ($permission) => SyncPermissionCatalog::normalizeModuleKey($permission->module))
+                ->map(fn ($items) => $items->pluck('action')->unique()->values())
                 ->toArray();
         }, []);
 

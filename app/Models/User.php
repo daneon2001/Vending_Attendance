@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Actions\SyncPermissionCatalog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -70,10 +71,12 @@ class User extends Authenticatable
         $permissions = $this->relationLoaded('roles')
             ? $this->roles->loadMissing('permissions')
             : $this->roles()->with('permissions')->get();
+        $compatibleModules = SyncPermissionCatalog::compatibleModuleKeys($module);
 
         foreach ($permissions as $role) {
             foreach ($role->permissions as $permission) {
-                if ($permission->module === $module && ($permission->action === $action || $permission->action === 'manage')) {
+                if (in_array($permission->module, $compatibleModules, true)
+                    && ($permission->action === $action || $permission->action === 'manage')) {
                     return true;
                 }
             }
@@ -88,7 +91,7 @@ class User extends Authenticatable
         $permissions = $this->allPermissions();
 
         foreach ($permissions as $permission) {
-            $matrix[$permission->module][] = $permission->action;
+            $matrix[SyncPermissionCatalog::normalizeModuleKey($permission->module)][] = $permission->action;
         }
 
         return collect($matrix)

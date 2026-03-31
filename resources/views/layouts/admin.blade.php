@@ -38,10 +38,12 @@
                class="block rounded-xl border border-app px-3 py-2 hover:bg-slate-50">
                 Catalogo de empleados
             </a>
-            <a href="{{ route('units.index') }}"
-               class="block rounded-xl border border-app px-3 py-2 hover:bg-slate-50">
-                Catalogo de sucursales
-            </a>
+            @if(auth()->user()?->hasPermission('units', 'view') || auth()->user()?->hasPermission('settings', 'manage'))
+                <a href="{{ route('units.index') }}"
+                   class="block rounded-xl border border-app px-3 py-2 hover:bg-slate-50">
+                    Catalogo de unidades
+                </a>
+            @endif
             <a href="{{ route('clocks.index') }}"
                class="block rounded-xl border border-app px-3 py-2 hover:bg-slate-50">
                 Relojes biometricos

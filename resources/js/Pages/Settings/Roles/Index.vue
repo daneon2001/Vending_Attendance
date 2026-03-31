@@ -68,6 +68,7 @@ const roleForm = reactive({
     mode: 'create',
     loading: false,
     errors: {},
+    isSystem: false,
     form: {
         id: null,
         name: '',
@@ -87,6 +88,7 @@ const assignModal = reactive({
 useBodyScrollLock(() => roleForm.open || assignModal.open);
 
 const moduleEntries = computed(() => Object.entries(props.modules ?? {}));
+const isEditingSystemRole = computed(() => roleForm.mode === 'edit' && roleForm.isSystem);
 
 const resetRoleForm = () => {
     roleForm.form = {
@@ -95,6 +97,7 @@ const resetRoleForm = () => {
         description: '',
         permissions: {},
     };
+    roleForm.isSystem = false;
     roleForm.errors = {};
 };
 
@@ -107,6 +110,7 @@ const openCreateModal = () => {
 const openEditModal = (role) => {
     resetRoleForm();
     roleForm.mode = 'edit';
+    roleForm.isSystem = Boolean(role.is_system);
     roleForm.form = {
         id: role.id,
         name: role.name,
@@ -159,10 +163,13 @@ const submitRoleForm = async () => {
 
     try {
         const payload = {
-            name: roleForm.form.name,
             description: roleForm.form.description,
             permissions: roleForm.form.permissions,
         };
+
+        if (roleForm.mode === 'create' || !roleForm.isSystem) {
+            payload.name = roleForm.form.name;
+        }
 
         let response;
         if (roleForm.mode === 'create') {
@@ -176,11 +183,18 @@ const submitRoleForm = async () => {
         emitToast({
             type: 'success',
             title: 'Rol guardado',
-            message: `El rol ${response.data.data.name} ha sido actualizado.`,
+            message: roleForm.mode === 'create'
+                ? `El rol ${response.data.data.name} fue creado correctamente.`
+                : `El rol ${response.data.data.name} fue actualizado correctamente.`,
         });
     } catch (error) {
         if (error.response?.status === 422) {
             roleForm.errors = error.response.data.errors ?? {};
+            emitToast({
+                type: 'error',
+                title: 'No se pudo guardar',
+                message: error.response?.data?.message ?? 'Revisa los datos del rol.',
+            });
         } else {
             emitToast({
                 type: 'error',
@@ -593,12 +607,16 @@ const selectRole = (role) => {
                                 Nombre del rol
                                 <input
                                     v-model="roleForm.form.name"
-                                    :disabled="roleForm.mode === 'edit' && selectedRole?.is_system"
+                                    :readonly="isEditingSystemRole"
+                                    :disabled="roleForm.loading"
                                     type="text"
                                     class="mt-1 w-full rounded-2xl border border-app px-4 py-2 text-sm dark:bg-slate-900"
                                 />
                                 <span v-if="roleForm.errors?.name" class="text-xs text-rose-500">
                                     {{ roleForm.errors.name[0] }}
+                                </span>
+                                <span v-else-if="isEditingSystemRole" class="text-xs text-muted">
+                                    El nombre de un rol del sistema no se puede renombrar.
                                 </span>
                             </label>
                             <label class="text-sm font-semibold text-app">

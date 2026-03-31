@@ -10,6 +10,14 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    canUpdate: {
+        type: Boolean,
+        default: false,
+    },
+    canDisable: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const emit = defineEmits(['view', 'edit', 'toggle', 'collapse-toggle']);
@@ -48,7 +56,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                 <button
                     type="button"
                     class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
-                    aria-label="Desplegar sucursal"
+                    aria-label="Desplegar unidad"
                     @click="emit('collapse-toggle', unit)"
                 >
                     <svg class="h-4 w-4 rotate-180" viewBox="0 0 20 20" fill="none" stroke="currentColor">
@@ -81,7 +89,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                     <button
                         type="button"
                         class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
-                        aria-label="Colapsar sucursal"
+                        aria-label="Colapsar unidad"
                         @click="emit('collapse-toggle', unit)"
                     >
                         <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor">
@@ -128,10 +136,11 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                 <button class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto" @click="emit('view', unit)">
                     Ver detalle
                 </button>
-                <button class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto" @click="emit('edit', unit)">
+                <button v-if="canUpdate" class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto" @click="emit('edit', unit)">
                     Editar
                 </button>
                 <button
+                    v-if="canDisable"
                     class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 px-4 py-2 hover:text-slate-900 sm:w-auto"
                     @click="emit('toggle', unit)"
                 >
