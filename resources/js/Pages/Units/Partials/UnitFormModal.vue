@@ -38,7 +38,7 @@ const statusOptions = [
 ];
 
 const title = computed(() =>
-    props.mode === 'create' ? 'Nueva sucursal' : 'Editar sucursal',
+    props.mode === 'create' ? 'Nueva unidad' : 'Editar unidad',
 );
 </script>
 
@@ -60,7 +60,7 @@ const title = computed(() =>
                 <button
                     type="button"
                     class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
-                    aria-label="Cerrar formulario de sucursal"
+                    aria-label="Cerrar formulario de unidad"
                     @click="emit('close')"
                 >
                     <span class="sr-only">Cerrar</span>

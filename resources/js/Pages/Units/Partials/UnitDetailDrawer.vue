@@ -46,7 +46,7 @@ const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'S
                         Detalle
                     </p>
                     <h3 class="text-2xl font-semibold text-slate-900">
-                        {{ unit?.name ?? 'Sucursal' }}
+                        {{ unit?.name ?? 'Unidad' }}
                     </h3>
                     <p class="text-sm text-slate-500">
                         Código {{ unit?.code }}
@@ -55,7 +55,7 @@ const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'S
                 <button
                     type="button"
                     class="rounded-full border border-slate-200 p-2 text-slate-500 hover:text-slate-900"
-                    aria-label="Cerrar detalle de sucursal"
+                    aria-label="Cerrar detalle de unidad"
                     @click="emit('close')"
                 >
                     <span class="sr-only">Cerrar</span>

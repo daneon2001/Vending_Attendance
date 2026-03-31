@@ -15,9 +15,9 @@ return [
             'label' => 'Catalogo de empresas',
             'actions' => ['view', 'create', 'update', 'disable', 'manage'],
         ],
-        'locations' => [
-            'label' => 'Sucursales / Unidades',
-            'actions' => ['view', 'create', 'update', 'delete', 'disable', 'manage'],
+        'units' => [
+            'label' => 'Catalogo de unidades',
+            'actions' => ['view', 'create', 'update', 'disable', 'manage'],
         ],
         'employees' => [
             'label' => 'Catalogo de empleados',

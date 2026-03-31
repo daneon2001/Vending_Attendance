@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\SyncPermissionCatalog;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RoleRequest;
 use App\Http\Resources\RoleResource;
-use App\Models\Permission;
 use App\Models\Role;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 
@@ -17,6 +16,8 @@ class RoleController extends Controller
 {
     public function index(): JsonResponse
     {
+        SyncPermissionCatalog::run();
+
         $roles = Role::with(['permissions'])
             ->withCount('users')
             ->orderBy('name')
@@ -49,14 +50,26 @@ class RoleController extends Controller
 
     public function update(RoleRequest $request, Role $role): JsonResponse
     {
-        if ($role->is_system && $request->has('name')) {
+        $requestedName = trim((string) $request->input('name', ''));
+        $isRenamingSystemRole = $role->is_system
+            && $request->has('name')
+            && $requestedName !== ''
+            && $requestedName !== $role->name;
+
+        if ($isRenamingSystemRole) {
             throw ValidationException::withMessages([
                 'name' => 'No puedes renombrar un rol del sistema.',
             ]);
         }
 
         $before = $role->only(['name', 'description']);
-        $role->fill($request->safe()->only(['name', 'description']))->save();
+        $attributes = $request->safe()->only(['description']);
+
+        if (! $role->is_system && $request->has('name')) {
+            $attributes['name'] = $request->validated('name');
+        }
+
+        $role->fill($attributes)->save();
 
         $this->syncPermissions($role, $request->validated('permissions', []));
 
@@ -103,26 +116,7 @@ class RoleController extends Controller
 
     protected function syncPermissions(Role $role, array $definitions): void
     {
-        $modules = config('permissions.modules', []);
-
-        $permissionIds = collect($definitions)
-            ->flatMap(function ($actions, $module) use ($modules) {
-                if (! array_key_exists($module, $modules)) {
-                    return [];
-                }
-
-                $availableActions = $modules[$module]['actions'] ?? [];
-                $actions = collect($actions)->filter(fn ($action) => in_array($action, $availableActions, true));
-
-                if ($actions->isEmpty()) {
-                    return [];
-                }
-
-                return Permission::where('module', $module)->whereIn('action', $actions)->pluck('id');
-            })
-            ->unique()
-            ->values()
-            ->all();
+        $permissionIds = SyncPermissionCatalog::resolveIds($definitions);
 
         $role->permissions()->sync($permissionIds);
     }

@@ -66,10 +66,11 @@ const navGroups = [
                 requiredPermission: { module: 'companies', action: 'view' },
             },
             {
-                label: 'Catalogo Sucursales',
-                description: 'Administracion de sucursales',
+                label: 'Catalogo de unidades',
+                description: 'Alta, edicion y estatus',
                 routeName: 'units.index',
                 icon: 'branches',
+                requiredPermission: { module: 'units', action: 'view' },
             },
         ],
     },
@@ -637,4 +638,3 @@ watch(
         </Transition>
     </div>
 </template>
-

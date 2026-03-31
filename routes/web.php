@@ -69,12 +69,24 @@ Route::middleware('auth')->group(function () {
         ->middleware('perm:companies,disable')
         ->name('companies.toggle-status');
 
-    Route::get('/units', UnitCatalogController::class)->name('units.index');
-    Route::get('/units/list', [UnitController::class, 'index'])->name('units.list');
-    Route::post('/units', [UnitController::class, 'store'])->name('units.store');
-    Route::get('/units/{unit}', [UnitController::class, 'show'])->name('units.show');
-    Route::put('/units/{unit}', [UnitController::class, 'update'])->name('units.update');
-    Route::put('/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])->name('units.toggle-status');
+    Route::get('/units', UnitCatalogController::class)
+        ->middleware('perm:units,view')
+        ->name('units.index');
+    Route::get('/units/list', [UnitController::class, 'index'])
+        ->middleware('perm:units,view')
+        ->name('units.list');
+    Route::post('/units', [UnitController::class, 'store'])
+        ->middleware('perm:units,create')
+        ->name('units.store');
+    Route::get('/units/{unit}', [UnitController::class, 'show'])
+        ->middleware('perm:units,view')
+        ->name('units.show');
+    Route::put('/units/{unit}', [UnitController::class, 'update'])
+        ->middleware('perm:units,update')
+        ->name('units.update');
+    Route::put('/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])
+        ->middleware('perm:units,disable')
+        ->name('units.toggle-status');
 
     Route::prefix('settings')->name('settings.')->group(function () {
         Route::get('/', SettingsIndexController::class)

@@ -6,7 +6,7 @@ import UnitCard from './Partials/UnitCard.vue';
 import UnitFormModal from './Partials/UnitFormModal.vue';
 import UnitDetailDrawer from './Partials/UnitDetailDrawer.vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
@@ -23,6 +23,17 @@ const props = defineProps({
         default: () => [],
     },
 });
+
+const page = usePage();
+const permissionMatrix = computed(() => page.props.auth.permissions ?? {});
+const can = (module, action = 'view') => {
+    const actions = permissionMatrix.value?.[module] ?? [];
+    return actions.includes(action) || actions.includes('manage');
+};
+
+const canCreateUnits = computed(() => can('units', 'create'));
+const canUpdateUnits = computed(() => can('units', 'update'));
+const canDisableUnits = computed(() => can('units', 'disable'));
 
 const units = ref(props.initialUnits?.data ?? []);
 const pagination = ref(props.initialUnits?.meta ?? null);
@@ -275,6 +286,8 @@ const confirmState = reactive({
 useBodyScrollLock(() => confirmState.open);
 
 const openCreateForm = () => {
+    if (!canCreateUnits.value) return;
+
     formState.mode = 'create';
     formState.form = defaultForm();
     formState.errors = {};
@@ -282,6 +295,8 @@ const openCreateForm = () => {
 };
 
 const openEditForm = (unit) => {
+    if (!canUpdateUnits.value) return;
+
     formState.mode = 'edit';
     formState.form = defaultForm(unit);
     formState.errors = {};
@@ -303,8 +318,8 @@ const submitForm = async () => {
         formState.open = false;
         showToast({
             type: 'success',
-            title: 'Sucursal guardada',
-            message: response?.data?.message ?? 'La sucursal se guardó correctamente.',
+            title: 'Unidad guardada',
+            message: response?.data?.message ?? 'La unidad se guardo correctamente.',
         });
         await fetchUnits();
     } catch (error) {
@@ -314,7 +329,7 @@ const submitForm = async () => {
             showToast({
                 type: 'error',
                 title: 'Error al guardar',
-                message: error.response?.data?.message ?? 'No se pudo guardar la sucursal.',
+                message: error.response?.data?.message ?? 'No se pudo guardar la unidad.',
             });
         }
     } finally {
@@ -339,6 +354,8 @@ const viewDetail = async (unit) => {
 };
 
 const requestToggle = (unit) => {
+    if (!canDisableUnits.value) return;
+
     confirmState.unit = unit;
     confirmState.open = true;
 };
@@ -354,7 +371,7 @@ const toggleStatus = async () => {
         showToast({
             type: 'success',
             title: 'Estado actualizado',
-            message: data.message ?? 'La sucursal cambió de estado.',
+            message: data.message ?? 'La unidad cambio de estado.',
         });
         await fetchUnits();
     } catch (error) {
@@ -376,16 +393,16 @@ const clearFilters = () => {
 </script>
 
 <template>
-    <Head title="Catálogo de sucursales" />
+    <Head title="Catalogo de unidades" />
 
     <AuthenticatedLayout>
         <template #header>
             <div>
                 <h1 class="text-app text-xl font-semibold leading-tight">
-                    Catálogo de sucursales
+                    Catalogo de unidades
                 </h1>
                 <p class="text-sm text-slate-500">
-                    Administra las unidades operativas y asignaciones de relojes.
+                    Administra las unidades operativas y sus asignaciones de relojes.
                 </p>
             </div>
         </template>
@@ -399,7 +416,7 @@ const clearFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ pageSummary.total }}
                     </p>
-                    <p class="text-sm text-slate-500">Sucursales registradas</p>
+                    <p class="text-sm text-slate-500">Unidades registradas</p>
                 </article>
                 <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-emerald-50 to-white p-4">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
@@ -417,7 +434,7 @@ const clearFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ totalInactive }}
                     </p>
-                    <p class="text-sm text-slate-500">En mantenimiento o pausa</p>
+                    <p class="text-sm text-slate-500">Fuera de operacion</p>
                 </article>
                 <div
                     v-if="pageSummary.total"
@@ -488,6 +505,7 @@ const clearFilters = () => {
                         Limpiar
                     </button>
                     <button
+                        v-if="canCreateUnits"
                         type="button"
                         class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 sm:w-auto"
                         @click="openCreateForm"
@@ -499,7 +517,7 @@ const clearFilters = () => {
                                 clip-rule="evenodd"
                             />
                         </svg>
-                        Nueva sucursal
+                        Nueva unidad
                     </button>
                 </div>
             </div>
@@ -518,6 +536,8 @@ const clearFilters = () => {
                     :key="unit.id"
                     :unit="unit"
                     :collapsed="isCollapsed(unit.id)"
+                    :can-update="canUpdateUnits"
+                    :can-disable="canDisableUnits"
                     @collapse-toggle="toggleUnitCollapse"
                     @view="viewDetail"
                     @edit="openEditForm"
@@ -525,7 +545,7 @@ const clearFilters = () => {
                 />
 
                 <p v-if="!units.length && !listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500">
-                    No se encontraron sucursales con los filtros seleccionados.
+                    No se encontraron unidades con los filtros seleccionados.
                 </p>
             </div>
         </section>
@@ -555,13 +575,13 @@ const clearFilters = () => {
         >
             <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
                 <h3 class="text-xl font-semibold text-slate-900">
-                    {{ confirmState.unit?.status ? 'Desactivar sucursal' : 'Activar sucursal' }}
+                    {{ confirmState.unit?.status ? 'Desactivar unidad' : 'Activar unidad' }}
                 </h3>
                 <p class="mt-2 text-sm text-slate-500">
                     {{
                         confirmState.unit?.status
-                            ? '¿Deseas desactivar esta sucursal? Los relojes seguirán vinculados pero no se podrán asignar nuevas operaciones.'
-                            : '¿Deseas activar la sucursal para permitir asignaciones y monitoreo?'
+                            ? 'Deseas desactivar esta unidad? Los relojes seguiran vinculados pero no se podran asignar nuevas operaciones.'
+                            : 'Deseas activar la unidad para permitir asignaciones y monitoreo?'
                     }}
                 </p>
                 <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
