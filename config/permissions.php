@@ -11,6 +11,10 @@ return [
             'label' => 'Relojes biometricos',
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'manage'],
         ],
+        'companies' => [
+            'label' => 'Catalogo de empresas',
+            'actions' => ['view', 'create', 'update', 'disable', 'manage'],
+        ],
         'locations' => [
             'label' => 'Sucursales / Unidades',
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'manage'],

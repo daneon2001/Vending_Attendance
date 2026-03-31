@@ -59,6 +59,13 @@ const navGroups = [
                 icon: 'users',
             },
             {
+                label: 'Catalogo de empresas',
+                description: 'Alta, edicion y estatus',
+                routeName: 'companies.index',
+                icon: 'companies',
+                requiredPermission: { module: 'companies', action: 'view' },
+            },
+            {
                 label: 'Catalogo Sucursales',
                 description: 'Administracion de sucursales',
                 routeName: 'units.index',
@@ -121,6 +128,16 @@ const iconPaths = {
         'M12 4L5 10v8a2 2 0 002 2h3v-5h4v5h3a2 2 0 002-2v-8l-7-6z',
         'M9 21V9.5',
         'M15 21V9.5',
+    ],
+    companies: [
+        'M4 20h16',
+        'M6 20V7l6-3 6 3v13',
+        'M9 10h.01',
+        'M12 10h.01',
+        'M15 10h.01',
+        'M9 14h.01',
+        'M12 14h.01',
+        'M15 14h.01',
     ],
     users: [
         'M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11z',

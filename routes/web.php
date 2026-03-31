@@ -4,6 +4,8 @@ use App\Http\Controllers\ClockCatalogController;
 use App\Http\Controllers\ClockController;
 use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
+use App\Http\Controllers\CompanyCatalogController;
+use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\AuditLogController;
@@ -50,6 +52,22 @@ Route::middleware('auth')->group(function () {
     Route::get('/employees', function () {
         return Inertia::render('Employees/EmployeesCatalog');
     })->name('employees.index');
+
+    Route::get('/companies', CompanyCatalogController::class)
+        ->middleware('perm:companies,view')
+        ->name('companies.index');
+    Route::get('/companies/list', [CompanyController::class, 'index'])
+        ->middleware('perm:companies,view')
+        ->name('companies.list');
+    Route::post('/companies', [CompanyController::class, 'store'])
+        ->middleware('perm:companies,create')
+        ->name('companies.store');
+    Route::put('/companies/{company}', [CompanyController::class, 'update'])
+        ->middleware('perm:companies,update')
+        ->name('companies.update');
+    Route::put('/companies/{company}/toggle-status', [CompanyController::class, 'toggleStatus'])
+        ->middleware('perm:companies,disable')
+        ->name('companies.toggle-status');
 
     Route::get('/units', UnitCatalogController::class)->name('units.index');
     Route::get('/units/list', [UnitController::class, 'index'])->name('units.list');
