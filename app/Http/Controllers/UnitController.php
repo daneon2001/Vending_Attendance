@@ -61,14 +61,14 @@ class UnitController extends Controller
         AuditLogger::log(
             'units.created',
             $unit,
-            'Sucursal creada',
+            'Unidad creada',
             [
                 'attributes' => $request->validated(),
             ]
         );
 
         return response()->json([
-            'message' => 'Sucursal creada correctamente',
+            'message' => 'Unidad creada correctamente',
             'data' => UnitResource::make($unit->load('company'))->resolve(),
         ], 201);
     }
@@ -92,7 +92,7 @@ class UnitController extends Controller
         AuditLogger::log(
             'units.updated',
             $unit,
-            'Sucursal actualizada',
+            'Unidad actualizada',
             [
                 'before' => $before,
                 'after' => Arr::only($unit->toArray(), array_keys($request->validated())),
@@ -100,7 +100,7 @@ class UnitController extends Controller
         );
 
         return response()->json([
-            'message' => 'Sucursal actualizada',
+            'message' => 'Unidad actualizada',
             'data' => UnitResource::make($unit->load('company'))->resolve(),
         ]);
     }
@@ -115,7 +115,7 @@ class UnitController extends Controller
         AuditLogger::log(
             'units.status_changed',
             $unit,
-            $unit->status ? 'Sucursal activada' : 'Sucursal desactivada',
+            $unit->status ? 'Unidad activada' : 'Unidad desactivada',
             [
                 'before' => $previous ? 'activa' : 'inactiva',
                 'after' => $unit->status ? 'activa' : 'inactiva',
@@ -123,7 +123,7 @@ class UnitController extends Controller
         );
 
         return response()->json([
-            'message' => $unit->status ? 'Sucursal activada' : 'Sucursal desactivada',
+            'message' => $unit->status ? 'Unidad activada' : 'Unidad desactivada',
             'data' => UnitResource::make($unit->load('company'))->resolve(),
         ]);
     }

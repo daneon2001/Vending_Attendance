@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\SyncPermissionCatalog;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\RoleResource;
 use App\Models\Role;
@@ -13,6 +14,8 @@ class RolePageController extends Controller
 {
     public function __invoke(Request $request)
     {
+        SyncPermissionCatalog::run();
+
         $roles = Role::with(['permissions', 'users:id,name,email,estatus'])
             ->withCount('users')
             ->orderBy('name')

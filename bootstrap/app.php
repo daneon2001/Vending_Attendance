@@ -34,6 +34,7 @@ use App\Console\Commands\FortiaDiagnoseApis;
 use App\Console\Commands\FortiaDiagnoseBiometrics;
 use App\Console\Commands\FortiaDiagnoseDeviceToken;
 use App\Console\Commands\FortiaDiagnoseOnPrem;
+use App\Console\Commands\SyncPermissionCatalogCommand;
 use App\Console\Commands\VerifyAttendanceIntegrity;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -52,6 +53,7 @@ return Application::configure(basePath: dirname(__DIR__))
         FortiaDiagnoseBiometrics::class,
         FortiaDiagnoseOnPrem::class,
         FortiaDiagnoseDeviceToken::class,
+        SyncPermissionCatalogCommand::class,
         ReconcileDevicesFromClocks::class,
         VerifyAttendanceIntegrity::class,
     ])
