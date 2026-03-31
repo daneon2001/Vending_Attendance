@@ -96,6 +96,9 @@ class EnsureSuperAdminCommandTest extends TestCase
         $this->assertContains('view', $permissionsMatrix['settings']);
         $this->assertArrayHasKey('users', $permissionsMatrix);
         $this->assertContains('view', $permissionsMatrix['users']);
+        $this->assertArrayHasKey('companies', $permissionsMatrix);
+        $this->assertContains('view', $permissionsMatrix['companies']);
+        $this->assertContains('disable', $permissionsMatrix['companies']);
         $this->assertArrayHasKey('audit', $permissionsMatrix);
         $this->assertContains('view', $permissionsMatrix['audit']);
         $this->assertArrayHasKey('asistencias', $permissionsMatrix);
