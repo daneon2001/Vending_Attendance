@@ -14,4 +14,18 @@ class Company extends Model
         'code',
         'status',
     ];
+
+    protected $casts = [
+        'status' => 'integer',
+    ];
+
+    public function locations()
+    {
+        return $this->hasMany(Location::class);
+    }
+
+    public function clocks()
+    {
+        return $this->hasMany(Clock::class);
+    }
 }
