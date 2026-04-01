@@ -68,7 +68,7 @@ class EnrolmentCompleteRequest extends FormRequest
             'employee_id' => ['nullable', 'integer', 'exists:employees,id', 'required_without:fortia_employee_id'],
             'fortia_employee_id' => ['nullable', 'string', 'max:191', 'required_without:employee_id'],
             'clock_id' => ['nullable', 'integer', 'exists:clocks,id', 'required_without:unit_id'],
-            'unit_id' => ['nullable', 'integer', 'exists:locations,id', 'required_without:clock_id'],
+            'unit_id' => ['nullable', 'integer', 'required_without:clock_id'],
             'enrolment_type' => ['required', Rule::in(['FINGERPRINT', 'FACE'])],
             'template_vendor_id' => ['required', 'string', 'max:191'],
             'template_b64' => [

@@ -55,6 +55,9 @@ class EnrolmentCompleteTest extends TestCase
         }
 
         Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'base_location_id')) {
+                $table->unsignedBigInteger('base_location_id')->nullable();
+            }
             if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
                 $table->boolean('has_face_enrollment')->default(false);
             }
@@ -581,6 +584,44 @@ class EnrolmentCompleteTest extends TestCase
             'template_b64' => base64_encode('new-template'),
             'template_format' => 'DPFP_PROPRIETARY',
             'status' => 'enrolled',
+        ]);
+    }
+
+    public function test_complete_accepts_unit_id_matching_employee_base_location_even_without_locations_row(): void
+    {
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 9103,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+            'base_location_id' => 102,
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'fortia_employee_id' => '9103',
+            'unit_id' => 102,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'WINADMIN-FP-9103',
+            'template_b64' => base64_encode('template-prod-like'),
+            'template_format' => 'DPFP.Template.Bytes',
+            'performed_at' => '2026-04-01T19:15:00Z',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('action', 'CREATED')
+            ->assertJsonPath('employee_id', $employeeId)
+            ->assertJsonPath('unit_id', 102)
+            ->assertJsonPath('has_fingerprint', true);
+
+        $this->assertDatabaseHas('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'WINADMIN-FP-9103',
+            'template_format' => 'DPFP_PROPRIETARY',
+            'status' => 'enrolled',
+        ]);
+        $this->assertDatabaseHas('employees', [
+            'id' => $employeeId,
+            'has_fingerprint' => 1,
         ]);
     }
 }
