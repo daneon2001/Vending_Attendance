@@ -87,6 +87,8 @@ class EnrolmentCompleteTest extends TestCase
                 $table->unsignedBigInteger('employee_id');
                 $table->unsignedBigInteger('clock_id')->nullable();
                 $table->string('vendor_template_id', 191)->nullable();
+                $table->string('template_vendor', 100)->nullable();
+                $table->string('template_source', 100)->nullable();
                 $table->longText('template_b64')->nullable();
                 $table->string('template_format', 40)->nullable();
                 $table->string('enrolment_type', 50)->nullable();
@@ -105,6 +107,15 @@ class EnrolmentCompleteTest extends TestCase
             });
             $this->createdEmployeeFingerprintsTable = true;
         }
+
+        Schema::table('employee_fingerprints', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employee_fingerprints', 'template_vendor')) {
+                $table->string('template_vendor', 100)->nullable();
+            }
+            if (! Schema::hasColumn('employee_fingerprints', 'template_source')) {
+                $table->string('template_source', 100)->nullable();
+            }
+        });
 
         if (! Schema::hasTable('enrolment_audits')) {
             Schema::create('enrolment_audits', function (Blueprint $table): void {
@@ -462,6 +473,114 @@ class EnrolmentCompleteTest extends TestCase
             'face_samples_count' => 4,
             'face_template_version' => 'FACE_EMBEDDING_V1',
             'face_quality_score' => 91,
+        ]);
+    }
+
+    public function test_complete_accepts_employee_code_and_unit_id_for_winforms_payload(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Centro Logistico',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId([
+            'location_id' => $locationId,
+            'clock_name' => 'Clock Centro Logistico',
+        ]);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 9101,
+            'status' => 'A',
+            'has_fingerprint' => 0,
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_code' => '9101',
+            'unit_id' => $locationId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'WINADMIN-FP-9101',
+            'template_b64' => base64_encode('dpfp-template'),
+            'template_format' => 'DPFP.Template.Bytes',
+            'performed_at' => '2026-04-01T17:26:00Z',
+            'metadata' => [
+                'capture_source' => 'winforms-admin',
+                'capture_flow' => 'legacy_dpfp',
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('action', 'CREATED')
+            ->assertJsonPath('employee_id', $employeeId)
+            ->assertJsonPath('employee_code', '9101')
+            ->assertJsonPath('clock_id', $clockId)
+            ->assertJsonPath('unit_id', $locationId)
+            ->assertJsonPath('has_fingerprint', true)
+            ->assertJsonPath('fingerprint_status', 'enrolled');
+
+        $this->assertDatabaseHas('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'vendor_template_id' => 'WINADMIN-FP-9101',
+            'template_format' => 'DPFP_PROPRIETARY',
+            'status' => 'enrolled',
+        ]);
+        $this->assertDatabaseHas('employees', [
+            'id' => $employeeId,
+            'has_fingerprint' => 1,
+        ]);
+    }
+
+    public function test_complete_updates_existing_vendor_template_for_same_employee(): void
+    {
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'Unit Update',
+            'status' => 1,
+        ]);
+        $clockId = DB::table('clocks')->insertGetId([
+            'location_id' => $locationId,
+            'clock_name' => 'Clock Update',
+        ]);
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 9102,
+            'status' => 'A',
+            'has_fingerprint' => 1,
+        ]);
+
+        EmployeeFingerprint::query()->create([
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'vendor_template_id' => 'WINADMIN-FP-9102',
+            'template_b64' => base64_encode('old-template'),
+            'template_format' => 'DPFP_PROPRIETARY',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'enrolled_at' => now()->subDay(),
+            'performed_at' => now()->subDay(),
+        ]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_code' => '9102',
+            'unit_id' => $locationId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'WINADMIN-FP-9102',
+            'template_b64' => base64_encode('new-template'),
+            'template_format' => 'DPFP.Template.Bytes',
+            'performed_at' => '2026-04-01T18:30:00Z',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('action', 'UPDATED')
+            ->assertJsonPath('employee_id', $employeeId)
+            ->assertJsonPath('clock_id', $clockId)
+            ->assertJsonPath('has_fingerprint', true);
+
+        $this->assertSame(1, EmployeeFingerprint::query()->count());
+        $this->assertDatabaseHas('employee_fingerprints', [
+            'employee_id' => $employeeId,
+            'vendor_template_id' => 'WINADMIN-FP-9102',
+            'template_b64' => base64_encode('new-template'),
+            'template_format' => 'DPFP_PROPRIETARY',
+            'status' => 'enrolled',
         ]);
     }
 }

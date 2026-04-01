@@ -29,20 +29,40 @@ class EnrolmentCompleteRequest extends FormRequest
             ]);
         }
 
-        foreach (['template_b64', 'template_format', 'template_vendor_id'] as $field) {
+        foreach (['template_b64', 'template_format', 'template_vendor_id', 'employee_code', 'device_serial'] as $field) {
             if ($this->has($field) && is_string($this->input($field))) {
                 $this->merge([
                     $field => trim((string) $this->input($field)),
                 ]);
             }
         }
+
+        if (! $this->filled('employee_code') && $this->has('empleado_id') && is_scalar($this->input('empleado_id'))) {
+            $this->merge([
+                'employee_code' => trim((string) $this->input('empleado_id')),
+            ]);
+        }
+
+        if (! $this->filled('template_b64') && $this->has('fingerprint') && is_scalar($this->input('fingerprint'))) {
+            $this->merge([
+                'template_b64' => trim((string) $this->input('fingerprint')),
+            ]);
+        }
+
+        if ($this->has('template_format')) {
+            $this->merge([
+                'template_format' => $this->normalizeFingerprintTemplateFormat((string) $this->input('template_format')),
+            ]);
+        }
     }
 
     public function rules(): array
     {
         return [
-            'employee_id' => ['required', 'integer', 'exists:employees,id'],
-            'clock_id' => ['required', 'integer', 'exists:clocks,id'],
+            'employee_id' => ['nullable', 'integer', 'exists:employees,id', 'required_without:employee_code'],
+            'employee_code' => ['nullable', 'string', 'max:191', 'required_without:employee_id'],
+            'clock_id' => ['nullable', 'integer', 'exists:clocks,id', 'required_without:unit_id'],
+            'unit_id' => ['nullable', 'integer', 'exists:locations,id', 'required_without:clock_id'],
             'enrolment_type' => ['required', Rule::in(['FINGERPRINT', 'FACE'])],
             'template_vendor_id' => ['required', 'string', 'max:191'],
             'template_b64' => [
@@ -125,7 +145,7 @@ class EnrolmentCompleteRequest extends FormRequest
 
     public function fingerprintTemplateFormatIsAllowed(?string $value = null): bool
     {
-        $normalized = strtoupper(trim((string) ($value ?? $this->input('template_format'))));
+        $normalized = $this->normalizeFingerprintTemplateFormat((string) ($value ?? $this->input('template_format')));
 
         if ($normalized === '') {
             return false;
@@ -143,9 +163,19 @@ class EnrolmentCompleteRequest extends FormRequest
             'DPFP_PROPRIETARY',
             'zkteco-v1',
         ]))
-            ->map(static fn (mixed $format): string => strtoupper(trim((string) $format)))
+            ->map(fn (mixed $format): string => $this->normalizeFingerprintTemplateFormat((string) $format))
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function normalizeFingerprintTemplateFormat(?string $value): string
+    {
+        $normalized = strtoupper(trim((string) $value));
+
+        return match ($normalized) {
+            'DPFP.TEMPLATE.BYTES', 'DPFP_TEMPLATE_BYTES', 'DPFP-TEMPLATE-BYTES' => 'DPFP_PROPRIETARY',
+            default => $normalized,
+        };
     }
 }
