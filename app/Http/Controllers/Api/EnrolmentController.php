@@ -17,36 +17,78 @@ class EnrolmentController extends Controller
     public function complete(EnrolmentCompleteRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $employeeId = (int) $validated['employee_id'];
-        $clockId = (int) $validated['clock_id'];
         $enrolmentType = (string) $validated['enrolment_type'];
         $vendorTemplateId = (string) $validated['template_vendor_id'];
+        $employee = $this->resolveEmployee($validated);
+        $employeeCode = trim((string) ($validated['employee_code'] ?? ''));
 
-        $employee = Employee::query()->findOrFail($employeeId);
-        if (! $this->isActiveEmployee($employee->status)) {
-            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'Employee is not active.');
+        if (! $employee) {
+            return response()->json([
+                'success' => false,
+                'employee_id' => null,
+                'employee_code' => $employeeCode !== '' ? $employeeCode : null,
+                'clock_id' => isset($validated['clock_id']) ? (int) $validated['clock_id'] : null,
+                'unit_id' => isset($validated['unit_id']) ? (int) $validated['unit_id'] : null,
+                'vendor_template_id' => $vendorTemplateId,
+                'action' => 'REJECTED',
+                'message' => 'Employee not found.',
+            ], 404);
+        }
+
+        $employeeId = (int) $employee->getKey();
+        $employeeCode = $employee->fortia_employee_id !== null
+            ? (string) $employee->fortia_employee_id
+            : (string) $employeeId;
+        $clock = $this->resolveClock($validated);
+        $resolvedUnitId = $this->resolveUnitId($validated, $clock, $employee);
+
+        if ($clock && isset($validated['unit_id']) && $clock->location_id !== null && (int) $validated['unit_id'] !== (int) $clock->location_id) {
+            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, (int) $clock->id, $resolvedUnitId);
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Clock does not belong to the provided unit.');
 
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
-                'clock_id' => $clockId,
+                'employee_code' => $employeeCode,
+                'clock_id' => (int) $clock->id,
+                'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
                 'action' => 'REJECTED',
-                'message' => 'Employee is not active.',
+                'message' => 'Clock does not belong to the provided unit.',
             ], 422);
         }
 
-        $clock = Clock::query()->findOrFail($clockId);
-        if (! $clock->location_id) {
-            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'Clock is not assigned to any unit.');
+        if ($resolvedUnitId === null) {
+            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clock?->id ? (int) $clock->id : null, null);
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Unable to resolve unit for enrolment.');
 
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
-                'clock_id' => $clockId,
+                'employee_code' => $employeeCode,
+                'clock_id' => $clock?->id ? (int) $clock->id : null,
+                'unit_id' => null,
                 'vendor_template_id' => $vendorTemplateId,
                 'action' => 'REJECTED',
-                'message' => 'Clock is not assigned to any unit.',
+                'message' => 'Unable to resolve unit for enrolment.',
+            ], 422);
+        }
+
+        $clockId = $clock?->id ? (int) $clock->id : null;
+        $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clockId, $resolvedUnitId);
+
+        if (! $this->isActiveEmployee($employee->status)) {
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Employee is not active.');
+
+            return response()->json([
+                'success' => false,
+                'employee_id' => $employeeId,
+                'employee_code' => $employeeCode,
+                'clock_id' => $clockId,
+                'unit_id' => $resolvedUnitId,
+                'vendor_template_id' => $vendorTemplateId,
+                'action' => 'REJECTED',
+                'message' => 'Employee is not active.',
             ], 422);
         }
 
@@ -55,12 +97,14 @@ class EnrolmentController extends Controller
             ->first();
 
         if ($existingByVendor && (int) $existingByVendor->employee_id !== $employeeId) {
-            $this->audit($validated, EnrolmentAudit::STATUS_CONFLICT, 'Template is already assigned to another employee.');
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_CONFLICT, 'Template is already assigned to another employee.');
 
             return response()->json([
                 'success' => true,
                 'employee_id' => $employeeId,
+                'employee_code' => $employeeCode,
                 'clock_id' => $clockId,
+                'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
                 'action' => 'CONFLICT',
                 'message' => 'Template already linked to another employee.',
@@ -68,25 +112,37 @@ class EnrolmentController extends Controller
         }
 
         if ($existingByVendor && (int) $existingByVendor->employee_id === $employeeId) {
-            $this->audit($validated, EnrolmentAudit::STATUS_DUPLICATE, 'Already enrolled.');
+            if (
+                ! $request->filled('template_b64')
+                && ! $request->filled('template_format')
+                && ! $request->filled('device_serial')
+            ) {
+                $employee->refreshFingerprintFlag();
+                $employee->refresh();
+                $this->audit($auditPayload, EnrolmentAudit::STATUS_DUPLICATE, 'Already enrolled.');
 
-            return response()->json([
-                'success' => true,
-                'employee_id' => $employeeId,
-                'clock_id' => $clockId,
-                'vendor_template_id' => $vendorTemplateId,
-                'action' => 'ALREADY',
-                'message' => 'Already enrolled',
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'employee_id' => $employeeId,
+                    'employee_code' => $employeeCode,
+                    'clock_id' => $clockId,
+                    'unit_id' => $resolvedUnitId,
+                    'vendor_template_id' => $vendorTemplateId,
+                    'action' => 'ALREADY',
+                    'message' => 'Already enrolled',
+                    'has_fingerprint' => (bool) $employee->has_fingerprint,
+                    'fingerprint_status' => (string) $employee->fingerprint_status,
+                ]);
+            }
         }
 
         if ($enrolmentType === EmployeeFingerprint::TYPE_FINGERPRINT) {
-            $invalidFingerprintResponse = $this->validateNewFingerprintTemplate($request, $validated);
+            $invalidFingerprintResponse = $this->validateNewFingerprintTemplate($request, $auditPayload);
             if ($invalidFingerprintResponse instanceof JsonResponse) {
                 return $invalidFingerprintResponse;
             }
         } elseif (! $request->filled('template_b64')) {
-            $this->audit($validated, EnrolmentAudit::STATUS_REJECTED, 'template_b64 is required for new enrolments.');
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'template_b64 is required for new enrolments.');
 
             return response()->json([
                 'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE,
@@ -96,25 +152,40 @@ class EnrolmentController extends Controller
             ], 422);
         }
 
+        $templatePayload = [
+            'clock_id' => $clockId,
+            'status' => 'enrolled',
+            'enrolment_type' => $validated['enrolment_type'],
+            'template_b64' => $validated['template_b64'],
+            'template_format' => $validated['template_format'] ?? null,
+            'template_vendor' => $this->resolveTemplateVendor($enrolmentType),
+            'template_source' => $this->resolveTemplateSource($enrolmentType),
+            'device_serial' => $validated['device_serial'] ?? null,
+            'enrolled_at' => $validated['performed_at'],
+            'performed_at' => $validated['performed_at'],
+            'deleted_at' => null,
+        ];
+
+        $action = $existingByVendor && (int) $existingByVendor->employee_id === $employeeId
+            ? 'UPDATED'
+            : 'CREATED';
+        $message = $action === 'UPDATED'
+            ? 'Enrolment updated.'
+            : 'Enrolment stored.';
+
         try {
-            DB::transaction(function () use ($validated, $employee, $enrolmentType, $vendorTemplateId): void {
-                EmployeeFingerprint::updateOrCreate(
-                    [
-                        'employee_id' => (int) $validated['employee_id'],
-                        'vendor_template_id' => (string) $validated['template_vendor_id'],
-                    ],
-                    [
-                        'clock_id' => (int) $validated['clock_id'],
-                        'status' => 'enrolled',
-                        'enrolment_type' => $validated['enrolment_type'],
-                        'template_b64' => $validated['template_b64'],
-                        'template_format' => $validated['template_format'] ?? null,
-                        'device_serial' => $validated['device_serial'] ?? null,
-                        'enrolled_at' => $validated['performed_at'],
-                        'performed_at' => $validated['performed_at'],
-                        'deleted_at' => null,
-                    ]
-                );
+            DB::transaction(function () use ($existingByVendor, $templatePayload, $employeeId, $vendorTemplateId, $employee, $enrolmentType, $validated, &$action, &$message): void {
+                if ($existingByVendor && (int) $existingByVendor->employee_id === $employeeId) {
+                    $existingByVendor->fill($templatePayload)->save();
+                } else {
+                    EmployeeFingerprint::updateOrCreate(
+                        [
+                            'employee_id' => $employeeId,
+                            'vendor_template_id' => $vendorTemplateId,
+                        ],
+                        $templatePayload
+                    );
+                }
 
                 $employee->refreshFingerprintFlag();
 
@@ -141,26 +212,42 @@ class EnrolmentController extends Controller
                 }
             });
         } catch (QueryException $e) {
-            $this->audit($validated, EnrolmentAudit::STATUS_CONFLICT, 'Unique constraint conflict while creating enrolment.');
+            if (! $this->isUniqueConstraintException($e)) {
+                throw $e;
+            }
+
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_CONFLICT, 'Unique constraint conflict while creating enrolment.');
 
             return response()->json([
                 'success' => true,
                 'employee_id' => $employeeId,
+                'employee_code' => $employeeCode,
                 'clock_id' => $clockId,
+                'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
                 'action' => 'CONFLICT',
                 'message' => 'Template conflict detected.',
             ], 409);
         }
 
-        $this->audit($validated, EnrolmentAudit::STATUS_SENT, 'Enrolment stored.');
+        $employee->refresh();
+        $this->audit(
+            $auditPayload,
+            EnrolmentAudit::STATUS_SENT,
+            $message
+        );
 
         return response()->json([
             'success' => true,
             'employee_id' => $employeeId,
+            'employee_code' => $employeeCode,
             'clock_id' => $clockId,
+            'unit_id' => $resolvedUnitId,
             'vendor_template_id' => $vendorTemplateId,
-            'action' => 'CREATED',
+            'action' => $action,
+            'message' => $message,
+            'has_fingerprint' => (bool) $employee->has_fingerprint,
+            'fingerprint_status' => (string) $employee->fingerprint_status,
         ]);
     }
 
@@ -233,5 +320,99 @@ class EnrolmentController extends Controller
             'reason' => $reason,
             'created_at' => now(),
         ]);
+    }
+
+    private function resolveEmployee(array $validated): ?Employee
+    {
+        if (isset($validated['employee_id'])) {
+            return Employee::query()->find((int) $validated['employee_id']);
+        }
+
+        $employeeCode = trim((string) ($validated['employee_code'] ?? ''));
+        if ($employeeCode === '') {
+            return null;
+        }
+
+        $query = Employee::query();
+        if (is_numeric($employeeCode)) {
+            $numericCode = (int) $employeeCode;
+
+            return $query
+                ->where('fortia_employee_id', $numericCode)
+                ->orWhere('id', $numericCode)
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function isUniqueConstraintException(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $driverCode = (string) ($exception->errorInfo[1] ?? '');
+
+        return in_array($sqlState, ['23000', '23505'], true)
+            || in_array($driverCode, ['1062', '19'], true);
+    }
+
+    private function resolveClock(array $validated): ?Clock
+    {
+        if (isset($validated['clock_id'])) {
+            return Clock::query()->find((int) $validated['clock_id']);
+        }
+
+        if (isset($validated['unit_id'])) {
+            return Clock::query()
+                ->where('location_id', (int) $validated['unit_id'])
+                ->orderByDesc('updated_at')
+                ->orderBy('id')
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function resolveUnitId(array $validated, ?Clock $clock, Employee $employee): ?int
+    {
+        if (isset($validated['unit_id'])) {
+            return (int) $validated['unit_id'];
+        }
+
+        if ($clock && $clock->location_id !== null) {
+            return (int) $clock->location_id;
+        }
+
+        if ($employee->base_location_id !== null) {
+            return (int) $employee->base_location_id;
+        }
+
+        return null;
+    }
+
+    private function mergeAuditPayload(array $validated, int $employeeId, ?int $clockId, ?int $unitId): array
+    {
+        return array_merge($validated, [
+            'employee_id' => $employeeId,
+            'clock_id' => $clockId,
+            'unit_id' => $unitId,
+        ]);
+    }
+
+    private function resolveTemplateVendor(string $enrolmentType): string
+    {
+        if ($enrolmentType === EmployeeFingerprint::TYPE_FACE) {
+            return (string) config('biometrics.face.default_vendor', 'digitalpersona');
+        }
+
+        return (string) config('biometrics.fingerprint.default_vendor', 'digitalpersona');
+    }
+
+    private function resolveTemplateSource(string $enrolmentType): string
+    {
+        if ($enrolmentType === EmployeeFingerprint::TYPE_FACE) {
+            return (string) config('biometrics.face.default_source', 'camera');
+        }
+
+        return (string) config('biometrics.fingerprint.default_source', 'scanner');
     }
 }
