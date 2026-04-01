@@ -19,6 +19,7 @@ class EmployeeCompactResource extends JsonResource
 
         return [
             'id' => (int) $this->id,
+            'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
             'code' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : (string) $this->id,
             'full_name' => $fullName ?: null,
             'unit_id' => $this->base_location_id ? (int) $this->base_location_id : null,

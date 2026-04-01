@@ -20,13 +20,13 @@ class EnrolmentController extends Controller
         $enrolmentType = (string) $validated['enrolment_type'];
         $vendorTemplateId = (string) $validated['template_vendor_id'];
         $employee = $this->resolveEmployee($validated);
-        $employeeCode = trim((string) ($validated['employee_code'] ?? ''));
+        $fortiaEmployeeId = trim((string) ($validated['fortia_employee_id'] ?? ''));
 
         if (! $employee) {
             return response()->json([
                 'success' => false,
                 'employee_id' => null,
-                'employee_code' => $employeeCode !== '' ? $employeeCode : null,
+                'fortia_employee_id' => $fortiaEmployeeId !== '' ? $fortiaEmployeeId : null,
                 'clock_id' => isset($validated['clock_id']) ? (int) $validated['clock_id'] : null,
                 'unit_id' => isset($validated['unit_id']) ? (int) $validated['unit_id'] : null,
                 'vendor_template_id' => $vendorTemplateId,
@@ -36,7 +36,7 @@ class EnrolmentController extends Controller
         }
 
         $employeeId = (int) $employee->getKey();
-        $employeeCode = $employee->fortia_employee_id !== null
+        $fortiaEmployeeId = $employee->fortia_employee_id !== null
             ? (string) $employee->fortia_employee_id
             : (string) $employeeId;
         $clock = $this->resolveClock($validated);
@@ -49,7 +49,7 @@ class EnrolmentController extends Controller
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
-                'employee_code' => $employeeCode,
+                'fortia_employee_id' => $fortiaEmployeeId,
                 'clock_id' => (int) $clock->id,
                 'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
@@ -65,7 +65,7 @@ class EnrolmentController extends Controller
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
-                'employee_code' => $employeeCode,
+                'fortia_employee_id' => $fortiaEmployeeId,
                 'clock_id' => $clock?->id ? (int) $clock->id : null,
                 'unit_id' => null,
                 'vendor_template_id' => $vendorTemplateId,
@@ -83,7 +83,7 @@ class EnrolmentController extends Controller
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
-                'employee_code' => $employeeCode,
+                'fortia_employee_id' => $fortiaEmployeeId,
                 'clock_id' => $clockId,
                 'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
@@ -102,7 +102,7 @@ class EnrolmentController extends Controller
             return response()->json([
                 'success' => true,
                 'employee_id' => $employeeId,
-                'employee_code' => $employeeCode,
+                'fortia_employee_id' => $fortiaEmployeeId,
                 'clock_id' => $clockId,
                 'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
@@ -124,7 +124,7 @@ class EnrolmentController extends Controller
                 return response()->json([
                     'success' => true,
                     'employee_id' => $employeeId,
-                    'employee_code' => $employeeCode,
+                    'fortia_employee_id' => $fortiaEmployeeId,
                     'clock_id' => $clockId,
                     'unit_id' => $resolvedUnitId,
                     'vendor_template_id' => $vendorTemplateId,
@@ -221,7 +221,7 @@ class EnrolmentController extends Controller
             return response()->json([
                 'success' => true,
                 'employee_id' => $employeeId,
-                'employee_code' => $employeeCode,
+                'fortia_employee_id' => $fortiaEmployeeId,
                 'clock_id' => $clockId,
                 'unit_id' => $resolvedUnitId,
                 'vendor_template_id' => $vendorTemplateId,
@@ -240,7 +240,7 @@ class EnrolmentController extends Controller
         return response()->json([
             'success' => true,
             'employee_id' => $employeeId,
-            'employee_code' => $employeeCode,
+            'fortia_employee_id' => $fortiaEmployeeId,
             'clock_id' => $clockId,
             'unit_id' => $resolvedUnitId,
             'vendor_template_id' => $vendorTemplateId,
@@ -328,18 +328,14 @@ class EnrolmentController extends Controller
             return Employee::query()->find((int) $validated['employee_id']);
         }
 
-        $employeeCode = trim((string) ($validated['employee_code'] ?? ''));
-        if ($employeeCode === '') {
+        $fortiaEmployeeId = trim((string) ($validated['fortia_employee_id'] ?? ''));
+        if ($fortiaEmployeeId === '') {
             return null;
         }
 
-        $query = Employee::query();
-        if (is_numeric($employeeCode)) {
-            $numericCode = (int) $employeeCode;
-
-            return $query
-                ->where('fortia_employee_id', $numericCode)
-                ->orWhere('id', $numericCode)
+        if (is_numeric($fortiaEmployeeId)) {
+            return Employee::query()
+                ->where('fortia_employee_id', (int) $fortiaEmployeeId)
                 ->first();
         }
 

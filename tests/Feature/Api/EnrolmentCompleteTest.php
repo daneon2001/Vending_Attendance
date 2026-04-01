@@ -493,7 +493,7 @@ class EnrolmentCompleteTest extends TestCase
         ]);
 
         $response = $this->postJson(self::URI, [
-            'employee_code' => '9101',
+            'fortia_employee_id' => '9101',
             'unit_id' => $locationId,
             'enrolment_type' => 'FINGERPRINT',
             'template_vendor_id' => 'WINADMIN-FP-9101',
@@ -510,7 +510,7 @@ class EnrolmentCompleteTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('action', 'CREATED')
             ->assertJsonPath('employee_id', $employeeId)
-            ->assertJsonPath('employee_code', '9101')
+            ->assertJsonPath('fortia_employee_id', '9101')
             ->assertJsonPath('clock_id', $clockId)
             ->assertJsonPath('unit_id', $locationId)
             ->assertJsonPath('has_fingerprint', true)
@@ -558,7 +558,7 @@ class EnrolmentCompleteTest extends TestCase
         ]);
 
         $response = $this->postJson(self::URI, [
-            'employee_code' => '9102',
+            'fortia_employee_id' => '9102',
             'unit_id' => $locationId,
             'enrolment_type' => 'FINGERPRINT',
             'template_vendor_id' => 'WINADMIN-FP-9102',

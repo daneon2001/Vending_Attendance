@@ -29,7 +29,7 @@ class EnrolmentCompleteRequest extends FormRequest
             ]);
         }
 
-        foreach (['template_b64', 'template_format', 'template_vendor_id', 'employee_code', 'device_serial'] as $field) {
+        foreach (['template_b64', 'template_format', 'template_vendor_id', 'fortia_employee_id', 'employee_code', 'device_serial'] as $field) {
             if ($this->has($field) && is_string($this->input($field))) {
                 $this->merge([
                     $field => trim((string) $this->input($field)),
@@ -37,9 +37,15 @@ class EnrolmentCompleteRequest extends FormRequest
             }
         }
 
-        if (! $this->filled('employee_code') && $this->has('empleado_id') && is_scalar($this->input('empleado_id'))) {
+        if (! $this->filled('fortia_employee_id') && $this->has('employee_code') && is_scalar($this->input('employee_code'))) {
             $this->merge([
-                'employee_code' => trim((string) $this->input('empleado_id')),
+                'fortia_employee_id' => trim((string) $this->input('employee_code')),
+            ]);
+        }
+
+        if (! $this->filled('fortia_employee_id') && $this->has('empleado_id') && is_scalar($this->input('empleado_id'))) {
+            $this->merge([
+                'fortia_employee_id' => trim((string) $this->input('empleado_id')),
             ]);
         }
 
@@ -59,8 +65,8 @@ class EnrolmentCompleteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id', 'required_without:employee_code'],
-            'employee_code' => ['nullable', 'string', 'max:191', 'required_without:employee_id'],
+            'employee_id' => ['nullable', 'integer', 'exists:employees,id', 'required_without:fortia_employee_id'],
+            'fortia_employee_id' => ['nullable', 'string', 'max:191', 'required_without:employee_id'],
             'clock_id' => ['nullable', 'integer', 'exists:clocks,id', 'required_without:unit_id'],
             'unit_id' => ['nullable', 'integer', 'exists:locations,id', 'required_without:clock_id'],
             'enrolment_type' => ['required', Rule::in(['FINGERPRINT', 'FACE'])],
