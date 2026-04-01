@@ -8,6 +8,7 @@ use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
 use App\Models\EnrolmentAudit;
+use App\Models\Location;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,18 @@ class EnrolmentController extends Controller
             : (string) $employeeId;
         $clock = $this->resolveClock($validated);
         $resolvedUnitId = $this->resolveUnitId($validated, $clock, $employee);
+
+        if (isset($validated['unit_id']) && ! $this->isAcceptedUnitId((int) $validated['unit_id'], $employee)) {
+            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clock?->id ? (int) $clock->id : null, null);
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'The selected unit id is invalid.');
+
+            return response()->json([
+                'message' => 'The selected unit id is invalid.',
+                'errors' => [
+                    'unit_id' => ['The selected unit id is invalid.'],
+                ],
+            ], 422);
+        }
 
         if ($clock && isset($validated['unit_id']) && $clock->location_id !== null && (int) $validated['unit_id'] !== (int) $clock->location_id) {
             $auditPayload = $this->mergeAuditPayload($validated, $employeeId, (int) $clock->id, $resolvedUnitId);
@@ -366,6 +379,20 @@ class EnrolmentController extends Controller
         }
 
         return null;
+    }
+
+    private function isAcceptedUnitId(int $unitId, Employee $employee): bool
+    {
+        if ($unitId <= 0) {
+            return false;
+        }
+
+        if (Location::query()->whereKey($unitId)->exists()) {
+            return true;
+        }
+
+        return $employee->base_location_id !== null
+            && (int) $employee->base_location_id === $unitId;
     }
 
     private function resolveUnitId(array $validated, ?Clock $clock, Employee $employee): ?int
