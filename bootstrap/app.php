@@ -36,6 +36,7 @@ use App\Console\Commands\FortiaDiagnoseDeviceToken;
 use App\Console\Commands\FortiaDiagnoseOnPrem;
 use App\Console\Commands\SyncPermissionCatalogCommand;
 use App\Console\Commands\VerifyAttendanceIntegrity;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -98,5 +99,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->shouldRenderJsonWhen(function (Request $request, \Throwable $exception): bool {
+            return $request->is('api/*') || $request->expectsJson();
+        });
     })->create();
