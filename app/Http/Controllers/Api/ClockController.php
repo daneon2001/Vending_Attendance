@@ -8,10 +8,12 @@ use App\Http\Requests\ClockRequest;
 use App\Http\Resources\ClockResource;
 use App\Models\Clock;
 use App\Models\ClockLog;
+use App\Models\Device;
 use App\Services\OnPrem\DeviceRegistryService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class ClockController extends Controller
 {
@@ -35,6 +37,115 @@ class ClockController extends Controller
 
         return response()->json([
             'data' => ClockResource::collection($clocks)->resolve(),
+        ]);
+    }
+
+    public function resolveBySerial(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'serial_number' => ['nullable', 'string', 'max:120'],
+            'device_serial' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $serial = trim((string) ($validated['serial_number'] ?? $validated['device_serial'] ?? ''));
+        if ($serial === '') {
+            return response()->json([
+                'message' => 'serial_number is required.',
+            ], 422);
+        }
+
+        $matches = Clock::query()
+            ->with(['company', 'location'])
+            ->where('serial_number', $serial)
+            ->orderBy('id')
+            ->limit(2)
+            ->get();
+
+        if ($matches->isEmpty()) {
+            return response()->json([
+                'message' => 'Clock not found.',
+            ], 404);
+        }
+
+        if ($matches->count() > 1) {
+            return response()->json([
+                'message' => 'Multiple clocks share the provided serial number.',
+            ], 409);
+        }
+
+        $clock = $matches->first();
+        $this->deviceRegistry->syncFromClock($clock, $serial);
+
+        $device = null;
+        if (Schema::hasTable('devices')) {
+            $device = Device::query()
+                ->where('device_serial', $serial)
+                ->first();
+        }
+
+        $deviceToken = trim((string) config('device.static_token', ''));
+        $sharedSecret = trim((string) ($device?->shared_secret ?: config('onprem.default_shared_secret', '')));
+        $timezone = trim((string) ($clock->location?->timezone ?: config('app.timezone', 'UTC')));
+        $warnings = [];
+
+        if ((int) ($clock->status ?? 0) !== 1) {
+            $warnings[] = 'El reloj esta inhabilitado.';
+        }
+        if (! $clock->location_id) {
+            $warnings[] = 'El reloj no tiene unidad asignada.';
+        }
+        if ($deviceToken === '') {
+            $warnings[] = 'DEVICE_STATIC_TOKEN no esta configurado.';
+        }
+        if ($sharedSecret === '') {
+            $warnings[] = 'El shared secret onprem no esta configurado para este dispositivo.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Clock configuration resolved.',
+            'data' => [
+                'clock_id' => (int) $clock->id,
+                'clock_name' => (string) $clock->clock_name,
+                'device_serial' => $serial,
+                'clock_enabled' => (int) ($clock->status ?? 0) === 1,
+                'monitoring_status' => (string) ($clock->monitoring_status ?? 'offline'),
+                'last_heartbeat_at' => optional($clock->last_heartbeat_at)?->toIso8601String(),
+                'unit_id' => $clock->location_id ? (int) $clock->location_id : null,
+                'unit_display_name' => $clock->location?->name,
+                'company_id' => $clock->company_id ? (int) $clock->company_id : null,
+                'company_display_name' => $clock->company?->name,
+                'timezone' => $timezone !== '' ? $timezone : 'UTC',
+                'base_url' => rtrim($request->getSchemeAndHttpHost(), '/'),
+                'device_token' => $deviceToken !== '' ? $deviceToken : null,
+                'device_shared_secret' => $sharedSecret !== '' ? $sharedSecret : null,
+                'device_display_name' => trim((string) ($clock->clock_name ?: ('Reloj '.$serial))),
+                'device_registry' => [
+                    'registered' => $device !== null,
+                    'is_active' => $device?->is_active,
+                    'last_seen_at' => optional($device?->last_seen_at)?->toIso8601String(),
+                ],
+                'intervals' => [
+                    'employee_sync_minutes' => 15,
+                    'template_sync_minutes' => 15,
+                    'heartbeat_seconds' => max(5, (int) config('onprem.next_heartbeat_seconds', 15)),
+                    'ping_minutes' => 5,
+                    'check_retry_seconds' => 30,
+                    'catalog_max_age_hours' => 24,
+                ],
+                'endpoints' => [
+                    'clock_catalog' => url('/api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog'),
+                    'clock_heartbeat' => url('/api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/'.$clock->id.'/heartbeat'),
+                    'employees_catalog' => url('/api/FortiaPrimeApi.Opensync/api/v2/employees/catalog'),
+                    'employee_templates' => url('/api/FortiaPrimeApi.Opensync/api/v2/employees/templates'),
+                    'device_ping' => url('/api/device/ping'),
+                    'onprem_ping' => url('/api/onprem/ping'),
+                    'onprem_heartbeat' => url('/api/onprem/heartbeat'),
+                    'onprem_attendances' => url('/api/onprem/attendances'),
+                    'check_final' => url('/api/onprem/attendances'),
+                ],
+                'warnings' => $warnings,
+            ],
         ]);
     }
 
