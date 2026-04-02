@@ -50,6 +50,7 @@ Route::prefix('FortiaPrimeApi.Opensync/api/v2')->group(function () {
     // APIs protegidas por Sanctum + verificacion de expiracion
     Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         // clock-catalog
+        Route::get('/time-and-assistance/clock-catalog/resolve-by-serial', [ClockController::class, 'resolveBySerial']);
         Route::get('/time-and-assistance/clock-catalog', [ClockController::class, 'index']);
         Route::post('/time-and-assistance/clock-catalog', [ClockController::class, 'store']);
         Route::put('/time-and-assistance/clock-catalog/{clock}', [ClockController::class, 'update']);
