@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\EmployeeTemplatesSyncRequest;
+use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
 use App\Models\EmployeeScopeDeletion;
 use App\Models\EmployeeTemplateDeletion;
@@ -11,6 +12,7 @@ use App\Services\Biometrics\AllowedBiometricCandidates;
 use App\Services\Biometrics\TemplateMetadataResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class EmployeeTemplatesController extends Controller
@@ -44,6 +46,10 @@ class EmployeeTemplatesController extends Controller
         $templates = $templatesQuery
             ->orderBy('updated_at')
             ->get();
+
+        $allowedLocationMap = $this->loadAllowedLocationMap(
+            $templates->pluck('employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all()
+        );
 
         $baseTombstonesQuery = EmployeeTemplateDeletion::query()
             ->whereNotNull('vendor_template_id')
@@ -151,8 +157,13 @@ class EmployeeTemplatesController extends Controller
         );
 
         $templatePayloads = $templates
-            ->map(function (EmployeeFingerprint $fingerprint): array {
-                $data = $this->transformTemplate($fingerprint);
+            ->map(function (EmployeeFingerprint $fingerprint) use ($allowedLocationMap): array {
+                $employeeId = (int) $fingerprint->employee_id;
+
+                $data = $this->transformTemplate(
+                    $fingerprint,
+                    $allowedLocationMap[$employeeId] ?? []
+                );
 
                 return [
                     'data' => $data,
@@ -184,12 +195,14 @@ class EmployeeTemplatesController extends Controller
     }
 
     /**
+     * @param  array<int, int>  $allowedLocationIds
      * @return array<string, mixed>
      */
-    private function transformTemplate(EmployeeFingerprint $fingerprint): array
+    private function transformTemplate(EmployeeFingerprint $fingerprint, array $allowedLocationIds = []): array
     {
         $metadata = $this->templateMetadataResolver->fromTemplate($fingerprint);
         $biometricType = $metadata['biometric_type'];
+        $employee = $fingerprint->employee;
 
         return [
             'employee_id' => (int) $fingerprint->employee_id,
@@ -200,30 +213,33 @@ class EmployeeTemplatesController extends Controller
             'template_format' => (string) ($fingerprint->template_format ?: 'DPFP_PROPRIETARY'),
             'template_b64' => (string) $fingerprint->template_b64,
             'hash_sha256' => $this->hashTemplate((string) $fingerprint->template_b64),
-            'location_id' => $fingerprint->employee?->base_location_id ? (int) $fingerprint->employee?->base_location_id : null,
-            'can_check_all_branches' => (bool) ($fingerprint->employee?->can_check_all_branches ?? false),
+            'location_id' => $employee?->base_location_id ? (int) $employee?->base_location_id : null,
+            'base_location_id' => $employee?->base_location_id ? (int) $employee?->base_location_id : null,
+            'can_check_all_branches' => (bool) ($employee?->can_check_all_branches ?? false),
+            'check_scope' => $this->resolveCheckScopeFromEmployee($employee),
+            'allowed_location_ids' => $allowedLocationIds,
             'sync_ready' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? (bool) ($fingerprint->employee?->face_sync_ready ?? false)
+                ? (bool) ($employee?->face_sync_ready ?? false)
                 : true,
             'face_status' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? (string) ($fingerprint->employee?->face_status ?? 'none')
+                ? (string) ($employee?->face_status ?? 'none')
                 : null,
             'face_enabled' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? (bool) ($fingerprint->employee?->face_enabled ?? false)
+                ? (bool) ($employee?->face_enabled ?? false)
                 : null,
             'face_samples_count' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? (int) ($fingerprint->employee?->face_samples_count ?? 0)
+                ? (int) ($employee?->face_samples_count ?? 0)
                 : null,
             'face_template_version' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? ($fingerprint->employee?->face_template_version ?? null)
+                ? ($employee?->face_template_version ?? null)
                 : null,
             'face_quality_score' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? (is_numeric($fingerprint->employee?->face_quality_score)
-                    ? (int) $fingerprint->employee?->face_quality_score
+                ? (is_numeric($employee?->face_quality_score)
+                    ? (int) $employee?->face_quality_score
                     : null)
                 : null,
             'face_updated_at' => $biometricType === EmployeeFingerprint::TYPE_FACE
-                ? optional($fingerprint->employee?->face_updated_at)?->toIso8601String()
+                ? optional($employee?->face_updated_at)?->toIso8601String()
                 : null,
             'captured_at' => optional($fingerprint->performed_at)?->toIso8601String(),
             'updated_at' => optional($fingerprint->updated_at)?->toIso8601String(),
@@ -298,5 +314,50 @@ class EmployeeTemplatesController extends Controller
         }
 
         return hash('sha256', $decoded);
+    }
+
+    /**
+     * @param  array<int, int>  $employeeIds
+     * @return array<int, array<int, int>>
+     */
+    private function loadAllowedLocationMap(array $employeeIds): array
+    {
+        if (empty($employeeIds) || ! Schema::hasTable('employee_allowed_locations')) {
+            return [];
+        }
+
+        $rows = DB::table('employee_allowed_locations')
+            ->select('employee_id', 'location_id')
+            ->whereIn('employee_id', $employeeIds)
+            ->orderBy('employee_id')
+            ->orderBy('location_id')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $employeeId = (int) $row->employee_id;
+            $locationId = (int) $row->location_id;
+
+            if (! isset($map[$employeeId])) {
+                $map[$employeeId] = [];
+            }
+
+            $map[$employeeId][] = $locationId;
+        }
+
+        return $map;
+    }
+
+    private function resolveCheckScopeFromEmployee(?Employee $employee): string
+    {
+        $checkScope = trim((string) ($employee?->check_scope ?? ''));
+
+        if ($checkScope !== '') {
+            return strtoupper($checkScope);
+        }
+
+        return (bool) ($employee?->can_check_all_branches ?? false)
+            ? 'ANY_BRANCH'
+            : 'HOME_ONLY';
     }
 }

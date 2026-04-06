@@ -12,6 +12,7 @@ use App\Services\Biometrics\AllowedBiometricCandidates;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class CatalogSyncController extends Controller
@@ -26,7 +27,6 @@ class CatalogSyncController extends Controller
             'location_id' => ['nullable', 'exists:locations,id'],
         ]);
 
-        // Endpoint pensado para la app on-prem (Python) que consume catalogos biometricos.
         $locationId = $validated['location_id'] ?? null;
 
         $employeesQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId);
@@ -90,6 +90,7 @@ class CatalogSyncController extends Controller
 
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
         $locationId = $validated['location_id'] ?? null;
+
         $baseDataQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'active');
 
         $dataQuery = clone $baseDataQuery;
@@ -108,11 +109,17 @@ class CatalogSyncController extends Controller
             'has_fingerprint',
             'updated_at',
         ];
+
         if (Schema::hasColumn('employees', 'can_check_all_branches')) {
             $employeeColumns[] = 'can_check_all_branches';
         }
 
+        if (Schema::hasColumn('employees', 'check_scope')) {
+            $employeeColumns[] = 'check_scope';
+        }
+
         foreach ([
+            'fingerprint_status',
             'has_face_enrollment',
             'face_status',
             'face_samples_count',
@@ -120,6 +127,7 @@ class CatalogSyncController extends Controller
             'face_updated_at',
             'face_enabled',
             'face_quality_score',
+            'face_sync_ready',
         ] as $column) {
             if (Schema::hasColumn('employees', $column)) {
                 $employeeColumns[] = $column;
@@ -129,6 +137,8 @@ class CatalogSyncController extends Controller
         $rows = $dataQuery
             ->orderBy('updated_at')
             ->get($employeeColumns);
+
+        $allowedLocationMap = $this->loadAllowedLocationMap($rows->pluck('id')->map(fn ($id) => (int) $id)->all());
 
         $baseTombstonesQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'inactive');
 
@@ -181,6 +191,7 @@ class CatalogSyncController extends Controller
         $maxUpdatedAt = (clone $baseDataQuery)->max('updated_at');
         $maxInactiveAt = (clone $baseTombstonesQuery)->max('updated_at');
         $maxScopeDeletedAt = null;
+
         if ($locationId !== null && Schema::hasTable('employee_scope_deletions')) {
             $maxScopeDeletedAt = EmployeeScopeDeletion::query()
                 ->where('scope_location_id', $locationId)
@@ -200,11 +211,13 @@ class CatalogSyncController extends Controller
 
         return response()->json([
             'version' => ($versionTime ?? now())->format('YmdHis'),
-            'data' => $rows->map(function (Employee $employee): array {
+            'data' => $rows->map(function (Employee $employee) use ($allowedLocationMap): array {
                 $name = trim((string) ($employee->full_name ?: ''));
                 if ($name === '') {
                     $name = trim(sprintf('%s %s', (string) $employee->name, (string) $employee->last_name));
                 }
+
+                $resolvedCheckScope = $this->resolveCheckScope($employee);
 
                 return [
                     'employee_id' => (int) $employee->id,
@@ -212,9 +225,12 @@ class CatalogSyncController extends Controller
                     'name' => $name !== '' ? $name : 'Empleado '.$employee->id,
                     'status' => (string) $employee->status,
                     'location_id' => $employee->base_location_id ? (int) $employee->base_location_id : null,
+                    'base_location_id' => $employee->base_location_id ? (int) $employee->base_location_id : null,
                     'can_check_all_branches' => (bool) ($employee->can_check_all_branches ?? false),
+                    'check_scope' => $resolvedCheckScope,
+                    'allowed_location_ids' => $allowedLocationMap[(int) $employee->id] ?? [],
                     'has_fingerprint' => (bool) $employee->has_fingerprint,
-                    'fingerprint_status' => (string) $employee->fingerprint_status,
+                    'fingerprint_status' => (string) ($employee->fingerprint_status ?? 'none'),
                     'has_face_enrollment' => (bool) ($employee->has_face_enrollment ?? false),
                     'face_status' => (string) ($employee->face_status ?? 'none'),
                     'face_enabled' => (bool) ($employee->face_enabled ?? false),
@@ -242,5 +258,50 @@ class CatalogSyncController extends Controller
         }
 
         return Carbon::parse($raw);
+    }
+
+    /**
+     * @param  array<int, int>  $employeeIds
+     * @return array<int, array<int, int>>
+     */
+    private function loadAllowedLocationMap(array $employeeIds): array
+    {
+        if (empty($employeeIds) || ! Schema::hasTable('employee_allowed_locations')) {
+            return [];
+        }
+
+        $rows = DB::table('employee_allowed_locations')
+            ->select('employee_id', 'location_id')
+            ->whereIn('employee_id', $employeeIds)
+            ->orderBy('employee_id')
+            ->orderBy('location_id')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $employeeId = (int) $row->employee_id;
+            $locationId = (int) $row->location_id;
+
+            if (! isset($map[$employeeId])) {
+                $map[$employeeId] = [];
+            }
+
+            $map[$employeeId][] = $locationId;
+        }
+
+        return $map;
+    }
+
+    private function resolveCheckScope(Employee $employee): string
+    {
+        $checkScope = trim((string) ($employee->check_scope ?? ''));
+
+        if ($checkScope !== '') {
+            return strtoupper($checkScope);
+        }
+
+        return (bool) ($employee->can_check_all_branches ?? false)
+            ? 'ANY_BRANCH'
+            : 'HOME_ONLY';
     }
 }
