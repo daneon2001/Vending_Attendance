@@ -57,17 +57,43 @@ class AllowedBiometricCandidates
         string $employeeScope = 'active'
     ): void {
         $query = $this->getAllowedEmployeesQuery($currentBranchId, $employeeScope);
-        $hasGlobalFlag = $this->hasGlobalBranchFlag();
+
+        $branchAssignedTotal = null;
+        $globalPermissionTotal = 0;
+        $selectedPermissionTotal = 0;
+
+        if ($currentBranchId !== null) {
+            $branchAssignedTotal = Employee::query()
+                ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                ->where('base_location_id', $currentBranchId)
+                ->count();
+
+            if ($this->hasGlobalBranchFlag()) {
+                $globalPermissionTotal = Employee::query()
+                    ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                    ->where('can_check_all_branches', true)
+                    ->count();
+            }
+
+            if ($this->hasCheckScopeColumn() && $this->hasSelectedLocationsTable()) {
+                $selectedPermissionTotal = Employee::query()
+                    ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                    ->where('check_scope', 'SELECTED_BRANCHES')
+                    ->whereIn('id', function ($subQuery) use ($currentBranchId): void {
+                        $subQuery->select('employee_id')
+                            ->from('employee_allowed_locations')
+                            ->where('location_id', $currentBranchId);
+                    })
+                    ->count();
+            }
+        }
 
         Log::info($context, [
             'current_branch_id' => $currentBranchId,
             'employee_scope' => $employeeScope,
-            'branch_assigned_total' => $currentBranchId !== null
-                ? (clone $query)->where('base_location_id', $currentBranchId)->count()
-                : null,
-            'global_permission_total' => $hasGlobalFlag
-                ? (clone $query)->where('can_check_all_branches', true)->count()
-                : 0,
+            'branch_assigned_total' => $branchAssignedTotal,
+            'global_permission_total' => $globalPermissionTotal,
+            'selected_permission_total' => $selectedPermissionTotal,
             'returned_total' => (clone $query)->count(),
         ]);
     }
@@ -79,55 +105,121 @@ class AllowedBiometricCandidates
         string $employeeScope = 'active'
     ): void {
         $query = $this->getAllowedCandidatesQuery($currentBranchId, $biometricType, $employeeScope);
-        $hasGlobalFlag = $this->hasGlobalBranchFlag();
+
+        $branchAssignedTotal = null;
+        $globalPermissionTotal = 0;
+        $selectedPermissionTotal = 0;
+
+        if ($currentBranchId !== null) {
+            $branchAssignedTotal = (clone $query)->whereIn(
+                'employee_id',
+                Employee::query()
+                    ->select('id')
+                    ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                    ->where('base_location_id', $currentBranchId)
+            )->count();
+
+            if ($this->hasGlobalBranchFlag()) {
+                $globalPermissionTotal = (clone $query)->whereIn(
+                    'employee_id',
+                    Employee::query()
+                        ->select('id')
+                        ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                        ->where('can_check_all_branches', true)
+                )->count();
+            }
+
+            if ($this->hasCheckScopeColumn() && $this->hasSelectedLocationsTable()) {
+                $selectedPermissionTotal = (clone $query)->whereIn(
+                    'employee_id',
+                    Employee::query()
+                        ->select('id')
+                        ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
+                        ->where('check_scope', 'SELECTED_BRANCHES')
+                        ->whereIn('id', function ($subQuery) use ($currentBranchId): void {
+                            $subQuery->select('employee_id')
+                                ->from('employee_allowed_locations')
+                                ->where('location_id', $currentBranchId);
+                        })
+                )->count();
+            }
+        }
 
         Log::info($context, [
             'current_branch_id' => $currentBranchId,
             'employee_scope' => $employeeScope,
             'biometric_type' => $this->normalizeBiometricType($biometricType) ?? 'ALL',
-            'branch_assigned_total' => $currentBranchId !== null
-                ? (clone $query)->whereIn(
-                    'employee_id',
-                    Employee::query()
-                        ->select('id')
-                        ->where('base_location_id', $currentBranchId)
-                )->count()
-                : null,
-            'global_permission_total' => $hasGlobalFlag
-                ? (clone $query)->whereIn(
-                    'employee_id',
-                    Employee::query()
-                        ->select('id')
-                        ->where('can_check_all_branches', true)
-                )->count()
-                : 0,
+            'branch_assigned_total' => $branchAssignedTotal,
+            'global_permission_total' => $globalPermissionTotal,
+            'selected_permission_total' => $selectedPermissionTotal,
             'returned_total' => (clone $query)->count(),
         ]);
     }
 
     private function applyEmployeeScope(Builder $query, ?int $currentBranchId, string $employeeScope): void
     {
-        $normalizedScope = strtolower(trim($employeeScope));
+        $statuses = $this->resolveEmployeeStatuses($employeeScope);
 
-        if ($normalizedScope === 'active') {
-            $query->whereIn('status', self::ACTIVE_EMPLOYEE_STATUSES);
-        } elseif ($normalizedScope === 'inactive') {
-            $query->whereIn('status', self::INACTIVE_EMPLOYEE_STATUSES);
+        if (! empty($statuses)) {
+            $query->whereIn('status', $statuses);
         }
 
         if ($currentBranchId === null) {
             return;
         }
 
-        if (! $this->hasGlobalBranchFlag()) {
-            $query->where('base_location_id', $currentBranchId);
+        if (! $this->hasCheckScopeColumn()) {
+            if (! $this->hasGlobalBranchFlag()) {
+                $query->where('base_location_id', $currentBranchId);
+
+                return;
+            }
+
+            $query->where(function (Builder $allowed) use ($currentBranchId): void {
+                $allowed->where('base_location_id', $currentBranchId)
+                    ->orWhere('can_check_all_branches', true);
+            });
 
             return;
         }
 
         $query->where(function (Builder $allowed) use ($currentBranchId): void {
-            $allowed->where('base_location_id', $currentBranchId)
-                ->orWhere('can_check_all_branches', true);
+            $allowed->where(function (Builder $homeOnly) use ($currentBranchId): void {
+                $homeOnly->where('check_scope', 'HOME_ONLY')
+                    ->where('base_location_id', $currentBranchId);
+            });
+
+            $allowed->orWhere('check_scope', 'ANY_BRANCH');
+
+            if ($this->hasSelectedLocationsTable()) {
+                $allowed->orWhere(function (Builder $selected) use ($currentBranchId): void {
+                    $selected->where('check_scope', 'SELECTED_BRANCHES')
+                        ->whereIn('id', function ($subQuery) use ($currentBranchId): void {
+                            $subQuery->select('employee_id')
+                                ->from('employee_allowed_locations')
+                                ->where('location_id', $currentBranchId);
+                        });
+                });
+            }
+
+            if ($this->hasGlobalBranchFlag()) {
+                $allowed->orWhere(function (Builder $legacy) use ($currentBranchId): void {
+                    $legacy->where(function (Builder $legacyScope): void {
+                        $legacyScope->whereNull('check_scope')
+                            ->orWhere('check_scope', '');
+                    })->where(function (Builder $legacyInner) use ($currentBranchId): void {
+                        $legacyInner->where('base_location_id', $currentBranchId)
+                            ->orWhere('can_check_all_branches', true);
+                    });
+                });
+            } else {
+                $allowed->orWhere(function (Builder $legacy) use ($currentBranchId): void {
+                    $legacy->where(function (Builder $legacyScope): void {
+                        $legacyScope->whereNull('check_scope')
+                            ->orWhere('check_scope', '');
+                    })->where('base_location_id', $currentBranchId);
+                });
+            }
         });
     }
 
@@ -186,6 +278,10 @@ class AllowedBiometricCandidates
             $columns[] = 'can_check_all_branches';
         }
 
+        if ($this->hasCheckScopeColumn()) {
+            $columns[] = 'check_scope';
+        }
+
         foreach ([
             'has_face_enrollment',
             'face_status',
@@ -194,6 +290,7 @@ class AllowedBiometricCandidates
             'face_template_version',
             'face_quality_score',
             'face_updated_at',
+            'face_sync_ready',
         ] as $column) {
             if (Schema::hasColumn('employees', $column)) {
                 $columns[] = $column;
@@ -210,6 +307,16 @@ class AllowedBiometricCandidates
     private function hasGlobalBranchFlag(): bool
     {
         return Schema::hasColumn('employees', 'can_check_all_branches');
+    }
+
+    private function hasCheckScopeColumn(): bool
+    {
+        return Schema::hasColumn('employees', 'check_scope');
+    }
+
+    private function hasSelectedLocationsTable(): bool
+    {
+        return Schema::hasTable('employee_allowed_locations');
     }
 
     private function applyFaceAvailabilityScope(Builder $query): void
@@ -238,5 +345,19 @@ class AllowedBiometricCandidates
         }
 
         return $query;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveEmployeeStatuses(string $employeeScope): array
+    {
+        $normalizedScope = strtolower(trim($employeeScope));
+
+        return match ($normalizedScope) {
+            'active' => self::ACTIVE_EMPLOYEE_STATUSES,
+            'inactive' => self::INACTIVE_EMPLOYEE_STATUSES,
+            default => [],
+        };
     }
 }
