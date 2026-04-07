@@ -17,6 +17,15 @@ class EmployeeCompactResource extends JsonResource
             ])));
         }
 
+        $allowedLocationIds = [];
+        if ($this->relationLoaded('allowedLocations')) {
+            $allowedLocationIds = $this->allowedLocations
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        }
+
         return [
             'id' => (int) $this->id,
             'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
@@ -25,8 +34,15 @@ class EmployeeCompactResource extends JsonResource
             'unit_id' => $this->base_location_id ? (int) $this->base_location_id : null,
             'unit_name' => $this->unit?->name ?? $this->base_location_name,
             'status' => $this->normalizeStatus($this->status),
+
+            'check_scope' => $this->check_scope ? (string) $this->check_scope : null,
+            'resolved_check_scope' => (string) ($this->resolved_check_scope ?? 'HOME_ONLY'),
+            'can_check_all_branches' => (bool) ($this->can_check_all_branches ?? false),
+            'allowed_location_ids' => $allowedLocationIds,
+
             'fingerprint_status' => (string) $this->fingerprint_status,
             'has_fingerprint' => (bool) $this->has_fingerprint,
+
             'has_face_enrollment' => (bool) ($this->has_face_enrollment ?? false),
             'face_status' => (string) ($this->face_status ?? 'none'),
             'face_enabled' => (bool) ($this->face_enabled ?? false),
@@ -36,6 +52,7 @@ class EmployeeCompactResource extends JsonResource
             'face_quality_score' => is_numeric($this->face_quality_score) ? (int) $this->face_quality_score : null,
             'face_meta' => is_array($this->face_meta) ? $this->face_meta : null,
             'face_sync_ready' => (bool) ($this->face_sync_ready ?? false),
+
             'updated_at' => optional($this->updated_at)->toISOString(),
         ];
     }

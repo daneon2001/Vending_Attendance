@@ -104,6 +104,16 @@ const normalizeFaceStatus = (employee = {}) => {
     return 'none';
 };
 
+const normalizeCheckScope = (employee = {}) => {
+    const raw = String(employee.resolved_check_scope ?? employee.check_scope ?? '').trim().toUpperCase();
+
+    if (['HOME_ONLY', 'ANY_BRANCH', 'SELECTED_BRANCHES'].includes(raw)) {
+        return raw;
+    }
+
+    return employee.can_check_all_branches ? 'ANY_BRANCH' : 'HOME_ONLY';
+};
+
 const normalizeEmployee = (employee = {}) => ({
     ...employee,
     status: normalizeStatus(employee.status),
@@ -117,6 +127,12 @@ const normalizeEmployee = (employee = {}) => ({
     face_template_version: employee.face_template_version ?? null,
     face_meta: employee.face_meta && typeof employee.face_meta === 'object' ? employee.face_meta : null,
     face_sync_ready: Boolean(employee.face_sync_ready),
+    can_check_all_branches: Boolean(employee.can_check_all_branches),
+    check_scope: employee.check_scope ?? null,
+    resolved_check_scope: normalizeCheckScope(employee),
+    allowed_location_ids: Array.isArray(employee.allowed_location_ids)
+        ? employee.allowed_location_ids.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
+        : [],
 });
 
 const fingerprintStatusLabel = (employee) => {
@@ -155,6 +171,35 @@ const faceStatusClasses = (employee) => ({
     'bg-rose-50 text-rose-700': employee.face_status === 'disabled',
     'bg-slate-100 text-soft dark:bg-slate-800': employee.face_status === 'none',
 });
+
+const checkScopeLabel = (employee) => {
+    switch (employee.resolved_check_scope) {
+        case 'ANY_BRANCH':
+            return 'Todas';
+        case 'SELECTED_BRANCHES':
+            return 'Sucursales específicas';
+        default:
+            return 'Solo sucursal';
+    }
+};
+
+const checkScopeClasses = (employee) => ({
+    'bg-slate-100 text-soft dark:bg-slate-800': employee.resolved_check_scope === 'HOME_ONLY',
+    'bg-emerald-50 text-emerald-700': employee.resolved_check_scope === 'ANY_BRANCH',
+    'bg-sky-50 text-sky-700': employee.resolved_check_scope === 'SELECTED_BRANCHES',
+});
+
+const allowedLocationsLabel = (employee) => {
+    if (employee.resolved_check_scope !== 'SELECTED_BRANCHES') {
+        return '—';
+    }
+
+    if (!employee.allowed_location_ids.length) {
+        return 'Sin sucursales';
+    }
+
+    return employee.allowed_location_ids.join(', ');
+};
 
 const formatFaceMeta = (faceMeta) => {
     if (!faceMeta || typeof faceMeta !== 'object') {
@@ -412,7 +457,7 @@ const saveFaceProfile = async () => {
             face_meta: parseFaceMeta(),
         };
 
-        const { data } = await axios.patch(toAppUrl(`/api/admin/employees/${faceModal.employee.id}/face-profile`), payload);
+        const { data } = await axios.patch(apiUrl(`/api/admin/employees/${faceModal.employee.id}/face-profile`), payload);
         updateEmployeeInList(data.employee ?? {});
         showToast({
             type: 'success',
@@ -465,8 +510,8 @@ const executeModalAction = async () => {
                 message: `Se eliminaron ${data.deleted_count ?? 0} huella(s).`,
             });
         } else if (action === 'face-delete') {
-            await axios.get(toAppUrl('/sanctum/csrf-cookie'));
-            const { data } = await axios.delete(toAppUrl(`/api/admin/employees/${context.employee.id}/face-profile`));
+            await axios.get(appUrl('/sanctum/csrf-cookie'));
+            const { data } = await axios.delete(apiUrl(`/api/admin/employees/${context.employee.id}/face-profile`));
             updateEmployeeInList(data.employee ?? {});
             closeFaceModal();
             showToast({
@@ -645,6 +690,7 @@ onMounted(loadEmployees);
                             {{ employee.full_name ?? employee.name }}
                         </p>
                         <p class="mt-1 text-xs text-muted">{{ employee.unit_name ?? 'Sin unidad' }}</p>
+
                         <div class="mt-2 flex flex-wrap gap-2">
                             <span
                                 class="rounded-full px-3 py-1 text-xs font-semibold"
@@ -658,15 +704,24 @@ onMounted(loadEmployees);
                             <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="faceStatusClasses(employee)">
                                 {{ faceStatusLabel(employee) }}
                             </span>
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="checkScopeClasses(employee)">
+                                {{ checkScopeLabel(employee) }}
+                            </span>
                             <span v-if="employee.face_sync_ready" class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                                 Listo sync
                             </span>
                         </div>
+
                         <div class="mt-3 grid gap-1 text-xs text-muted">
+                            <span>Alcance: {{ checkScopeLabel(employee) }}</span>
+                            <span v-if="employee.resolved_check_scope === 'SELECTED_BRANCHES'">
+                                Sucursales: {{ allowedLocationsLabel(employee) }}
+                            </span>
                             <span>Muestras Face: {{ employee.face_samples_count }}</span>
                             <span v-if="employee.face_quality_score !== null">Score Face: {{ employee.face_quality_score }}</span>
                             <span v-if="employee.face_template_version">Version: {{ employee.face_template_version }}</span>
                         </div>
+
                         <div class="mt-3 flex flex-col gap-2 text-xs font-semibold">
                             <button
                                 v-if="canViewAttendance"
@@ -694,12 +749,14 @@ onMounted(loadEmployees);
                 </div>
 
                 <div class="hidden overflow-x-auto sm:block">
-                    <table class="w-full min-w-[78rem] divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                    <table class="w-full min-w-[90rem] divide-y divide-slate-100 text-sm dark:divide-slate-800">
                         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
                             <tr>
                                 <th class="px-4 py-3">Nombre</th>
                                 <th class="px-4 py-3">Unidad</th>
                                 <th class="px-4 py-3">Estado</th>
+                                <th class="px-4 py-3">Alcance</th>
+                                <th class="px-4 py-3">Sucursales</th>
                                 <th class="px-4 py-3">Huella</th>
                                 <th class="px-4 py-3">Face ID</th>
                                 <th class="px-4 py-3">Sync Face</th>
@@ -733,6 +790,16 @@ onMounted(loadEmployees);
                                         class="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-soft dark:bg-slate-800 dark:text-slate-300"
                                     >
                                         {{ isActiveStatus(employee.status) ? 'Activo' : 'Baja' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="rounded-full px-3 py-2 text-xs font-semibold" :class="checkScopeClasses(employee)">
+                                        {{ checkScopeLabel(employee) }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-xs text-muted">
+                                    <span class="block max-w-[12rem] truncate" :title="allowedLocationsLabel(employee)">
+                                        {{ allowedLocationsLabel(employee) }}
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">
