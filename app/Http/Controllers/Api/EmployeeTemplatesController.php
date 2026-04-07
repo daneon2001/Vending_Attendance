@@ -109,6 +109,17 @@ class EmployeeTemplatesController extends Controller
             $tombstonesQuery->where('deleted_at', '>', $since);
         }
 
+        $activeVendorTemplateIds = $templates
+            ->pluck('vendor_template_id')
+            ->filter(fn ($value) => filled($value))
+            ->map(fn ($value) => (string) $value)
+            ->unique()
+            ->values();
+
+        if ($activeVendorTemplateIds->isNotEmpty()) {
+            $tombstonesQuery->whereNotIn('vendor_template_id', $activeVendorTemplateIds->all());
+        }
+
         $tombstoneColumns = ['vendor', 'vendor_template_id', 'deleted_at'];
         if (Schema::hasColumn('employee_template_deletions', 'biometric_type')) {
             $tombstoneColumns[] = 'biometric_type';
