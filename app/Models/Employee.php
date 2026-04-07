@@ -10,6 +10,10 @@ class Employee extends Model
 {
     use HasFactory;
 
+    public const CHECK_SCOPE_HOME_ONLY = 'HOME_ONLY';
+    public const CHECK_SCOPE_ANY_BRANCH = 'ANY_BRANCH';
+    public const CHECK_SCOPE_SELECTED_BRANCHES = 'SELECTED_BRANCHES';
+
     private const ACTIVE_TEMPLATE_STATUSES = ['enrolled', 'active'];
 
     private const SYNC_READY_FACE_STATUSES = ['enrolled', 'ready'];
@@ -21,6 +25,7 @@ class Employee extends Model
         'base_location_id',
         'base_location_name',
         'can_check_all_branches',
+        'check_scope',
         'department_id',
         'department_name',
         'name',
@@ -57,6 +62,7 @@ class Employee extends Model
     protected $appends = [
         'fingerprint_status',
         'face_sync_ready',
+        'resolved_check_scope',
     ];
 
     public function attendanceLogs()
@@ -84,6 +90,16 @@ class Employee extends Model
     public function unit()
     {
         return $this->belongsTo(Location::class, 'base_location_id');
+    }
+
+    public function allowedLocations()
+    {
+        return $this->belongsToMany(
+            Location::class,
+            'employee_allowed_locations',
+            'employee_id',
+            'location_id'
+        );
     }
 
     public function getFingerprintStatusAttribute(): string
@@ -116,8 +132,16 @@ class Employee extends Model
             ->whereNull('deleted_at')
             ->exists();
 
+        $updates = [
+            'has_fingerprint' => $hasFingerprint,
+        ];
+
+        if (! $hasFingerprint) {
+            $updates['updated_at'] = now();
+        }
+
         if ($this->has_fingerprint !== $hasFingerprint) {
-            $this->forceFill(['has_fingerprint' => $hasFingerprint])->saveQuietly();
+            $this->forceFill($updates)->saveQuietly();
         }
     }
 
@@ -168,10 +192,10 @@ class Employee extends Model
             $currentMeta,
             is_array($attributes['face_meta'] ?? null) ? $attributes['face_meta'] : [],
             [
-            'last_vendor_template_id' => $attributes['vendor_template_id'] ?? ($currentMeta['last_vendor_template_id'] ?? null),
-            'last_template_format' => $attributes['template_format'] ?? ($currentMeta['last_template_format'] ?? null),
-            'last_device_serial' => $attributes['device_serial'] ?? ($currentMeta['last_device_serial'] ?? null),
-            'last_enrolment_type' => 'FACE',
+                'last_vendor_template_id' => $attributes['vendor_template_id'] ?? ($currentMeta['last_vendor_template_id'] ?? null),
+                'last_template_format' => $attributes['template_format'] ?? ($currentMeta['last_template_format'] ?? null),
+                'last_device_serial' => $attributes['device_serial'] ?? ($currentMeta['last_device_serial'] ?? null),
+                'last_enrolment_type' => 'FACE',
             ]
         ), fn ($value) => $value !== null && $value !== '');
 
@@ -250,6 +274,77 @@ class Employee extends Model
         }
 
         return $query->where($this->getRouteKeyName(), $value)->first();
+    }
+
+    public function getResolvedCheckScopeAttribute(): string
+    {
+        $checkScope = strtoupper(trim((string) ($this->check_scope ?? '')));
+
+        if (in_array($checkScope, [
+            self::CHECK_SCOPE_HOME_ONLY,
+            self::CHECK_SCOPE_ANY_BRANCH,
+            self::CHECK_SCOPE_SELECTED_BRANCHES,
+        ], true)) {
+            return $checkScope;
+        }
+
+        return (bool) $this->can_check_all_branches
+            ? self::CHECK_SCOPE_ANY_BRANCH
+            : self::CHECK_SCOPE_HOME_ONLY;
+    }
+
+    public function isHomeOnlyScope(): bool
+    {
+        return $this->resolved_check_scope === self::CHECK_SCOPE_HOME_ONLY;
+    }
+
+    public function isAnyBranchScope(): bool
+    {
+        return $this->resolved_check_scope === self::CHECK_SCOPE_ANY_BRANCH;
+    }
+
+    public function isSelectedBranchesScope(): bool
+    {
+        return $this->resolved_check_scope === self::CHECK_SCOPE_SELECTED_BRANCHES;
+    }
+
+    public function syncCheckScope(array $allowedLocationIds = []): void
+    {
+        $scope = $this->resolved_check_scope;
+
+        if ($scope === self::CHECK_SCOPE_ANY_BRANCH) {
+            $this->forceFill([
+                'can_check_all_branches' => true,
+                'check_scope' => self::CHECK_SCOPE_ANY_BRANCH,
+            ])->save();
+
+            $this->allowedLocations()->sync([]);
+
+            return;
+        }
+
+        if ($scope === self::CHECK_SCOPE_SELECTED_BRANCHES) {
+            $this->forceFill([
+                'can_check_all_branches' => false,
+                'check_scope' => self::CHECK_SCOPE_SELECTED_BRANCHES,
+            ])->save();
+
+            $this->allowedLocations()->sync(collect($allowedLocationIds)
+                ->filter(fn ($id) => filled($id))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all());
+
+            return;
+        }
+
+        $this->forceFill([
+            'can_check_all_branches' => false,
+            'check_scope' => self::CHECK_SCOPE_HOME_ONLY,
+        ])->save();
+
+        $this->allowedLocations()->sync([]);
     }
 
     private function normalizedFaceStatus(): string
