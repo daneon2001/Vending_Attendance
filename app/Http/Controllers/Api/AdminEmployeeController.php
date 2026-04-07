@@ -44,6 +44,8 @@ class AdminEmployeeController extends Controller
             'base_location_name',
             'status',
             'has_fingerprint',
+            'can_check_all_branches',
+            'check_scope',
             'updated_at',
         ];
 
@@ -64,7 +66,10 @@ class AdminEmployeeController extends Controller
 
         $query = Employee::query()
             ->select($select)
-            ->with(['unit:id,name']);
+            ->with([
+                'unit:id,name',
+                'allowedLocations:id,name',
+            ]);
 
         if (! empty($validated['q'])) {
             $needle = trim((string) $validated['q']);

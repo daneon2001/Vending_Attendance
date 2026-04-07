@@ -5,6 +5,7 @@ namespace App\Services\Fortia;
 use App\Models\Employee;
 use App\Models\EmployeeStatusChange;
 use App\Models\EmployeeSyncState;
+use App\Models\Location;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -58,6 +59,7 @@ class FortiaEmployeeService
             }
 
             $remoteEmployees = $query->orderBy('updated_at')->get();
+
             $summary = [
                 'total' => 0,
                 'new' => 0,
@@ -65,6 +67,7 @@ class FortiaEmployeeService
                 'unchanged' => 0,
                 'status_changed' => 0,
                 'changed' => [],
+                'scope_synced' => 0,
             ];
 
             $maxUpdatedAt = null;
@@ -72,6 +75,7 @@ class FortiaEmployeeService
             foreach ($remoteEmployees as $remoteRow) {
                 $remote = (array) $remoteRow;
                 $summary['total']++;
+
                 $maxUpdatedAt = $this->maxTimestamp(
                     $maxUpdatedAt,
                     isset($remote['updated_at']) ? Carbon::parse((string) $remote['updated_at']) : null
@@ -87,8 +91,10 @@ class FortiaEmployeeService
                     ->first();
 
                 if (! $employee) {
-                    Employee::create($payload);
+                    $employee = Employee::create($payload);
+                    $this->syncEmployeeScope($employee, $remote);
                     $summary['new']++;
+                    $summary['scope_synced']++;
                     continue;
                 }
 
@@ -99,6 +105,7 @@ class FortiaEmployeeService
                 if ($oldStatus !== $payload['status']) {
                     $isDirty = true;
                     $summary['status_changed']++;
+
                     $change = [
                         'company_id' => $employee->company_id,
                         'fortia_employee_id' => $employee->fortia_employee_id,
@@ -134,6 +141,9 @@ class FortiaEmployeeService
                 } else {
                     $summary['unchanged']++;
                 }
+
+                $this->syncEmployeeScope($employee, $remote);
+                $summary['scope_synced']++;
             }
 
             $this->updateSyncStateSuccess($state, $maxUpdatedAt, $summary);
@@ -207,12 +217,15 @@ class FortiaEmployeeService
             $remote['second_last_name'] ?? '',
         ])->filter()->implode(' '));
 
+        $resolvedBaseLocationId = $this->resolveLocalBaseLocationId($remote);
+        $resolvedCheckScope = $this->resolveCheckScopeFromRemote($remote);
+
         $payload = [
             'fortia_employee_id' => (int) $fortiaEmployeeId,
             'company_id' => $remote['company_id'] ?? null,
             'company_name' => $remote['company_name'] ?? null,
-            'base_location_id' => $remote['base_location_id'] ?? null,
-            'base_location_name' => $remote['base_location_name'] ?? null,
+            'base_location_id' => $resolvedBaseLocationId,
+            'base_location_name' => $this->resolveBaseLocationName($remote, $resolvedBaseLocationId),
             'department_id' => $remote['department_id'] ?? null,
             'department_name' => $remote['department_name'] ?? null,
             'name' => $remote['name'] ?? null,
@@ -227,10 +240,179 @@ class FortiaEmployeeService
         ];
 
         if (Schema::hasColumn('employees', 'can_check_all_branches')) {
-            $payload['can_check_all_branches'] = (bool) ($remote['can_check_all_branches'] ?? false);
+            $payload['can_check_all_branches'] = $resolvedCheckScope === Employee::CHECK_SCOPE_ANY_BRANCH;
+        }
+
+        if (Schema::hasColumn('employees', 'check_scope')) {
+            $payload['check_scope'] = $resolvedCheckScope;
         }
 
         return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    private function syncEmployeeScope(Employee $employee, array $remote): void
+    {
+        if (! Schema::hasColumn('employees', 'check_scope')) {
+            return;
+        }
+
+        $allowedLocationIds = $this->resolveAllowedLocationIds($remote);
+        $resolvedCheckScope = $this->resolveCheckScopeFromRemote($remote, $allowedLocationIds);
+
+        $employee->forceFill([
+            'check_scope' => $resolvedCheckScope,
+            'can_check_all_branches' => $resolvedCheckScope === Employee::CHECK_SCOPE_ANY_BRANCH,
+        ])->save();
+
+        if (method_exists($employee, 'syncCheckScope')) {
+            $employee->syncCheckScope($allowedLocationIds);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    private function resolveCheckScopeFromRemote(array $remote, array $allowedLocationIds = []): string
+    {
+        $rawCheckScope = strtoupper(trim((string) ($remote['check_scope'] ?? '')));
+
+        if (in_array($rawCheckScope, [
+            Employee::CHECK_SCOPE_HOME_ONLY,
+            Employee::CHECK_SCOPE_ANY_BRANCH,
+            Employee::CHECK_SCOPE_SELECTED_BRANCHES,
+        ], true)) {
+            return $rawCheckScope;
+        }
+
+        if ($allowedLocationIds !== []) {
+            return Employee::CHECK_SCOPE_SELECTED_BRANCHES;
+        }
+
+        return (bool) ($remote['can_check_all_branches'] ?? false)
+            ? Employee::CHECK_SCOPE_ANY_BRANCH
+            : Employee::CHECK_SCOPE_HOME_ONLY;
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    private function resolveLocalBaseLocationId(array $remote): ?int
+    {
+        $rawBaseLocationId = $remote['base_location_id'] ?? null;
+        $rawBaseLocationName = trim((string) ($remote['base_location_name'] ?? ''));
+
+        $resolved = $this->findLocationIdByCandidate($rawBaseLocationId, $rawBaseLocationName);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        if ($rawBaseLocationName !== '') {
+            $byName = Location::query()
+                ->where('name', $rawBaseLocationName)
+                ->value('id');
+
+            return is_numeric($byName) ? (int) $byName : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    private function resolveBaseLocationName(array $remote, ?int $resolvedBaseLocationId): ?string
+    {
+        $rawName = trim((string) ($remote['base_location_name'] ?? ''));
+        if ($rawName !== '') {
+            return $rawName;
+        }
+
+        if ($resolvedBaseLocationId === null) {
+            return null;
+        }
+
+        return Location::query()
+            ->whereKey($resolvedBaseLocationId)
+            ->value('name');
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     * @return array<int, int>
+     */
+    private function resolveAllowedLocationIds(array $remote): array
+    {
+        $raw = $remote['allowed_location_ids'] ?? $remote['selected_location_ids'] ?? [];
+
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $raw = $decoded;
+            } else {
+                $raw = array_filter(array_map('trim', explode(',', $raw)));
+            }
+        }
+
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        return collect($raw)
+            ->map(function ($item) {
+                if (is_array($item)) {
+                    $candidateId = $item['id'] ?? $item['location_id'] ?? $item['base_location_id'] ?? null;
+                    $candidateName = $item['name'] ?? $item['location_name'] ?? null;
+
+                    return $this->findLocationIdByCandidate($candidateId, is_string($candidateName) ? $candidateName : null);
+                }
+
+                return $this->findLocationIdByCandidate($item, null);
+            })
+            ->filter(fn ($id) => is_numeric($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function findLocationIdByCandidate(mixed $candidateId, ?string $candidateName = null): ?int
+    {
+        if (is_numeric($candidateId)) {
+            $candidateId = (int) $candidateId;
+
+            $directId = Location::query()->whereKey($candidateId)->value('id');
+            if (is_numeric($directId)) {
+                return (int) $directId;
+            }
+
+            foreach (['fortia_location_id', 'external_id', 'legacy_code', 'code'] as $column) {
+                if (Schema::hasColumn('locations', $column)) {
+                    $mappedId = Location::query()
+                        ->where($column, $candidateId)
+                        ->value('id');
+
+                    if (is_numeric($mappedId)) {
+                        return (int) $mappedId;
+                    }
+                }
+            }
+        }
+
+        $candidateName = trim((string) $candidateName);
+        if ($candidateName !== '') {
+            $mappedId = Location::query()
+                ->where('name', $candidateName)
+                ->value('id');
+
+            if (is_numeric($mappedId)) {
+                return (int) $mappedId;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -250,6 +432,7 @@ class FortiaEmployeeService
                 'updated' => $summary['updated'],
                 'unchanged' => $summary['unchanged'],
                 'status_changed' => $summary['status_changed'],
+                'scope_synced' => $summary['scope_synced'] ?? 0,
             ],
         ])->save();
     }
