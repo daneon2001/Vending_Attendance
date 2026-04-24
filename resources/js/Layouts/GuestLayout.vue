@@ -46,7 +46,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 
                     <!-- DESCRIPCIÓN -->
                     <p class="text-sm sm:text-base text-slate-700 max-w-xl">
-                        Consolida turnos, incidencias y reportes desde cualquier clínica o sucursal.
+                        Consolida registro de checada desde cualquier clínica o sucursal.
                         Seguridad biométrica integrada y tableros en vivo para el personal
                         administrativo.
                     </p>
@@ -70,17 +70,6 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
                         </p>
                     </div>
 
-                    <div class="rounded-3xl border border-white/60 bg-white/90 p-4 sm:p-5">
-                        <dt class="text-[0.65rem] sm:text-xs uppercase tracking-[0.35em] text-slate-500">
-                            Seguridad
-                        </dt>
-                        <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-slate-900">
-                            3.2M
-                        </dd>
-                        <p class="mt-1 text-[0.7rem] sm:text-xs text-slate-600">
-                            registros biométricos/año
-                        </p>
-                    </div>
                 </dl>
 
                 <!-- TAGS INFERIORES -->

@@ -1,0 +1,13 @@
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('1', 'OPERADORA DE SERVICIOS MEDICOS ML', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('2', 'METRO HEALTH SERVICES', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('3', 'SERVICIOS MEDICOS HHS', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('6', 'MEXFINGAS', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('7', 'SERVICIOS MEDICOS Y HOSPITALARIOS X MI', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('8', 'AUTOTRANSPORTES HEALT CARE', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('9', 'WEB GAS', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('10', 'OPERADORA MEDICA TLAXCALTECA', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('11', 'COYOTES DE TLAXCALA FC', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('12', 'GRUPO BEDDO', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('13', 'PROMOTORA PORTOFINO', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('14', 'ML OPTICAL CORPORATION', NOW(), NOW());
+INSERT INTO razones_sociales (cla_razon_social, nom_razon_social, created_at, updated_at) VALUES ('15', 'SERVICIOS PROFESIONALES OP', NOW(), NOW());

@@ -108,9 +108,9 @@ const submit = () => {
 
         <div class="mt-10 grid gap-4 text-sm text-slate-500 sm:grid-cols-2">
             <div class="rounded-2xl border border-[#d0ddea] bg-[#f9fcff] p-5">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.4em] text-[#36A144]">Colaboradores</p>
-                <p class="mt-2 text-2xl font-semibold text-[#0F3F6F]">Portal Médico</p>
-                <p class="mt-1 text-sm">Solicitudes de asistencia, incidencias y justificaciones certificadas.</p>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.4em] text-[#36A144]">RRHH</p>
+                <p class="mt-2 text-2xl font-semibold text-[#0F3F6F]">Portal de Registro</p>
+                <p class="mt-1 text-sm">Solicitudes de registro de asistencia.</p>
             </div>
             <div class="rounded-2xl border border-[#d0ddea] bg-[#fefaf4] p-5">
                 <p class="text-[11px] font-semibold uppercase tracking-[0.4em] text-[#FF8A00]">Operación</p>

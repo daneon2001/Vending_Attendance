@@ -1,0 +1,15 @@
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('1', 'OPERADORA DE SERVICIOS MEDICOS ML S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('2', 'METRO HEALTH SERVICES, S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('3', 'SERVICIOS MEDICOS HHS, S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('6', 'MEXFINGAS SAPI DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('7', 'SERVICIOS MEDICOS Y HOSPITALARIOS X MI', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('8', 'AUTOTRANSPORTES HEALT CARE SA DE CV', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('9', 'WEB GAS S.A de C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('10', 'OPERADORA MEDICA TLAXCALTECA S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('11', 'COYOTES DE TLAXCALA FC', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('12', 'GRUPO BEDDO S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('13', 'PROMOTORA PORTOFINO SA DE CV', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('14', 'ML OPTICAL CORPORATION SA DE CV', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('15', 'SERVICIOS PROFESIONALES OP', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('16', 'GRUPO BEDDO S.A. DE C.V.', NOW(), NOW());
+INSERT INTO registros_imss (cla_reg_imss, nom_reg_imss, created_at, updated_at) VALUES ('17', 'METRO HEALTH SERVICES, S.A. DE C.V..', NOW(), NOW());

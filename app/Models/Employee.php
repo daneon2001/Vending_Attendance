@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Employee extends Model
 {
@@ -70,6 +71,22 @@ class Employee extends Model
         return $this->hasMany(AttendanceLog::class);
     }
 
+    public function detail()
+    {
+        return $this->hasOne(EmployeeDetail::class);
+    }
+
+    public function company()
+    {
+        foreach (['fortia_company_id', 'external_id', 'legacy_code', 'code'] as $ownerKey) {
+            if (Schema::hasColumn('companies', $ownerKey)) {
+                return $this->belongsTo(Company::class, 'company_id', $ownerKey);
+            }
+        }
+
+        return $this->belongsTo(Company::class, 'company_id');
+    }
+
     public function fingerprints()
     {
         return $this->hasMany(EmployeeFingerprint::class);
@@ -89,6 +106,17 @@ class Employee extends Model
 
     public function unit()
     {
+        return $this->belongsTo(Location::class, 'base_location_id');
+    }
+
+    public function baseLocation()
+    {
+        foreach (['fortia_location_id', 'external_id', 'legacy_code', 'code'] as $ownerKey) {
+            if (Schema::hasColumn('locations', $ownerKey)) {
+                return $this->belongsTo(Location::class, 'base_location_id', $ownerKey);
+            }
+        }
+
         return $this->belongsTo(Location::class, 'base_location_id');
     }
 
