@@ -34,6 +34,11 @@ use App\Console\Commands\FortiaDiagnoseApis;
 use App\Console\Commands\FortiaDiagnoseBiometrics;
 use App\Console\Commands\FortiaDiagnoseDeviceToken;
 use App\Console\Commands\FortiaDiagnoseOnPrem;
+use App\Console\Commands\FortiaAuditCatalogAlignment;
+use App\Console\Commands\FortiaAuditClocks;
+use App\Console\Commands\FortiaSyncEmployees;
+use App\Console\Commands\FortiaImportClocks;
+use App\Console\Commands\FortiaSyncOperationalCatalogs;
 use App\Console\Commands\SyncPermissionCatalogCommand;
 use App\Console\Commands\VerifyAttendanceIntegrity;
 use Illuminate\Http\Request;
@@ -54,6 +59,11 @@ return Application::configure(basePath: dirname(__DIR__))
         FortiaDiagnoseBiometrics::class,
         FortiaDiagnoseOnPrem::class,
         FortiaDiagnoseDeviceToken::class,
+        FortiaAuditCatalogAlignment::class,
+        FortiaAuditClocks::class,
+        FortiaImportClocks::class,
+        FortiaSyncEmployees::class,
+        FortiaSyncOperationalCatalogs::class,
         SyncPermissionCatalogCommand::class,
         ReconcileDevicesFromClocks::class,
         VerifyAttendanceIntegrity::class,
