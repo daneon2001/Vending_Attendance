@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
@@ -21,13 +21,47 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    filters: {
+        type: Object,
+        default: () => ({}),
+    },
+    perPage: {
+        type: Number,
+        default: 12,
+    },
 });
 
 const clockList = ref(props.initialClocks?.data ?? []);
 const pagination = ref(props.initialClocks?.meta ?? null);
-const perPage = ref(pagination.value?.per_page ?? 12);
+const perPage = ref(pagination.value?.per_page ?? props.perPage ?? 12);
 const listLoading = ref(false);
 const perPageOptions = [10, 12, 20, 50];
+const filterSyncing = ref(false);
+let searchDebounceTimer = null;
+
+const createFilters = (value = {}, fallbackPerPage = 12) => ({
+    q: value?.q ?? '',
+    company_id: value?.company_id ? String(value.company_id) : '',
+    location_id: value?.location_id ? String(value.location_id) : '',
+    status: value?.status !== null && value?.status !== undefined && value?.status !== ''
+        ? String(value.status)
+        : '',
+    monitoring_status: value?.monitoring_status ?? '',
+    program_status: value?.program_status ?? '',
+    per_page: Number(value?.per_page ?? fallbackPerPage ?? 12),
+});
+
+const filterForm = reactive(createFilters(props.filters ?? {}, perPage.value));
+
+const syncFiltersFromProps = (filters, perPageValue) => {
+    filterSyncing.value = true;
+    Object.assign(filterForm, createFilters(filters ?? {}, perPageValue ?? 12));
+    perPage.value = Number(filterForm.per_page || perPageValue || 12);
+
+    setTimeout(() => {
+        filterSyncing.value = false;
+    }, 0);
+};
 
 watch(
     () => props.initialClocks,
@@ -37,6 +71,14 @@ watch(
         if (value?.meta?.per_page) {
             perPage.value = value.meta.per_page;
         }
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.filters,
+    (value) => {
+        syncFiltersFromProps(value ?? {}, props.perPage ?? perPage.value);
     },
     { deep: true },
 );
@@ -339,6 +381,12 @@ const fetchClocks = async (page = currentPage.value) => {
     try {
         const { data } = await axios.get(route('clocks.list'), {
             params: {
+                q: filterForm.q || undefined,
+                company_id: filterForm.company_id || undefined,
+                location_id: filterForm.location_id || undefined,
+                status: filterForm.status || undefined,
+                monitoring_status: filterForm.monitoring_status || undefined,
+                program_status: filterForm.program_status || undefined,
                 page,
                 per_page: perPage.value,
             },
@@ -354,9 +402,53 @@ const fetchClocks = async (page = currentPage.value) => {
     }
 };
 
+const buildFilterQuery = (page = 1) => {
+    const query = {
+        q: filterForm.q || undefined,
+        company_id: filterForm.company_id || undefined,
+        location_id: filterForm.location_id || undefined,
+        status: filterForm.status || undefined,
+        monitoring_status: filterForm.monitoring_status || undefined,
+        program_status: filterForm.program_status || undefined,
+        page,
+        per_page: perPage.value || undefined,
+    };
+
+    return Object.fromEntries(
+        Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    );
+};
+
+const applyFilters = (page = 1) => {
+    if (filterSyncing.value) {
+        return;
+    }
+
+    filterForm.per_page = Number(perPage.value);
+
+    router.get(route('clocks.index'), buildFilterQuery(page), {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: ['initialClocks', 'filters', 'perPage'],
+        onStart: () => {
+            listLoading.value = true;
+        },
+        onFinish: () => {
+            listLoading.value = false;
+        },
+    });
+};
+
+const applySelectFilters = () => {
+    applyFilters(1);
+};
+
 let refreshTimer = null;
 
 onMounted(() => {
+    syncFiltersFromProps(props.filters ?? {}, props.perPage ?? perPage.value);
+
     refreshTimer = window.setInterval(() => {
         fetchClocks(currentPage.value);
     }, 15000);
@@ -365,6 +457,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (refreshTimer) {
         window.clearInterval(refreshTimer);
+    }
+
+    if (searchDebounceTimer) {
+        window.clearTimeout(searchDebounceTimer);
     }
 });
 
@@ -377,7 +473,7 @@ const changePage = (page) => {
         return;
     }
 
-    fetchClocks(page);
+    applyFilters(page);
 };
 
 const goToPrevPage = () => {
@@ -388,10 +484,46 @@ const goToNextPage = () => {
     changePage(currentPage.value + 1);
 };
 
+const handlePerPageChange = () => {
+    filterForm.per_page = Number(perPage.value);
+    applyFilters(1);
+};
+
+const clearFilters = () => {
+    filterSyncing.value = true;
+    Object.assign(filterForm, {
+        q: '',
+        company_id: '',
+        location_id: '',
+        status: '',
+        monitoring_status: '',
+        program_status: '',
+        per_page: Number(perPage.value),
+    });
+
+    if (searchDebounceTimer) {
+        window.clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+    }
+
+    filterSyncing.value = false;
+    applyFilters(1);
+};
+
 watch(
-    perPage,
+    () => filterForm.q,
     () => {
-        fetchClocks(1);
+        if (filterSyncing.value) {
+            return;
+        }
+
+        if (searchDebounceTimer) {
+            window.clearTimeout(searchDebounceTimer);
+        }
+
+        searchDebounceTimer = window.setTimeout(() => {
+            applyFilters(1);
+        }, 350);
     },
 );
 
@@ -663,6 +795,7 @@ const resetLogsFilters = () => {
                                     Registros por página
                                     <select
                                         v-model.number="perPage"
+                                        @change="handlePerPageChange"
                                         class="w-full rounded-2xl border border-slate-200 px-3 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 sm:w-auto"
                                     >
                                         <option v-for="option in perPageOptions" :key="option" :value="option">
@@ -744,6 +877,106 @@ const resetLogsFilters = () => {
                     </button>
                 </div>
             </div>
+
+            <section class="rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
+                <form class="grid gap-3 md:grid-cols-2 lg:grid-cols-3" @submit.prevent="applyFilters(1)">
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 lg:col-span-3">
+                        Buscar
+                        <input
+                            v-model="filterForm.q"
+                            type="search"
+                            placeholder="Nombre, serial, IP, empresa o unidad"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none"
+                        />
+                    </label>
+
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Empresa
+                        <select
+                            v-model="filterForm.company_id"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            @change="applySelectFilters"
+                        >
+                            <option value="">Todas</option>
+                            <option v-for="company in companyOptions" :key="company.id" :value="String(company.id)">
+                                {{ company.name }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Unidad
+                        <select
+                            v-model="filterForm.location_id"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            @change="applySelectFilters"
+                        >
+                            <option value="">Todas</option>
+                            <option value="unassigned">Sin unidad asignada</option>
+                            <option v-for="location in locationOptions" :key="location.id" :value="String(location.id)">
+                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Estatus
+                        <select
+                            v-model="filterForm.status"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            @change="applySelectFilters"
+                        >
+                            <option value="">Todos</option>
+                            <option value="1">Activos</option>
+                            <option value="0">Inactivos</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Monitoreo
+                        <select
+                            v-model="filterForm.monitoring_status"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            @change="applySelectFilters"
+                        >
+                            <option value="">Todos</option>
+                            <option v-for="option in monitoringOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Programa
+                        <select
+                            v-model="filterForm.program_status"
+                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            @change="applySelectFilters"
+                        >
+                            <option value="">Todos</option>
+                            <option v-for="option in programOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <div class="flex flex-col gap-2 md:col-span-2 lg:col-span-3 sm:flex-row sm:justify-end">
+                        <button
+                            type="submit"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white sm:w-auto"
+                        >
+                            Aplicar filtros
+                        </button>
+                        <button
+                            type="button"
+                            class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 hover:text-slate-900 sm:w-auto"
+                            @click="clearFilters"
+                        >
+                            Limpiar
+                        </button>
+                    </div>
+                </form>
+            </section>
 
             <div class="space-y-4">
                 <p
@@ -844,7 +1077,7 @@ const resetLogsFilters = () => {
                                     Unidad asignada
                                 </dt>
                                 <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
-                                    {{ clock.location?.name ?? 'Sin asignar' }}
+                                    {{ clock.location?.name ?? 'Sin unidad asignada' }}
                                 </dd>
                                 <dd class="text-xs text-slate-500">
                                     Código {{ clock.location?.code ?? 'N/A' }}
@@ -893,6 +1126,13 @@ const resetLogsFilters = () => {
                         </div>
                     </div>
                 </article>
+
+                <p
+                    v-if="!listLoading && !clocks.length"
+                    class="rounded-2xl border border-slate-100 bg-white/80 px-4 py-6 text-center text-sm text-slate-500"
+                >
+                    No se encontraron relojes con los filtros seleccionados.
+                </p>
             </div>
         </section>
 

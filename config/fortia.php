@@ -9,4 +9,5 @@ return [
     'sync_driver' => env('FORTIA_SYNC_DRIVER', env('APP_ENV', 'production') === 'local' ? 'mock' : 'fortia'),
     'sync_connection' => env('FORTIA_SYNC_CONNECTION', 'fortia'),
     'sync_table' => env('FORTIA_SYNC_TABLE', 'fortia_employees'),
+    'clocks_default_company_id' => env('FORTIA_CLOCKS_DEFAULT_COMPANY_ID'),
 ];
