@@ -48,7 +48,7 @@ class EmployeeTemplatesSyncRequest extends FormRequest
                     $fail('El campo since debe ser timestamp YmdHis o fecha valida.');
                 },
             ],
-            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'location_id' => ['nullable', 'integer'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'all'])],
             'biometric_type' => ['nullable', Rule::in(['FINGERPRINT', 'FACE', 'ALL'])],
         ];

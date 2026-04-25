@@ -101,9 +101,33 @@ class ClockController extends Controller
             $warnings[] = 'El shared secret onprem no esta configurado para este dispositivo.';
         }
 
+        $ready = (bool) $clock->location_id;
+        $message = $ready
+            ? 'Clock configuration resolved.'
+            : 'El reloj existe, pero no tiene unidad asignada.';
+
         return response()->json([
             'success' => true,
-            'message' => 'Clock configuration resolved.',
+            'message' => $message,
+            'ready' => $ready,
+            'clock' => [
+                'id' => (int) $clock->id,
+                'serial_number' => (string) $clock->serial_number,
+                'clock_name' => (string) $clock->clock_name,
+                'location_id' => $clock->location_id ? (int) $clock->location_id : null,
+                'company_id' => $clock->company_id ? (int) $clock->company_id : null,
+            ],
+            'location' => $clock->location ? [
+                'id' => (int) $clock->location->id,
+                'fortia_location_id' => is_numeric($clock->location->fortia_location_id) ? (int) $clock->location->fortia_location_id : null,
+                'name' => (string) $clock->location->name,
+                'company_id' => $clock->location->company_id ? (int) $clock->location->company_id : null,
+            ] : null,
+            'company' => $clock->company ? [
+                'id' => (int) $clock->company->id,
+                'fortia_company_id' => is_numeric($clock->company->fortia_company_id) ? (int) $clock->company->fortia_company_id : null,
+                'name' => (string) $clock->company->name,
+            ] : null,
             'data' => [
                 'clock_id' => (int) $clock->id,
                 'clock_name' => (string) $clock->clock_name,
@@ -145,6 +169,7 @@ class ClockController extends Controller
                     'check_final' => url('/api/onprem/attendances'),
                 ],
                 'warnings' => $warnings,
+                'ready' => $ready,
             ],
         ]);
     }
