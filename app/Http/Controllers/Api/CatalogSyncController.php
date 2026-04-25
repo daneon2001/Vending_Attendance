@@ -288,6 +288,9 @@ class CatalogSyncController extends Controller
         if (Schema::hasColumn('locations', 'fortia_location_id')) {
             $query->orWhere('fortia_location_id', $locationId);
         }
+        if (Schema::hasColumn('locations', 'code')) {
+            $query->orWhere('code', (string) $locationId);
+        }
 
         $resolvedLocationId = $query->value('id');
         if (! is_numeric($resolvedLocationId)) {

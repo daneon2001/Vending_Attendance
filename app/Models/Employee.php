@@ -106,7 +106,7 @@ class Employee extends Model
 
     public function unit()
     {
-        return $this->belongsTo(Location::class, 'base_location_id');
+        return $this->baseLocation();
     }
 
     public function baseLocation()

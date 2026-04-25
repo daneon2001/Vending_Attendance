@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Employee;
+use App\Models\Location;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ class DashboardSummaryController extends Controller
         [$startLocal, $endLocal] = $this->resolveRange($range, $validated, $timezone);
 
         $unitId = $validated['unit_id'] ?? null;
+        $employeeBaseLocationId = $unitId ? $this->resolveEmployeeBaseLocationId((int) $unitId) : null;
         $startUtc = $startLocal->copy()->setTimezone('UTC');
         $endUtc = $endLocal->copy()->setTimezone('UTC');
 
@@ -53,14 +55,14 @@ class DashboardSummaryController extends Controller
 
         $kpis = [
             'checkins_total' => $checkinsTotal,
-            'employees_active' => $this->countActiveEmployees($unitId),
+            'employees_active' => $this->countActiveEmployees($employeeBaseLocationId),
             'clocks_with_alerts' => $this->countClocksByStatus('warning', $unitId),
             'clocks_offline' => $this->countClocksByStatus('offline', $unitId),
         ];
 
         $charts = [
             'people_present_by_day' => $peopleChart,
-            'employees_status' => $this->buildEmployeeStatusChart($unitId),
+            'employees_status' => $this->buildEmployeeStatusChart($employeeBaseLocationId),
             'clock_health' => $this->buildClockHealthChart($unitId),
         ];
 
@@ -110,12 +112,12 @@ class DashboardSummaryController extends Controller
         return [$now->copy()->startOfDay(), $now->copy()->endOfDay()];
     }
 
-    protected function countActiveEmployees(?int $unitId): int
+    protected function countActiveEmployees(?int $employeeBaseLocationId): int
     {
         $query = Employee::query()->where('status', 'A');
 
-        if ($unitId) {
-            $query->where('base_location_id', $unitId);
+        if ($employeeBaseLocationId) {
+            $query->where('base_location_id', $employeeBaseLocationId);
         }
 
         return $query->count();
@@ -132,12 +134,12 @@ class DashboardSummaryController extends Controller
         return $query->count();
     }
 
-    protected function buildEmployeeStatusChart(?int $unitId): array
+    protected function buildEmployeeStatusChart(?int $employeeBaseLocationId): array
     {
         $query = Employee::query()->select('status', DB::raw('COUNT(*) as total'));
 
-        if ($unitId) {
-            $query->where('base_location_id', $unitId);
+        if ($employeeBaseLocationId) {
+            $query->where('base_location_id', $employeeBaseLocationId);
         }
 
         $statusRows = $query->groupBy('status')->get()->keyBy('status');
@@ -149,6 +151,40 @@ class DashboardSummaryController extends Controller
                 (int) ($statusRows['B']->total ?? 0),
             ],
         ];
+    }
+
+    protected function resolveEmployeeBaseLocationId(int $unitId): ?int
+    {
+        if ($unitId <= 0) {
+            return null;
+        }
+
+        $locationQuery = Location::query()
+            ->select('id', 'fortia_location_id', 'code')
+            ->whereKey($unitId);
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('locations', 'fortia_location_id')) {
+            $locationQuery->orWhere('fortia_location_id', $unitId);
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('locations', 'code')) {
+            $locationQuery->orWhere('code', (string) $unitId);
+        }
+
+        $location = $locationQuery->first();
+        if (! $location) {
+            return null;
+        }
+
+        if (is_numeric($location->fortia_location_id)) {
+            return (int) $location->fortia_location_id;
+        }
+
+        if (is_numeric($location->code)) {
+            return (int) $location->code;
+        }
+
+        return $unitId;
     }
 
     protected function buildClockHealthChart(?int $unitId): array

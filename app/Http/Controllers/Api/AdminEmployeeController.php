@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\EmployeeCompactResource;
 use App\Models\Employee;
+use App\Models\Location;
 use App\Services\Fortia\FortiaEmployeeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,12 +72,17 @@ class AdminEmployeeController extends Controller
             }
         }
 
+        $with = [
+            'baseLocation:id,name,fortia_location_id,code',
+        ];
+
+        if (Schema::hasTable('employee_allowed_locations')) {
+            $with[] = 'allowedLocations:id,name';
+        }
+
         $query = Employee::query()
             ->select($select)
-            ->with([
-                'unit:id,name',
-                'allowedLocations:id,name',
-            ]);
+            ->with($with);
 
         if (! empty($validated['q'])) {
             $needle = trim((string) $validated['q']);
@@ -95,7 +101,13 @@ class AdminEmployeeController extends Controller
 
         $locationId = $validated['location_id'] ?? $validated['unit_id'] ?? null;
         if (! empty($locationId)) {
-            $query->where('base_location_id', (int) $locationId);
+            $resolvedBaseLocationId = $this->resolveEmployeeBaseLocationId((int) $locationId);
+
+            if ($resolvedBaseLocationId !== null) {
+                $query->where('base_location_id', $resolvedBaseLocationId);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if (! empty($validated['company_id'])) {
@@ -146,5 +158,39 @@ class AdminEmployeeController extends Controller
     private function normalizeStatusFilter(string $status): string
     {
         return in_array(strtolower($status), ['active', 'a'], true) ? 'A' : 'B';
+    }
+
+    private function resolveEmployeeBaseLocationId(int $locationFilter): ?int
+    {
+        if ($locationFilter <= 0) {
+            return null;
+        }
+
+        $locationQuery = Location::query()
+            ->select('id', 'fortia_location_id', 'code')
+            ->whereKey($locationFilter);
+
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $locationQuery->orWhere('fortia_location_id', $locationFilter);
+        }
+
+        if (Schema::hasColumn('locations', 'code')) {
+            $locationQuery->orWhere('code', (string) $locationFilter);
+        }
+
+        $location = $locationQuery->first();
+        if (! $location) {
+            return null;
+        }
+
+        if (is_numeric($location->fortia_location_id)) {
+            return (int) $location->fortia_location_id;
+        }
+
+        if (is_numeric($location->code)) {
+            return (int) $location->code;
+        }
+
+        return (int) $locationFilter;
     }
 }
