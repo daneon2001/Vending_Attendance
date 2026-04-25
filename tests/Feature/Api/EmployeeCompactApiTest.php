@@ -80,6 +80,10 @@ class EmployeeCompactApiTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        DB::table('locations')->whereKey($locationId)->update([
+            'fortia_location_id' => $locationId,
+            'code' => (string) $locationId,
+        ]);
 
         $now = now();
         for ($i = 1; $i <= 20; $i++) {
@@ -137,10 +141,18 @@ class EmployeeCompactApiTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        DB::table('locations')->whereKey($unitA)->update([
+            'fortia_location_id' => $unitA,
+            'code' => (string) $unitA,
+        ]);
         $unitB = DB::table('locations')->insertGetId([
             'name' => 'Unidad B',
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+        DB::table('locations')->whereKey($unitB)->update([
+            'fortia_location_id' => $unitB,
+            'code' => (string) $unitB,
         ]);
 
         DB::table('employees')->insert([
@@ -188,7 +200,7 @@ class EmployeeCompactApiTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.code', '91001')
             ->assertJsonPath('data.0.full_name', 'Ana Ruiz')
-            ->assertJsonPath('data.0.unit_id', $unitA)
+            ->assertJsonPath('data.0.base_location_id', $unitA)
             ->assertJsonPath('data.0.status', 'ACTIVE');
     }
 
@@ -291,6 +303,64 @@ class EmployeeCompactApiTest extends TestCase
         $payload = (string) $response->getContent();
         $this->assertStringNotContainsString('template_b64', $payload);
         $this->assertLessThan(100 * 1024, strlen($payload), 'Compact payload exceeded 100KB.');
+    }
+
+    public function test_compact_endpoint_resolves_internal_location_filter_to_employee_fortia_location_key(): void
+    {
+        $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
+        $this->authenticate();
+
+        $locationInternalA = DB::table('locations')->insertGetId([
+            'fortia_location_id' => 501,
+            'code' => '501',
+            'name' => 'Unidad Fortia A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('locations')->insert([
+            'fortia_location_id' => 502,
+            'code' => '502',
+            'name' => 'Unidad Fortia B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 94001,
+                'name' => 'Rosa',
+                'last_name' => 'Nava',
+                'full_name' => 'Rosa Nava',
+                'base_location_id' => 501,
+                'base_location_name' => 'Unidad Fortia A',
+                'status' => 'A',
+                'has_fingerprint' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 94002,
+                'name' => 'Tomas',
+                'last_name' => 'Luna',
+                'full_name' => 'Tomas Luna',
+                'base_location_id' => 502,
+                'base_location_name' => 'Unidad Fortia B',
+                'status' => 'A',
+                'has_fingerprint' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI.'?unit_id='.$locationInternalA.'&per_page=50');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '94001')
+            ->assertJsonPath('data.0.base_location_id', 501)
+            ->assertJsonPath('data.0.unit_id', $locationInternalA)
+            ->assertJsonPath('data.0.unit_name', 'Unidad Fortia A');
     }
 
     private function authenticate(): void
@@ -398,11 +468,22 @@ class EmployeeCompactApiTest extends TestCase
         if (! Schema::hasTable('locations')) {
             Schema::create('locations', function (Blueprint $table): void {
                 $table->id();
+                $table->unsignedBigInteger('fortia_location_id')->nullable();
+                $table->string('code')->nullable();
                 $table->string('name')->nullable();
                 $table->timestamps();
             });
             $this->createdLocationsTable = true;
         }
+
+        Schema::table('locations', function (Blueprint $table): void {
+            if (! Schema::hasColumn('locations', 'fortia_location_id')) {
+                $table->unsignedBigInteger('fortia_location_id')->nullable();
+            }
+            if (! Schema::hasColumn('locations', 'code')) {
+                $table->string('code')->nullable();
+            }
+        });
 
         if (! Schema::hasTable('employees')) {
             Schema::create('employees', function (Blueprint $table): void {

@@ -217,7 +217,7 @@ class FortiaEmployeeService
             $remote['second_last_name'] ?? '',
         ])->filter()->implode(' '));
 
-        $resolvedBaseLocationId = $this->resolveLocalBaseLocationId($remote);
+        $resolvedBaseLocationId = $this->resolveEmployeeBaseLocationKey($remote);
         $resolvedCheckScope = $this->resolveCheckScopeFromRemote($remote);
 
         $payload = [
@@ -299,22 +299,29 @@ class FortiaEmployeeService
     /**
      * @param  array<string, mixed>  $remote
      */
-    private function resolveLocalBaseLocationId(array $remote): ?int
+    private function resolveEmployeeBaseLocationKey(array $remote): ?int
     {
         $rawBaseLocationId = $remote['base_location_id'] ?? null;
         $rawBaseLocationName = trim((string) ($remote['base_location_name'] ?? ''));
 
-        $resolved = $this->findLocationIdByCandidate($rawBaseLocationId, $rawBaseLocationName);
+        $resolved = $this->findLocationKeyByCandidate($rawBaseLocationId, $rawBaseLocationName);
         if ($resolved !== null) {
             return $resolved;
         }
 
-        if ($rawBaseLocationName !== '') {
-            $byName = Location::query()
-                ->where('name', $rawBaseLocationName)
-                ->value('id');
+        if (is_numeric($rawBaseLocationId)) {
+            return (int) $rawBaseLocationId;
+        }
 
-            return is_numeric($byName) ? (int) $byName : null;
+        if ($rawBaseLocationName !== '') {
+            $byNameLocation = Location::query()
+                ->where('name', $rawBaseLocationName)
+                ->select('id', 'fortia_location_id', 'code')
+                ->first();
+
+            if ($byNameLocation) {
+                return $this->normalizeLocationEmployeeKey($byNameLocation);
+            }
         }
 
         return null;
@@ -334,9 +341,18 @@ class FortiaEmployeeService
             return null;
         }
 
-        return Location::query()
-            ->whereKey($resolvedBaseLocationId)
-            ->value('name');
+        $nameQuery = Location::query()
+            ->whereKey($resolvedBaseLocationId);
+
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $nameQuery->orWhere('fortia_location_id', $resolvedBaseLocationId);
+        }
+
+        if (Schema::hasColumn('locations', 'code')) {
+            $nameQuery->orWhere('code', (string) $resolvedBaseLocationId);
+        }
+
+        return $nameQuery->value('name');
     }
 
     /**
@@ -413,6 +429,66 @@ class FortiaEmployeeService
         }
 
         return null;
+    }
+
+    private function findLocationKeyByCandidate(mixed $candidateId, ?string $candidateName = null): ?int
+    {
+        if (is_numeric($candidateId)) {
+            $candidateId = (int) $candidateId;
+
+            $location = null;
+            if (Schema::hasColumn('locations', 'fortia_location_id')) {
+                $location = Location::query()
+                    ->where('fortia_location_id', $candidateId)
+                    ->select('id', 'fortia_location_id', 'code')
+                    ->first();
+            }
+
+            if (! $location && Schema::hasColumn('locations', 'code')) {
+                $location = Location::query()
+                    ->where('code', (string) $candidateId)
+                    ->select('id', 'fortia_location_id', 'code')
+                    ->first();
+            }
+
+            if (! $location) {
+                $location = Location::query()
+                    ->whereKey($candidateId)
+                    ->select('id', 'fortia_location_id', 'code')
+                    ->first();
+            }
+
+            if ($location) {
+                return $this->normalizeLocationEmployeeKey($location);
+            }
+        }
+
+        $candidateName = trim((string) $candidateName);
+        if ($candidateName !== '') {
+            $location = Location::query()
+                ->where('name', $candidateName)
+                ->select('id', 'fortia_location_id', 'code')
+                ->first();
+
+            if ($location) {
+                return $this->normalizeLocationEmployeeKey($location);
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeLocationEmployeeKey(Location $location): ?int
+    {
+        if (is_numeric($location->fortia_location_id)) {
+            return (int) $location->fortia_location_id;
+        }
+
+        if (is_numeric($location->code)) {
+            return (int) $location->code;
+        }
+
+        return is_numeric($location->id) ? (int) $location->id : null;
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Employee;
+use App\Models\Location;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class DashboardController extends Controller
@@ -28,6 +30,7 @@ class DashboardController extends Controller
 
         $range = $request->input('range', 'today');
         $unitId = $request->integer('unit_id');
+        $employeeBaseLocationId = $unitId ? $this->resolveEmployeeBaseLocationId($unitId) : null;
 
         [$from, $to] = $this->resolveRange($range, $request->input('from_date'), $request->input('to_date'));
 
@@ -60,7 +63,7 @@ class DashboardController extends Controller
         $presenceSeries = $this->buildSeriesForPeriod($presenceRecords, $from, $to);
 
         $employeesQuery = Employee::query()
-            ->when($unitId, fn ($query) => $query->where('base_location_id', $unitId));
+            ->when($employeeBaseLocationId, fn ($query) => $query->where('base_location_id', $employeeBaseLocationId));
 
         $employeeStatus = $employeesQuery
             ->select('status', DB::raw('COUNT(*) as total'))
@@ -259,14 +262,32 @@ class DashboardController extends Controller
 
     protected function buildTopBranches(Carbon $from, Carbon $to, ?int $locationId = null): array
     {
-        $resolvedLocationExpression = "COALESCE(attendance_logs.location_id, employees.base_location_id)";
+        $resolvedLocationExpression = 'COALESCE(attendance_logs.location_id, employee_locations.id)';
 
         $baseQuery = function () use ($from, $to, $locationId, $resolvedLocationExpression) {
-            return AttendanceLog::query()
+            $query = AttendanceLog::query()
                 ->leftJoin('employees', 'employees.id', '=', 'attendance_logs.employee_id')
+                ->leftJoin('locations as employee_locations', function ($join): void {
+                    if (Schema::hasColumn('locations', 'fortia_location_id')) {
+                        $join->on('employee_locations.fortia_location_id', '=', 'employees.base_location_id');
+
+                        if (Schema::hasColumn('locations', 'code')) {
+                            $join->orOn('employee_locations.code', '=', DB::raw('CAST(employees.base_location_id AS CHAR)'));
+                        }
+
+                        return;
+                    }
+
+                    $join->on('employee_locations.id', '=', 'employees.base_location_id');
+                })
                 ->whereBetween('attendance_logs.log_date', [$from, $to])
-                ->whereRaw("$resolvedLocationExpression IS NOT NULL")
-                ->when($locationId, fn ($query) => $query->whereRaw("$resolvedLocationExpression = ?", [$locationId]));
+                ->whereRaw("$resolvedLocationExpression IS NOT NULL");
+
+            if ($locationId) {
+                $query->whereRaw("$resolvedLocationExpression = ?", [$locationId]);
+            }
+
+            return $query;
         };
 
         $dailyCounts = $baseQuery()
@@ -312,6 +333,40 @@ class DashboardController extends Controller
             'labels' => $labels,
             'values' => $values,
         ];
+    }
+
+    protected function resolveEmployeeBaseLocationId(int $unitId): ?int
+    {
+        if ($unitId <= 0) {
+            return null;
+        }
+
+        $locationQuery = Location::query()
+            ->select('id', 'fortia_location_id', 'code')
+            ->whereKey($unitId);
+
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $locationQuery->orWhere('fortia_location_id', $unitId);
+        }
+
+        if (Schema::hasColumn('locations', 'code')) {
+            $locationQuery->orWhere('code', (string) $unitId);
+        }
+
+        $location = $locationQuery->first();
+        if (! $location) {
+            return null;
+        }
+
+        if (is_numeric($location->fortia_location_id)) {
+            return (int) $location->fortia_location_id;
+        }
+
+        if (is_numeric($location->code)) {
+            return (int) $location->code;
+        }
+
+        return $unitId;
     }
 
     protected function chartsAreEmpty(array $presenceSeries, array $employeeDataset, array $clockDataset): bool

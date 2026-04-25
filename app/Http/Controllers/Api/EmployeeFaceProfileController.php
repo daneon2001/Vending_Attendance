@@ -79,7 +79,7 @@ class EmployeeFaceProfileController extends Controller
 
         return response()->json([
             'ok' => true,
-            'employee' => (new EmployeeCompactResource($employee->loadMissing('unit:id,name')))->resolve(),
+            'employee' => (new EmployeeCompactResource($employee->loadMissing('baseLocation:id,name,fortia_location_id,code')))->resolve(),
         ]);
     }
 
@@ -138,7 +138,7 @@ class EmployeeFaceProfileController extends Controller
         return response()->json([
             'ok' => true,
             'deleted_count' => count($templateIds),
-            'employee' => (new EmployeeCompactResource($employee->loadMissing('unit:id,name')))->resolve(),
+            'employee' => (new EmployeeCompactResource($employee->loadMissing('baseLocation:id,name,fortia_location_id,code')))->resolve(),
         ]);
     }
 

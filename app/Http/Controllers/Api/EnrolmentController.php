@@ -12,6 +12,7 @@ use App\Models\Location;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EnrolmentController extends Controller
 {
@@ -55,6 +56,9 @@ class EnrolmentController extends Controller
         }
 
         $clock = $this->resolveClock($validated);
+        $requestedUnitId = isset($validated['unit_id'])
+            ? $this->resolveInternalUnitId((int) $validated['unit_id'])
+            : null;
         $resolvedUnitId = $this->resolveUnitId($validated, $clock, $employee);
 
         if (isset($validated['unit_id']) && ! $this->isAcceptedUnitId((int) $validated['unit_id'], $employee)) {
@@ -69,7 +73,7 @@ class EnrolmentController extends Controller
             ], 422);
         }
 
-        if ($clock && isset($validated['unit_id']) && $clock->location_id !== null && (int) $validated['unit_id'] !== (int) $clock->location_id) {
+        if ($clock && isset($validated['unit_id']) && $requestedUnitId !== null && $clock->location_id !== null && $requestedUnitId !== (int) $clock->location_id) {
             $auditPayload = $this->mergeAuditPayload($validated, $employeeId, (int) $clock->id, $resolvedUnitId);
             $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Clock does not belong to the provided unit.');
 
@@ -421,18 +425,28 @@ class EnrolmentController extends Controller
             return false;
         }
 
-        if (Location::query()->whereKey($unitId)->exists()) {
+        $requestedInternalUnitId = $this->resolveInternalUnitId($unitId);
+        if ($requestedInternalUnitId !== null) {
             return true;
         }
 
-        return $employee->base_location_id !== null
-            && (int) $employee->base_location_id === $unitId;
+        if ($employee->base_location_id === null) {
+            return false;
+        }
+
+        if ((int) $employee->base_location_id === $unitId) {
+            return true;
+        }
+
+        return false;
     }
 
     private function resolveUnitId(array $validated, ?Clock $clock, Employee $employee): ?int
     {
         if (isset($validated['unit_id'])) {
-            return (int) $validated['unit_id'];
+            $resolvedUnitId = $this->resolveInternalUnitId((int) $validated['unit_id']);
+
+            return $resolvedUnitId ?? (int) $validated['unit_id'];
         }
 
         if ($clock && $clock->location_id !== null) {
@@ -440,10 +454,35 @@ class EnrolmentController extends Controller
         }
 
         if ($employee->base_location_id !== null) {
-            return (int) $employee->base_location_id;
+            return $this->resolveInternalUnitId((int) $employee->base_location_id);
         }
 
         return null;
+    }
+
+    private function resolveInternalUnitId(int $unitId): ?int
+    {
+        if ($unitId <= 0) {
+            return null;
+        }
+
+        $query = Location::query()
+            ->whereKey($unitId);
+
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $query->orWhere('fortia_location_id', $unitId);
+        }
+
+        if (Schema::hasColumn('locations', 'code')) {
+            $query->orWhere('code', (string) $unitId);
+        }
+
+        $resolvedUnitId = $query->value('id');
+        if (! is_numeric($resolvedUnitId)) {
+            return null;
+        }
+
+        return (int) $resolvedUnitId;
     }
 
     private function mergeAuditPayload(array $validated, int $employeeId, ?int $clockId, ?int $unitId): array
