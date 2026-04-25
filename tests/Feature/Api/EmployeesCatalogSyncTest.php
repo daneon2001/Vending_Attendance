@@ -25,11 +25,22 @@ class EmployeesCatalogSyncTest extends TestCase
         if (! Schema::hasTable('locations')) {
             Schema::create('locations', function (Blueprint $table): void {
                 $table->id();
+                $table->unsignedBigInteger('fortia_location_id')->nullable();
+                $table->string('code')->nullable();
                 $table->string('name')->nullable();
                 $table->timestamps();
             });
             $this->createdLocationsTable = true;
         }
+
+        Schema::table('locations', function (Blueprint $table): void {
+            if (! Schema::hasColumn('locations', 'fortia_location_id')) {
+                $table->unsignedBigInteger('fortia_location_id')->nullable();
+            }
+            if (! Schema::hasColumn('locations', 'code')) {
+                $table->string('code')->nullable();
+            }
+        });
 
         if (! Schema::hasTable('employees')) {
             Schema::create('employees', function (Blueprint $table): void {
@@ -160,6 +171,55 @@ class EmployeesCatalogSyncTest extends TestCase
         $response->assertJsonMissing(['fortia_employee_id' => 7004]);
         $response->assertJsonCount(1, 'tombstones');
         $response->assertJsonPath('tombstones.0.employee_id', DB::table('employees')->where('fortia_employee_id', 7003)->value('id'));
+    }
+
+    public function test_catalog_accepts_internal_location_id_when_employee_base_location_uses_fortia_key(): void
+    {
+        $locationInternalA = DB::table('locations')->insertGetId([
+            'fortia_location_id' => 501,
+            'code' => '501',
+            'name' => 'Unit Fortia A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('locations')->insert([
+            'fortia_location_id' => 502,
+            'code' => '502',
+            'name' => 'Unit Fortia B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 7701,
+                'base_location_id' => 501,
+                'name' => 'Mar',
+                'last_name' => 'Uno',
+                'full_name' => 'Mar Uno',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 7702,
+                'base_location_id' => 502,
+                'name' => 'Mar',
+                'last_name' => 'Dos',
+                'full_name' => 'Mar Dos',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locationInternalA);
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.fortia_employee_id', 7701)
+            ->assertJsonPath('data.0.base_location_id', 501)
+            ->assertJsonPath('data.0.location_id', 501);
     }
 
     public function test_catalog_includes_current_branch_and_multibranch_global_employees(): void

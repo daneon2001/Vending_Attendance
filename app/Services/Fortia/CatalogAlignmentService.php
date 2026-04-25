@@ -270,6 +270,8 @@ class CatalogAlignmentService
                 'employee_details_total' => Schema::hasTable('employee_details') ? (int) DB::table('employee_details')->count() : 0,
                 'employees_without_company_match' => 0,
                 'employees_without_location_match' => 0,
+                'employees_without_location_match_by_fortia_location_id' => 0,
+                'employees_wrongly_matching_internal_location_id' => 0,
                 'employees_with_company_name_mismatch' => 0,
                 'employees_with_location_name_mismatch' => 0,
                 'ubicaciones_without_operational_location' => 0,
@@ -284,8 +286,56 @@ class CatalogAlignmentService
                 'employees_without_location_match' => [],
                 'employees_with_company_name_mismatch' => [],
                 'employees_with_location_name_mismatch' => [],
+                'employees_wrongly_matching_internal_location_id' => [],
             ],
         ];
+
+        if (
+            Schema::hasTable('employees')
+            && Schema::hasTable('locations')
+            && Schema::hasColumn('locations', 'fortia_location_id')
+        ) {
+            $result['counts']['employees_without_location_match_by_fortia_location_id'] = (int) DB::table('employees as e')
+                ->leftJoin('locations as l', 'l.fortia_location_id', '=', 'e.base_location_id')
+                ->whereNotNull('e.base_location_id')
+                ->whereNull('l.id')
+                ->count();
+
+            $result['counts']['employees_wrongly_matching_internal_location_id'] = (int) DB::table('employees as e')
+                ->join('locations as l', 'l.id', '=', 'e.base_location_id')
+                ->whereNotNull('l.fortia_location_id')
+                ->whereRaw('CAST(l.fortia_location_id AS CHAR) <> CAST(e.base_location_id AS CHAR)')
+                ->count();
+
+            $misalignedByInternal = DB::table('employees as e')
+                ->join('locations as l', 'l.id', '=', 'e.base_location_id')
+                ->whereNotNull('l.fortia_location_id')
+                ->whereRaw('CAST(l.fortia_location_id AS CHAR) <> CAST(e.base_location_id AS CHAR)')
+                ->select([
+                    'e.id as employee_id',
+                    'e.fortia_employee_id',
+                    'e.base_location_id',
+                    'e.base_location_name',
+                    'l.id as matched_internal_location_id',
+                    'l.fortia_location_id as matched_internal_location_fortia_id',
+                    'l.name as matched_internal_location_name',
+                ])
+                ->orderBy('e.id')
+                ->limit($sample)
+                ->get();
+
+            foreach ($misalignedByInternal as $row) {
+                $this->appendSample($result['samples']['employees_wrongly_matching_internal_location_id'], [
+                    'employee_id' => $row->employee_id,
+                    'fortia_employee_id' => $row->fortia_employee_id,
+                    'base_location_id' => $row->base_location_id,
+                    'base_location_name' => $row->base_location_name,
+                    'matched_internal_location_id' => $row->matched_internal_location_id,
+                    'matched_internal_location_fortia_id' => $row->matched_internal_location_fortia_id,
+                    'matched_internal_location_name' => $row->matched_internal_location_name,
+                ], $sample);
+            }
+        }
 
         if (Schema::hasTable('employees')) {
             DB::table('employees')

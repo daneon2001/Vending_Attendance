@@ -26,6 +26,8 @@ class EmployeeCompactResource extends JsonResource
                 ->all();
         }
 
+        $resolvedBaseLocation = $this->baseLocation;
+
         return [
             'id' => (int) $this->id,
             'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
@@ -37,9 +39,9 @@ class EmployeeCompactResource extends JsonResource
             'company_id' => $this->company_id ? (int) $this->company_id : null,
             'company_name' => $this->company_name,
             'base_location_id' => $this->base_location_id ? (int) $this->base_location_id : null,
-            'base_location_name' => $this->unit?->name ?? $this->base_location_name,
-            'unit_id' => $this->base_location_id ? (int) $this->base_location_id : null,
-            'unit_name' => $this->unit?->name ?? $this->base_location_name,
+            'base_location_name' => $resolvedBaseLocation?->name ?? $this->base_location_name,
+            'unit_id' => $resolvedBaseLocation?->id ? (int) $resolvedBaseLocation->id : null,
+            'unit_name' => $resolvedBaseLocation?->name ?? $this->base_location_name,
             'rfc' => $this->rfc,
             'curp' => $this->curp,
             'status' => $this->normalizeStatus($this->status),

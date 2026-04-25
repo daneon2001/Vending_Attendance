@@ -62,12 +62,15 @@ class AllowedBiometricCandidates
         $branchAssignedTotal = null;
         $globalPermissionTotal = 0;
         $selectedPermissionTotal = 0;
-        $branchCandidates = $this->resolveLocationCandidates($currentBranchId);
+        $locationScope = $this->resolveLocationScope($currentBranchId);
+        $employeeLocationKeys = $locationScope['employee_location_keys'];
+        $internalLocationIds = $locationScope['internal_location_ids'];
 
         if ($currentBranchId !== null) {
             $branchAssignedQuery = Employee::query()
-                ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
-                ->whereIn('base_location_id', $branchCandidates);
+                ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope));
+
+            $this->applyBaseLocationFilter($branchAssignedQuery, $employeeLocationKeys);
             $branchAssignedTotal = $branchAssignedQuery->count();
 
             if ($this->hasGlobalBranchFlag()) {
@@ -81,10 +84,10 @@ class AllowedBiometricCandidates
                 $selectedPermissionTotal = Employee::query()
                     ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
                     ->where('check_scope', 'SELECTED_BRANCHES')
-                    ->whereIn('id', function ($subQuery) use ($branchCandidates): void {
+                    ->whereIn('id', function ($subQuery) use ($internalLocationIds): void {
                         $subQuery->select('employee_id')
                             ->from('employee_allowed_locations')
-                            ->whereIn('location_id', $branchCandidates);
+                            ->whereIn('location_id', $internalLocationIds);
                     })
                     ->count();
             }
@@ -111,16 +114,19 @@ class AllowedBiometricCandidates
         $branchAssignedTotal = null;
         $globalPermissionTotal = 0;
         $selectedPermissionTotal = 0;
-        $branchCandidates = $this->resolveLocationCandidates($currentBranchId);
+        $locationScope = $this->resolveLocationScope($currentBranchId);
+        $employeeLocationKeys = $locationScope['employee_location_keys'];
+        $internalLocationIds = $locationScope['internal_location_ids'];
 
         if ($currentBranchId !== null) {
-            $branchAssignedTotal = (clone $query)->whereIn(
-                'employee_id',
-                Employee::query()
-                    ->select('id')
-                    ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
-                    ->whereIn('base_location_id', $branchCandidates)
-            )->count();
+            $branchEmployeesQuery = Employee::query()
+                ->select('id')
+                ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope));
+            $this->applyBaseLocationFilter($branchEmployeesQuery, $employeeLocationKeys);
+
+            $branchAssignedTotal = (clone $query)
+                ->whereIn('employee_id', $branchEmployeesQuery)
+                ->count();
 
             if ($this->hasGlobalBranchFlag()) {
                 $globalPermissionTotal = (clone $query)->whereIn(
@@ -139,10 +145,10 @@ class AllowedBiometricCandidates
                         ->select('id')
                         ->whereIn('status', $this->resolveEmployeeStatuses($employeeScope))
                         ->where('check_scope', 'SELECTED_BRANCHES')
-                        ->whereIn('id', function ($subQuery) use ($branchCandidates): void {
+                        ->whereIn('id', function ($subQuery) use ($internalLocationIds): void {
                             $subQuery->select('employee_id')
                                 ->from('employee_allowed_locations')
-                                ->whereIn('location_id', $branchCandidates);
+                                ->whereIn('location_id', $internalLocationIds);
                         })
                 )->count();
             }
@@ -171,18 +177,20 @@ class AllowedBiometricCandidates
             return;
         }
 
-        $branchCandidates = $this->resolveLocationCandidates($currentBranchId);
+        $locationScope = $this->resolveLocationScope($currentBranchId);
+        $employeeLocationKeys = $locationScope['employee_location_keys'];
+        $internalLocationIds = $locationScope['internal_location_ids'];
 
         if (! $this->hasCheckScopeColumn()) {
             if (! $this->hasGlobalBranchFlag()) {
-                $this->applyBaseLocationFilter($query, $branchCandidates);
+                $this->applyBaseLocationFilter($query, $employeeLocationKeys);
 
                 return;
             }
 
-            $query->where(function (Builder $allowed) use ($branchCandidates): void {
-                $allowed->where(function (Builder $baseLocationQuery) use ($branchCandidates): void {
-                    $this->applyBaseLocationFilter($baseLocationQuery, $branchCandidates);
+            $query->where(function (Builder $allowed) use ($employeeLocationKeys): void {
+                $allowed->where(function (Builder $baseLocationQuery) use ($employeeLocationKeys): void {
+                    $this->applyBaseLocationFilter($baseLocationQuery, $employeeLocationKeys);
                 })
                     ->orWhere('can_check_all_branches', true);
             });
@@ -190,46 +198,47 @@ class AllowedBiometricCandidates
             return;
         }
 
-        $query->where(function (Builder $allowed) use ($branchCandidates): void {
-            $allowed->where(function (Builder $homeOnly) use ($branchCandidates): void {
+        $query->where(function (Builder $allowed) use ($employeeLocationKeys, $internalLocationIds): void {
+            $allowed->where(function (Builder $homeOnly) use ($employeeLocationKeys): void {
                 $homeOnly->where('check_scope', 'HOME_ONLY')
-                    ->where(function (Builder $baseLocationQuery) use ($branchCandidates): void {
-                        $this->applyBaseLocationFilter($baseLocationQuery, $branchCandidates);
+                    ->where(function (Builder $baseLocationQuery) use ($employeeLocationKeys): void {
+                        $this->applyBaseLocationFilter($baseLocationQuery, $employeeLocationKeys);
                     });
             });
 
             $allowed->orWhere('check_scope', 'ANY_BRANCH');
 
             if ($this->hasSelectedLocationsTable()) {
-                $allowed->orWhere(function (Builder $selected) use ($branchCandidates): void {
+                $allowed->orWhere(function (Builder $selected) use ($internalLocationIds): void {
                     $selected->where('check_scope', 'SELECTED_BRANCHES')
-                        ->whereIn('id', function ($subQuery) use ($branchCandidates): void {
+                        ->whereIn('id', function ($subQuery) use ($internalLocationIds): void {
                             $subQuery->select('employee_id')
-                                ->from('employee_allowed_locations')
-                                ->whereIn('location_id', $branchCandidates);
+                                ->from('employee_allowed_locations');
+
+                            $this->applyAllowedLocationFilter($subQuery, $internalLocationIds);
                         });
                 });
             }
 
             if ($this->hasGlobalBranchFlag()) {
-                $allowed->orWhere(function (Builder $legacy) use ($branchCandidates): void {
+                $allowed->orWhere(function (Builder $legacy) use ($employeeLocationKeys): void {
                     $legacy->where(function (Builder $legacyScope): void {
                         $legacyScope->whereNull('check_scope')
                             ->orWhere('check_scope', '');
-                    })->where(function (Builder $legacyInner) use ($branchCandidates): void {
-                        $legacyInner->where(function (Builder $baseLocationQuery) use ($branchCandidates): void {
-                            $this->applyBaseLocationFilter($baseLocationQuery, $branchCandidates);
+                    })->where(function (Builder $legacyInner) use ($employeeLocationKeys): void {
+                        $legacyInner->where(function (Builder $baseLocationQuery) use ($employeeLocationKeys): void {
+                            $this->applyBaseLocationFilter($baseLocationQuery, $employeeLocationKeys);
                         })
                             ->orWhere('can_check_all_branches', true);
                     });
                 });
             } else {
-                $allowed->orWhere(function (Builder $legacy) use ($branchCandidates): void {
+                $allowed->orWhere(function (Builder $legacy) use ($employeeLocationKeys): void {
                     $legacy->where(function (Builder $legacyScope): void {
                         $legacyScope->whereNull('check_scope')
                             ->orWhere('check_scope', '');
-                    })->where(function (Builder $baseLocationQuery) use ($branchCandidates): void {
-                        $this->applyBaseLocationFilter($baseLocationQuery, $branchCandidates);
+                    })->where(function (Builder $baseLocationQuery) use ($employeeLocationKeys): void {
+                        $this->applyBaseLocationFilter($baseLocationQuery, $employeeLocationKeys);
                     });
                 });
             }
@@ -338,40 +347,85 @@ class AllowedBiometricCandidates
     }
 
     /**
-     * @return array<int, int>
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     * @param  array<int, int>  $internalLocationIds
      */
-    private function resolveLocationCandidates(?int $currentBranchId): array
+    private function applyAllowedLocationFilter($query, array $internalLocationIds): void
+    {
+        if (empty($internalLocationIds)) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereIn('location_id', $internalLocationIds);
+    }
+
+    /**
+     * @return array{employee_location_keys: array<int, int>, internal_location_ids: array<int, int>}
+     */
+    private function resolveLocationScope(?int $currentBranchId): array
     {
         if ($currentBranchId === null) {
-            return [];
+            return [
+                'employee_location_keys' => [],
+                'internal_location_ids' => [],
+            ];
         }
 
-        $candidates = [$currentBranchId];
+        $employeeLocationKeys = [$currentBranchId];
+        $internalLocationIds = [$currentBranchId];
+
         if (! Schema::hasTable('locations')) {
-            return $candidates;
+            return [
+                'employee_location_keys' => $this->normalizeIntegerCandidates($employeeLocationKeys),
+                'internal_location_ids' => $this->normalizeIntegerCandidates($internalLocationIds),
+            ];
         }
 
-        $locationById = DB::table('locations')
-            ->where('id', $currentBranchId)
-            ->first(['id', 'fortia_location_id']);
-
-        if ($locationById && isset($locationById->fortia_location_id) && is_numeric($locationById->fortia_location_id)) {
-            $candidates[] = (int) $locationById->fortia_location_id;
-        }
+        $locationQuery = DB::table('locations')
+            ->select('id', 'fortia_location_id', 'code')
+            ->where('id', $currentBranchId);
 
         if (Schema::hasColumn('locations', 'fortia_location_id')) {
-            $locationByFortia = DB::table('locations')
-                ->where('fortia_location_id', $currentBranchId)
-                ->first(['id', 'fortia_location_id']);
+            $locationQuery->orWhere('fortia_location_id', $currentBranchId);
+        }
 
-            if ($locationByFortia && isset($locationByFortia->id) && is_numeric($locationByFortia->id)) {
-                $candidates[] = (int) $locationByFortia->id;
+        if (Schema::hasColumn('locations', 'code')) {
+            $locationQuery->orWhere('code', (string) $currentBranchId);
+        }
+
+        $locations = $locationQuery->get();
+
+        foreach ($locations as $location) {
+            if (isset($location->id) && is_numeric($location->id)) {
+                $internalLocationIds[] = (int) $location->id;
+            }
+
+            if (isset($location->fortia_location_id) && is_numeric($location->fortia_location_id)) {
+                $employeeLocationKeys[] = (int) $location->fortia_location_id;
+            }
+
+            if (isset($location->code) && is_numeric($location->code)) {
+                $employeeLocationKeys[] = (int) $location->code;
             }
         }
 
+        return [
+            'employee_location_keys' => $this->normalizeIntegerCandidates($employeeLocationKeys),
+            'internal_location_ids' => $this->normalizeIntegerCandidates($internalLocationIds),
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $values
+     * @return array<int, int>
+     */
+    private function normalizeIntegerCandidates(array $values): array
+    {
         return array_values(array_unique(array_filter(
-            $candidates,
-            static fn ($value): bool => is_numeric($value) && (int) $value > 0
+            array_map(static fn ($value): int => (int) $value, $values),
+            static fn (int $value): bool => $value > 0
         )));
     }
 

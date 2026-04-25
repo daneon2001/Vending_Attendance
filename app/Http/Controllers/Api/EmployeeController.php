@@ -147,7 +147,7 @@ class EmployeeController extends Controller
         );
 
         return response()->json(
-            (new EmployeeCompactResource($employee->refresh()->loadMissing('unit:id,name')))->resolve()
+            (new EmployeeCompactResource($employee->refresh()->loadMissing('baseLocation:id,name,fortia_location_id,code')))->resolve()
         );
     }
 
@@ -216,4 +216,3 @@ class EmployeeController extends Controller
         ];
     }
 }
-
