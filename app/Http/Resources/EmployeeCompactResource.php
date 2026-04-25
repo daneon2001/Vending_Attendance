@@ -30,10 +30,20 @@ class EmployeeCompactResource extends JsonResource
             'id' => (int) $this->id,
             'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
             'code' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : (string) $this->id,
+            'name' => $this->name,
+            'last_name' => $this->last_name,
+            'second_last_name' => $this->second_last_name,
             'full_name' => $fullName ?: null,
+            'company_id' => $this->company_id ? (int) $this->company_id : null,
+            'company_name' => $this->company_name,
+            'base_location_id' => $this->base_location_id ? (int) $this->base_location_id : null,
+            'base_location_name' => $this->unit?->name ?? $this->base_location_name,
             'unit_id' => $this->base_location_id ? (int) $this->base_location_id : null,
             'unit_name' => $this->unit?->name ?? $this->base_location_name,
+            'rfc' => $this->rfc,
+            'curp' => $this->curp,
             'status' => $this->normalizeStatus($this->status),
+            'status_code' => $this->normalizeStatusCode($this->status),
 
             'check_scope' => $this->check_scope ? (string) $this->check_scope : null,
             'resolved_check_scope' => (string) ($this->resolved_check_scope ?? 'HOME_ONLY'),
@@ -62,5 +72,12 @@ class EmployeeCompactResource extends JsonResource
         return in_array(strtolower((string) $status), ['a', 'active'], true)
             ? 'ACTIVE'
             : 'INACTIVE';
+    }
+
+    private function normalizeStatusCode(?string $status): string
+    {
+        return in_array(strtolower((string) $status), ['a', 'active'], true)
+            ? 'A'
+            : 'B';
     }
 }

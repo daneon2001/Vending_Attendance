@@ -24,10 +24,21 @@ class CatalogSyncController extends Controller
     public function catalog(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'location_id' => ['nullable', 'exists:locations,id'],
+            'location_id' => ['nullable', 'integer'],
         ]);
 
-        $locationId = $validated['location_id'] ?? null;
+        $locationId = null;
+        if (array_key_exists('location_id', $validated) && $validated['location_id'] !== null) {
+            $locationId = $this->resolveLocationId((int) $validated['location_id']);
+            if ($locationId === null) {
+                return response()->json([
+                    'message' => 'The selected location id is invalid.',
+                    'errors' => [
+                        'location_id' => ['The selected location id is invalid.'],
+                    ],
+                ], 422);
+            }
+        }
 
         $employeesQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId);
 
@@ -85,11 +96,22 @@ class CatalogSyncController extends Controller
                     $fail('El campo since debe ser timestamp YmdHis o fecha valida.');
                 },
             ],
-            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'location_id' => ['nullable', 'integer'],
         ]);
 
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
-        $locationId = $validated['location_id'] ?? null;
+        $locationId = null;
+        if (array_key_exists('location_id', $validated) && $validated['location_id'] !== null) {
+            $locationId = $this->resolveLocationId((int) $validated['location_id']);
+            if ($locationId === null) {
+                return response()->json([
+                    'message' => 'The selected location id is invalid.',
+                    'errors' => [
+                        'location_id' => ['The selected location id is invalid.'],
+                    ],
+                ], 422);
+            }
+        }
 
         $baseDataQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'active');
 
@@ -258,6 +280,21 @@ class CatalogSyncController extends Controller
         }
 
         return Carbon::parse($raw);
+    }
+
+    private function resolveLocationId(int $locationId): ?int
+    {
+        $query = Location::query()->where('id', $locationId);
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $query->orWhere('fortia_location_id', $locationId);
+        }
+
+        $resolvedLocationId = $query->value('id');
+        if (! is_numeric($resolvedLocationId)) {
+            return null;
+        }
+
+        return (int) $resolvedLocationId;
     }
 
     /**
