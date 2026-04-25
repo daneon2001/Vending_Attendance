@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
 use App\Models\EmployeeScopeDeletion;
 use App\Models\EmployeeTemplateDeletion;
+use App\Models\Location;
 use App\Services\Biometrics\AllowedBiometricCandidates;
 use App\Services\Biometrics\TemplateMetadataResolver;
 use Carbon\Carbon;
@@ -28,7 +29,18 @@ class EmployeeTemplatesController extends Controller
     {
         $validated = $request->validated();
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
-        $locationId = $validated['location_id'] ?? null;
+        $locationId = null;
+        if (array_key_exists('location_id', $validated) && $validated['location_id'] !== null) {
+            $locationId = $this->resolveLocationId((int) $validated['location_id']);
+            if ($locationId === null) {
+                return response()->json([
+                    'message' => 'The selected location id is invalid.',
+                    'errors' => [
+                        'location_id' => ['The selected location id is invalid.'],
+                    ],
+                ], 422);
+            }
+        }
         $status = $validated['status'] ?? 'active';
         $biometricType = $validated['biometric_type'] ?? null;
 
@@ -370,5 +382,20 @@ class EmployeeTemplatesController extends Controller
         return (bool) ($employee?->can_check_all_branches ?? false)
             ? 'ANY_BRANCH'
             : 'HOME_ONLY';
+    }
+
+    private function resolveLocationId(int $locationId): ?int
+    {
+        $query = Location::query()->where('id', $locationId);
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $query->orWhere('fortia_location_id', $locationId);
+        }
+
+        $resolvedLocationId = $query->value('id');
+        if (! is_numeric($resolvedLocationId)) {
+            return null;
+        }
+
+        return (int) $resolvedLocationId;
     }
 }

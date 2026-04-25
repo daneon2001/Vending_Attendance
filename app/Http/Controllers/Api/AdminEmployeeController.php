@@ -20,6 +20,9 @@ class AdminEmployeeController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'q' => ['nullable', 'string', 'max:120'],
             'unit_id' => ['nullable', 'integer'],
+            'location_id' => ['nullable', 'integer'],
+            'company_id' => ['nullable', 'integer'],
+            'company_name' => ['nullable', 'string', 'max:120'],
             'status' => ['nullable', 'string', Rule::in(['A', 'B', 'active', 'inactive', 'ACTIVE', 'INACTIVE'])],
             'fingerprint' => ['nullable', 'string', Rule::in(['with', 'without'])],
             'face' => ['nullable', 'string', Rule::in(['with', 'without'])],
@@ -36,6 +39,8 @@ class AdminEmployeeController extends Controller
         $select = [
             'id',
             'fortia_employee_id',
+            'company_id',
+            'company_name',
             'name',
             'last_name',
             'second_last_name',
@@ -43,6 +48,8 @@ class AdminEmployeeController extends Controller
             'base_location_id',
             'base_location_name',
             'status',
+            'rfc',
+            'curp',
             'has_fingerprint',
             'can_check_all_branches',
             'check_scope',
@@ -77,12 +84,26 @@ class AdminEmployeeController extends Controller
                 $builder->where('full_name', 'like', "%{$needle}%")
                     ->orWhere('name', 'like', "%{$needle}%")
                     ->orWhere('last_name', 'like', "%{$needle}%")
-                    ->orWhere('fortia_employee_id', 'like', "%{$needle}%");
+                    ->orWhere('second_last_name', 'like', "%{$needle}%")
+                    ->orWhere('fortia_employee_id', 'like', "%{$needle}%")
+                    ->orWhere('rfc', 'like', "%{$needle}%")
+                    ->orWhere('curp', 'like', "%{$needle}%")
+                    ->orWhere('company_name', 'like', "%{$needle}%")
+                    ->orWhere('base_location_name', 'like', "%{$needle}%");
             });
         }
 
-        if (! empty($validated['unit_id'])) {
-            $query->where('base_location_id', (int) $validated['unit_id']);
+        $locationId = $validated['location_id'] ?? $validated['unit_id'] ?? null;
+        if (! empty($locationId)) {
+            $query->where('base_location_id', (int) $locationId);
+        }
+
+        if (! empty($validated['company_id'])) {
+            $query->where('company_id', (int) $validated['company_id']);
+        }
+
+        if (! empty($validated['company_name'])) {
+            $query->where('company_name', 'like', '%'.trim((string) $validated['company_name']).'%');
         }
 
         if (! empty($validated['status'])) {
