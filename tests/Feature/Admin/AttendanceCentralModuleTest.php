@@ -110,6 +110,80 @@ class AttendanceCentralModuleTest extends TestCase
         );
     }
 
+    public function test_index_displays_local_time_from_utc_using_location_timezone(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2401,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-04-26 22:30:20',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => json_encode([
+                'punched_at_utc' => '2026-04-26 22:30:20',
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+        ]));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.data.0.log_id', 2401)
+            ->where('initialRecords.data.0.log_date_display', '2026-04-26 16:30:20')
+            ->where('initialRecords.data.0.log_date_timezone', 'America/Mexico_City')
+            ->where('initialRecords.data.0.log_date_utc_display', '2026-04-26 22:30:20')
+        );
+    }
+
+    public function test_export_includes_local_timezone_and_utc_columns(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2402,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-04-26 22:30:20',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => json_encode([
+                'punched_at_utc' => '2026-04-26 22:30:20',
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export', [
+            'format' => 'csv',
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+        ]));
+
+        $response->assertOk();
+
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString('FechaHoraLocal,Timezone,FechaHoraUTC,Empleado,CodigoEmpleado,Unidad,Reloj,Tipo,Fuente,Estatus,Motivo,LogId,RegistroId', $content);
+        $this->assertStringContainsString('"2026-04-26 16:30:20",America/Mexico_City,"2026-04-26 22:30:20"', $content);
+        $this->assertStringContainsString('"Empleado Demo",88001,Matriz,"Clock Main",IN,API,Valida,,2402', $content);
+    }
+
     public function test_manual_adjustment_creates_audit_record(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
@@ -182,6 +256,7 @@ class AttendanceCentralModuleTest extends TestCase
     {
         $locationId = DB::table('locations')->insertGetId([
             'name' => 'Matriz',
+            'timezone' => 'America/Mexico_City',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -238,9 +313,15 @@ class AttendanceCentralModuleTest extends TestCase
             Schema::create('locations', function (Blueprint $table): void {
                 $table->id();
                 $table->string('name');
+                $table->string('timezone', 64)->nullable();
                 $table->timestamps();
             });
             $this->createdLocationsTable = true;
+        }
+        if (! Schema::hasColumn('locations', 'timezone')) {
+            Schema::table('locations', function (Blueprint $table): void {
+                $table->string('timezone', 64)->nullable()->after('name');
+            });
         }
 
         if (! Schema::hasTable('clocks')) {
