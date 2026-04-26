@@ -137,11 +137,11 @@ const submitAnnulment = () => {
                             <dd class="text-sm font-semibold text-app">#{{ record.id }} / log_id {{ record.log_id }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs uppercase tracking-[0.3em] text-soft">Fecha/hora</dt>
+                            <dt class="text-xs uppercase tracking-[0.3em] text-soft">Hora local</dt>
                             <dd class="text-sm text-app">
                                 {{ record.log_date_display ?? 'N/A' }}
-                                <span class="text-xs text-soft">({{ record.log_date_timezone ?? 'UTC' }})</span>
                             </dd>
+                            <dd class="text-xs text-soft">{{ record.log_date_timezone ?? 'America/Mexico_City' }}</dd>
                         </div>
                         <div>
                             <dt class="text-xs uppercase tracking-[0.3em] text-soft">Empleado</dt>
