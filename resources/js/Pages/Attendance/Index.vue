@@ -480,8 +480,9 @@ watch(
                         </div>
                         <dl class="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-xs">
                             <div>
-                                <dt class="text-soft">Fecha</dt>
+                                <dt class="text-soft">Hora local</dt>
                                 <dd class="text-app">{{ record.log_date_display ?? 'N/A' }}</dd>
+                                <dd class="text-[11px] text-soft">{{ record.log_date_timezone ?? 'America/Mexico_City' }}</dd>
                             </div>
                             <div>
                                 <dt class="text-soft">Tipo</dt>
@@ -520,7 +521,7 @@ watch(
                     <table class="w-full min-w-[72rem] divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.3em] text-soft">
                             <tr>
-                                <th class="px-3 py-3">Fecha/hora</th>
+                                <th class="px-3 py-3">Hora local</th>
                                 <th class="px-3 py-3">Empleado</th>
                                 <th class="px-3 py-3">Unidad</th>
                                 <th class="px-3 py-3">Reloj</th>
@@ -536,10 +537,10 @@ watch(
                                 :key="record.id"
                                 class="hover:bg-slate-50"
                             >
-                                <td class="px-3 py-3 text-app">
-                                    <p>{{ record.log_date_display ?? 'N/A' }}</p>
-                                    <p class="text-xs text-soft">{{ record.log_date_timezone ?? 'UTC' }}</p>
-                                </td>
+                                 <td class="px-3 py-3 text-app">
+                                     <p>{{ record.log_date_display ?? 'N/A' }}</p>
+                                     <p class="text-xs text-soft">{{ record.log_date_timezone ?? 'America/Mexico_City' }}</p>
+                                 </td>
                                 <td class="px-3 py-3">
                                     <p class="max-w-[14rem] truncate font-semibold text-app" :title="record.employee?.name ?? 'N/A'">{{ record.employee?.name ?? 'N/A' }}</p>
                                     <p class="text-xs text-soft">ID {{ record.employee?.code ?? 'N/A' }}</p>

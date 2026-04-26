@@ -258,7 +258,9 @@ class AttendanceController extends Controller
         );
 
         $headers = [
-            'FechaHora',
+            'FechaHoraLocal',
+            'Timezone',
+            'FechaHoraUTC',
             'Empleado',
             'CodigoEmpleado',
             'Unidad',
@@ -280,9 +282,12 @@ class AttendanceController extends Controller
                 $resolvedLocation = $record->location ?? $record->clock?->location;
                 $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
                 $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+                $logDateUtc = $this->resolveRecordUtcDate($record);
 
                 fputcsv($output, [
                     optional($logDateLocal)->format('Y-m-d H:i:s'),
+                    $timezone,
+                    $logDateUtc?->format('Y-m-d H:i:s'),
                     $record->employee?->full_name ?? $record->employee?->name ?? 'N/A',
                     $record->employee?->fortia_employee_id ?? $record->employee_id,
                     $resolvedLocation?->name ?? 'N/A',
@@ -511,13 +516,16 @@ class AttendanceController extends Controller
         $resolvedLocation = $record->location ?? $record->clock?->location;
         $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
         $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+        $logDateUtc = $this->resolveRecordUtcDate($record);
 
         return [
             'id' => $record->id,
             'log_id' => $record->log_id,
             'log_date' => $record->log_date?->toIso8601String(),
+            'log_date_local' => $logDateLocal?->toIso8601String(),
             'log_date_display' => $logDateLocal?->format('Y-m-d H:i:s'),
             'log_date_timezone' => $timezone,
+            'log_date_utc_display' => $logDateUtc?->format('Y-m-d H:i:s'),
             'log_type' => (int) $record->log_type,
             'log_type_label' => $this->resolveLogTypeLabel((int) $record->log_type),
             'source' => $record->source,
@@ -592,10 +600,12 @@ class AttendanceController extends Controller
             return null;
         }
 
+        $resolvedTimezone = $this->normalizeTimezone($timezone);
+
         try {
-            return $dateTime->copy()->setTimezone($timezone ?: config('app.timezone', 'UTC'));
+            return $dateTime->copy()->setTimezone($resolvedTimezone);
         } catch (\Throwable $exception) {
-            return $dateTime->copy()->setTimezone(config('app.timezone', 'UTC'));
+            return $dateTime->copy()->setTimezone($this->attendanceFallbackTimezone());
         }
     }
 
@@ -606,33 +616,106 @@ class AttendanceController extends Controller
             ?? $rawPayload['tz']
             ?? null;
 
-        if (is_string($rawTimezone) && trim($rawTimezone) !== '') {
-            return trim($rawTimezone);
-        }
-
-        return $fallbackTimezone ?: config('app.timezone', 'UTC');
+        return $this->normalizeTimezone(
+            is_string($rawTimezone) ? $rawTimezone : null,
+            $fallbackTimezone
+        );
     }
 
     private function resolveRecordLocalDate(AttendanceRecord $record, ?string $timezone = null): ?Carbon
     {
-        $tz = $timezone ?: config('app.timezone', 'UTC');
+        $tz = $this->normalizeTimezone($timezone);
         $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
         $rawLocal = $rawPayload['punched_at_local']
             ?? $rawPayload['event_time_local']
             ?? null;
 
-        if (is_string($rawLocal) && trim($rawLocal) !== '') {
-            try {
-                return Carbon::parse($rawLocal, $tz);
-            } catch (\Throwable $exception) {
-                try {
-                    return Carbon::parse($rawLocal)->setTimezone($tz);
-                } catch (\Throwable $exception) {
-                    // Fallback below.
-                }
-            }
+        if ($localDate = $this->parseDateTimeInTimezone($rawLocal, $tz)) {
+            return $localDate;
+        }
+
+        $rawUtc = $rawPayload['punched_at_utc']
+            ?? $rawPayload['event_time_utc']
+            ?? null;
+
+        if ($utcDate = $this->parseUtcDateTimeForTimezone($rawUtc, $tz)) {
+            return $utcDate;
         }
 
         return $this->convertToTimezone($record->log_date, $tz);
+    }
+
+    private function resolveRecordUtcDate(AttendanceRecord $record): ?Carbon
+    {
+        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $rawUtc = $rawPayload['punched_at_utc']
+            ?? $rawPayload['event_time_utc']
+            ?? null;
+
+        if ($utcDate = $this->parseUtcDateTimeForTimezone($rawUtc, 'UTC')) {
+            return $utcDate;
+        }
+
+        return $record->log_date?->copy()->utc();
+    }
+
+    private function parseDateTimeInTimezone(mixed $value, string $timezone): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value, $timezone);
+        } catch (\Throwable $exception) {
+            try {
+                return Carbon::parse($value)->setTimezone($timezone);
+            } catch (\Throwable $exception) {
+                return null;
+            }
+        }
+    }
+
+    private function parseUtcDateTimeForTimezone(mixed $value, string $timezone): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value, 'UTC')->setTimezone($timezone);
+        } catch (\Throwable $exception) {
+            try {
+                return Carbon::parse($value)->utc()->setTimezone($timezone);
+            } catch (\Throwable $exception) {
+                return null;
+            }
+        }
+    }
+
+    private function normalizeTimezone(?string $timezone, ?string $fallbackTimezone = null): string
+    {
+        foreach ([$timezone, $fallbackTimezone, $this->attendanceFallbackTimezone()] as $candidate) {
+            if (! is_string($candidate) || trim($candidate) === '') {
+                continue;
+            }
+
+            $trimmedCandidate = trim($candidate);
+
+            try {
+                new \DateTimeZone($trimmedCandidate);
+
+                return $trimmedCandidate;
+            } catch (\Throwable $exception) {
+                continue;
+            }
+        }
+
+        return $this->attendanceFallbackTimezone();
+    }
+
+    private function attendanceFallbackTimezone(): string
+    {
+        return 'America/Mexico_City';
     }
 }
