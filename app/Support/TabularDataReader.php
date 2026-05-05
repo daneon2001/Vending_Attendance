@@ -11,13 +11,14 @@ class TabularDataReader
     /**
      * @return array<int, array<string, string|null>>
      */
-    public function readRows(string $path): array
+    public function readRows(string $path, ?string $extension = null): array
     {
         if (! is_file($path)) {
             return [];
         }
 
-        $extension = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+        $extension = strtolower((string) ($extension ?: pathinfo($path, PATHINFO_EXTENSION)));
+        $extension = preg_replace('/^\./', '', $extension) ?? $extension;
 
         return match ($extension) {
             'csv', 'txt' => $this->readCsvRows($path),
@@ -124,23 +125,26 @@ class TabularDataReader
                 return [];
             }
 
-            $headers = array_map(
-                fn (mixed $header) => $this->normalizeHeader($header),
-                array_values($table[0])
-            );
+            $headerRow = $table[0];
+            ksort($headerRow);
+
+            $headersByColumn = [];
+            foreach ($headerRow as $columnIndex => $headerValue) {
+                $headersByColumn[$columnIndex] = $this->normalizeHeader($headerValue);
+            }
 
             $rows = [];
             foreach (array_slice($table, 1) as $rawRow) {
                 $record = [];
-                $values = array_values($rawRow);
+                ksort($rawRow);
 
-                foreach ($headers as $index => $header) {
+                foreach ($headersByColumn as $columnIndex => $header) {
                     if ($header === '') {
                         continue;
                     }
 
-                    $record[$header] = array_key_exists($index, $values)
-                        ? $this->normalizeValue($values[$index])
+                    $record[$header] = array_key_exists($columnIndex, $rawRow)
+                        ? $this->normalizeValue($rawRow[$columnIndex])
                         : null;
                 }
 
@@ -301,13 +305,15 @@ class TabularDataReader
 
     private function normalizeHeader(mixed $header): string
     {
-        $value = trim((string) $header);
+        $value = (string) $header;
         $value = str_replace("\xEF\xBB\xBF", '', $value);
         $value = preg_replace('/^\x{FEFF}/u', '', $value) ?? $value;
-        $value = str_replace('_', ' ', $value);
-        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        $value = str_replace(["\u{00A0}", "\u{200B}", "\u{200C}", "\u{200D}", "\u{2060}"], ' ', $value);
+        $value = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        $value = trim($value);
 
-        return strtoupper(trim($value));
+        return strtoupper($value);
     }
 
     private function normalizeValue(mixed $value): ?string
