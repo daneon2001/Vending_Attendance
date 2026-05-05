@@ -21,7 +21,7 @@ return [
         ],
         'employees' => [
             'label' => 'Catalogo de empleados',
-            'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'manage'],
+            'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'import', 'manage'],
         ],
         'attendance' => [
             'label' => 'Asistencias y reportes',
