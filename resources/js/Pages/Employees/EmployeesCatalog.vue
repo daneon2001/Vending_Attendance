@@ -8,6 +8,7 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import ImportEmployeesModal from '@/Pages/Employees/Partials/ImportEmployeesModal.vue';
 import { apiUrl, appUrl } from '@/utils/url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -30,6 +31,7 @@ const filters = reactive({
 const isAttendanceOpen = ref(false);
 const selectedEmployee = ref(null);
 const attendancePanelKey = ref(0);
+const isImportModalOpen = ref(false);
 const toast = reactive({
     show: false,
     type: 'success',
@@ -227,6 +229,7 @@ const can = (module, action = 'view') => {
     return actions.includes(action) || actions.includes('manage');
 };
 const canSyncEmployees = computed(() => can('employees', 'sync'));
+const canImportEmployees = computed(() => can('employees', 'import'));
 const canDisableEmployees = computed(() => can('employees', 'disable'));
 const canViewAttendance = computed(() => can('attendance', 'view'));
 const canDeleteFingerprints = computed(() => can('biometrics', 'fingerprints.delete'));
@@ -561,6 +564,16 @@ const closeAttendance = () => {
     selectedEmployee.value = null;
 };
 
+const handleImportCompleted = async (payload) => {
+    isImportModalOpen.value = false;
+    await loadEmployees(filters.page);
+    showToast({
+        type: 'success',
+        title: 'Importacion completada',
+        message: `Nuevos ${payload?.created_count ?? 0}, Actualizados ${payload?.updated_count ?? 0}, Total importados ${payload?.imported_count ?? 0}`,
+    });
+};
+
 onMounted(loadEmployees);
 </script>
 
@@ -585,15 +598,24 @@ onMounted(loadEmployees);
                         {{ syncModeCaption }}
                     </p>
                 </div>
-                <button
-                    v-if="canSyncEmployees"
-                    class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                    :disabled="syncing"
-                    @click="syncNow"
-                >
-                    <span v-if="syncing">Sincronizando...</span>
-                    <span v-else>{{ syncButtonLabel }}</span>
-                </button>
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                        v-if="canImportEmployees"
+                        class="w-full rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-app hover:bg-slate-50 sm:w-auto"
+                        @click="isImportModalOpen = true"
+                    >
+                        Importar Excel
+                    </button>
+                    <button
+                        v-if="canSyncEmployees"
+                        class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                        :disabled="syncing"
+                        @click="syncNow"
+                    >
+                        <span v-if="syncing">Sincronizando...</span>
+                        <span v-else>{{ syncButtonLabel }}</span>
+                    </button>
+                </div>
             </div>
 
             <div class="card flex flex-wrap gap-3 px-4 py-3 text-sm">
@@ -862,6 +884,12 @@ onMounted(loadEmployees);
                 :open="isAttendanceOpen"
                 :employee="selectedEmployee"
                 @close="closeAttendance"
+            />
+
+            <ImportEmployeesModal
+                :show="isImportModalOpen"
+                @close="isImportModalOpen = false"
+                @imported="handleImportCompleted"
             />
 
             <Modal :show="faceModal.show" max-width="2xl" @close="closeFaceModal">
