@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
+use App\Http\Controllers\Employees\EmployeeImportController;
 use App\Http\Controllers\Api\OnPrem\OnPremAttendanceController;
 use App\Http\Controllers\Api\OnPrem\OnPremHeartbeatController;
 use Illuminate\Support\Facades\Route;
@@ -94,6 +95,18 @@ Route::prefix('admin')->group(function (): void {
             'perm.strict:employees,view',
         ]);
 });
+
+Route::prefix('admin')
+    ->middleware([
+        'auth:web,sanctum',
+        'role:administrador,admin',
+        'perm.strict:employees,import',
+    ])
+    ->group(function (): void {
+        Route::post('employees/import/preview', [EmployeeImportController::class, 'preview']);
+        Route::post('employees/import/catalogs/missing/create', [EmployeeImportController::class, 'createMissingCatalogs']);
+        Route::post('employees/import', [EmployeeImportController::class, 'store']);
+    });
 
 Route::prefix('admin')
     ->middleware([
