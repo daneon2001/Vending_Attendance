@@ -176,6 +176,7 @@
 
     .fortia-select-search .ts-control {
         min-height: var(--ui-control-height);
+        width: 100%;
         @apply rounded-xl border-app bg-white text-app shadow-none;
     }
 
@@ -199,8 +200,16 @@
         @apply cursor-not-allowed opacity-60;
     }
 
+    .fortia-select-search-host {
+        position: relative;
+    }
+
+    .fortia-select-search__dropdown,
+    .ts-dropdown {
+        z-index: 10000 !important;
+    }
+
     .fortia-select-search__dropdown {
-        z-index: 2000;
         @apply rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900;
     }
 
