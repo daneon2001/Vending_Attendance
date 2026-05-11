@@ -3,6 +3,7 @@ import TomSelect from 'tom-select';
 const SELECTOR = 'select';
 const SKIP_CLASS = 'select-search-skip';
 const SKIP_ATTRIBUTE = 'data-select-search';
+const MODAL_PARENT_SELECTOR = '.modal-content, .modal, [role="dialog"], dialog';
 const managedSelects = new Map();
 const syncQueue = new Set();
 let domObserver = null;
@@ -122,6 +123,40 @@ const resolvePlaceholder = (select) => {
     return emptyOption?.text?.trim() || 'Selecciona una opcion';
 };
 
+const resolveDropdownParent = (select) =>
+    select.closest(MODAL_PARENT_SELECTOR)
+    || select.closest('.fixed')
+    || document.body;
+
+const ensureDropdownParentContext = (parent) => {
+    if (!(parent instanceof HTMLElement) || parent === document.body) {
+        return parent;
+    }
+
+    if (window.getComputedStyle(parent).position === 'static') {
+        parent.classList.add('fortia-select-search-host');
+    }
+
+    return parent;
+};
+
+const positionDropdownInContext = (instance, parent) => {
+    if (!(parent instanceof HTMLElement)) {
+        return;
+    }
+
+    const controlRect = instance.control.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const top = controlRect.bottom - parentRect.top + parent.scrollTop;
+    const left = controlRect.left - parentRect.left + parent.scrollLeft;
+
+    Object.assign(instance.dropdown.style, {
+        width: `${controlRect.width}px`,
+        top: `${top}px`,
+        left: `${left}px`,
+    });
+};
+
 const destroyManagedSelect = (select) => {
     const entry = managedSelects.get(select);
     if (!entry) {
@@ -180,10 +215,11 @@ const enhanceSelect = (select) => {
         return;
     }
 
+    const dropdownParent = ensureDropdownParentContext(resolveDropdownParent(select));
     const instance = new TomSelect(select, {
         allowEmptyOption: true,
         copyClassesToDropdown: false,
-        dropdownParent: 'body',
+        dropdownParent,
         maxOptions: null,
         plugins: ['change_listener', 'dropdown_input'],
         placeholder: resolvePlaceholder(select),
@@ -196,6 +232,12 @@ const enhanceSelect = (select) => {
         selectOnTab: true,
     });
 
+    if (dropdownParent !== document.body) {
+        instance.positionDropdown = () => {
+            positionDropdownInContext(instance, dropdownParent);
+        };
+    }
+
     instance.wrapper.classList.add('fortia-select-search');
     instance.control.classList.add('fortia-select-search__control');
     instance.dropdown.classList.add('fortia-select-search__dropdown');
@@ -206,6 +248,7 @@ const enhanceSelect = (select) => {
     instance.wrapper.addEventListener('focusin', syncOnInteract);
 
     instance.on('dropdown_open', () => {
+        instance.positionDropdown();
         queueSelectSync(select);
     });
 
