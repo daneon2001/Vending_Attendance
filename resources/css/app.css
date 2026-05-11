@@ -1,3 +1,5 @@
+@import "tom-select/dist/css/tom-select.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -166,5 +168,52 @@
 
     .sidebar-mobile-sheet {
         @apply h-full w-[85vw] max-w-xs overflow-y-auto border-r border-app bg-white p-4 shadow-2xl dark:bg-slate-900 sm:w-72 sm:p-6;
+    }
+
+    .fortia-select-search {
+        @apply w-full;
+    }
+
+    .fortia-select-search .ts-control {
+        min-height: var(--ui-control-height);
+        @apply rounded-xl border-app bg-white text-app shadow-none;
+    }
+
+    .fortia-select-search .ts-control input,
+    .fortia-select-search .items-placeholder,
+    .fortia-select-search__dropdown .dropdown-input {
+        @apply text-sm text-app;
+    }
+
+    .fortia-select-search .items-placeholder,
+    .fortia-select-search__dropdown .dropdown-input::placeholder {
+        @apply text-slate-400 dark:text-slate-500;
+    }
+
+    .fortia-select-search.focus .ts-control {
+        border-color: rgb(99 102 241 / 0.55);
+        box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15);
+    }
+
+    .fortia-select-search.disabled .ts-control {
+        @apply cursor-not-allowed opacity-60;
+    }
+
+    .fortia-select-search__dropdown {
+        z-index: 2000;
+        @apply rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900;
+    }
+
+    .fortia-select-search__dropdown .dropdown-input {
+        @apply border-b border-slate-200 bg-white px-3 py-2 outline-none dark:border-slate-700 dark:bg-slate-900;
+    }
+
+    .fortia-select-search__dropdown .option,
+    .fortia-select-search__dropdown .no-results {
+        @apply px-3 py-2 text-sm;
+    }
+
+    .fortia-select-search__dropdown .active {
+        @apply bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100;
     }
 }
