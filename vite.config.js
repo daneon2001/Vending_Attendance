@@ -20,7 +20,7 @@ export default defineConfig(({ command, mode }) => {
         base: command === 'build' ? resolveBuildBase(appBasePath) : '/',
         plugins: [
             laravel({
-                input: 'resources/js/app.js',
+                input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/select-enhancer-entry.js'],
                 refresh: true,
             }),
             vue({

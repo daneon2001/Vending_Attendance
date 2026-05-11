@@ -8,17 +8,20 @@
     @php
         $manifestPath = public_path('build/manifest.json');
         $hotPath = public_path('hot');
-        $canLoadCss = false;
+        $canLoadAssets = false;
+        $manifest = null;
 
         if (file_exists($hotPath)) {
-            $canLoadCss = true;
+            $canLoadAssets = true;
         } elseif (file_exists($manifestPath)) {
             $manifest = json_decode(file_get_contents($manifestPath), true);
-            $canLoadCss = is_array($manifest) && array_key_exists('resources/css/app.css', $manifest);
+            $canLoadAssets = is_array($manifest)
+                && array_key_exists('resources/css/app.css', $manifest)
+                && array_key_exists('resources/js/select-enhancer-entry.js', $manifest);
         }
     @endphp
-    @if(!app()->runningUnitTests() && $canLoadCss)
-        @vite(['resources/css/app.css'])
+    @if(!app()->runningUnitTests() && $canLoadAssets)
+        @vite(['resources/css/app.css', 'resources/js/select-enhancer-entry.js'])
     @endif
 </head>
 <body class="bg-app text-app">
