@@ -1,5 +1,5 @@
-import '../css/app.css';
 import './bootstrap';
+import { bootSearchableSelects } from './lib/searchable-selects';
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -11,6 +11,7 @@ import { resolveZiggyConfig } from './utils/url';
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 initTheme();
+bootSearchableSelects();
 
 const ziggyConfig = resolveZiggyConfig();
 
