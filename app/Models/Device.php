@@ -4,10 +4,25 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Device extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $device): void {
+            if (trim((string) $device->shared_secret) !== '') {
+                return;
+            }
+
+            $configuredSecret = trim((string) config('onprem.default_shared_secret', ''));
+            $device->shared_secret = $configuredSecret !== ''
+                ? $configuredSecret
+                : Str::random(64);
+        });
+    }
 
     protected $fillable = [
         'device_serial',

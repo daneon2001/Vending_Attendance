@@ -91,6 +91,26 @@ class DeviceRegistryServiceTest extends TestCase
         $this->assertFalse((bool) Device::query()->whereKey($updated->id)->value('is_active'));
     }
 
+    public function test_sync_from_clock_generates_shared_secret_when_missing(): void
+    {
+        config(['onprem.default_shared_secret' => '']);
+
+        $clock = $this->insertClock([
+            'serial_number' => 'SYNC-DEV-002',
+            'location_id' => 12,
+            'company_id' => 44,
+            'status' => 1,
+        ]);
+
+        $service = new DeviceRegistryService();
+        $created = $service->syncFromClock($clock);
+
+        $this->assertInstanceOf(Device::class, $created);
+        $this->assertSame('SYNC-DEV-002', $created->device_serial);
+        $this->assertNotSame('', trim((string) $created->shared_secret));
+        $this->assertSame(64, strlen((string) $created->shared_secret));
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -187,4 +207,3 @@ class DeviceRegistryServiceTest extends TestCase
         }
     }
 }
-
