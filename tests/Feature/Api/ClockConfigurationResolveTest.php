@@ -104,6 +104,54 @@ class ClockConfigurationResolveTest extends TestCase
         ]);
     }
 
+    public function test_resolve_by_serial_generates_shared_secret_when_default_is_empty(): void
+    {
+        Config::set('device.static_token', 'static-device-token');
+        Config::set('onprem.default_shared_secret', '');
+
+        $this->authenticate();
+
+        $companyId = DB::table('companies')->insertGetId([
+            'name' => 'Medical Life',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $locationId = DB::table('locations')->insertGetId([
+            'company_id' => $companyId,
+            'name' => 'Centro Logistico',
+            'timezone' => 'America/Mexico_City',
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('clocks')->insert([
+            'company_id' => $companyId,
+            'location_id' => $locationId,
+            'clock_name' => 'Checador Norte',
+            'serial_number' => 'FT-CHK-002',
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI.'?serial_number=FT-CHK-002');
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.device_serial', 'FT-CHK-002');
+
+        $sharedSecret = (string) $response->json('data.device_shared_secret');
+
+        $this->assertNotSame('', trim($sharedSecret));
+        $this->assertSame(64, strlen($sharedSecret));
+        $this->assertDatabaseHas('devices', [
+            'device_serial' => 'FT-CHK-002',
+            'shared_secret' => $sharedSecret,
+        ]);
+    }
+
     public function test_resolve_by_serial_requires_a_serial_number(): void
     {
         $this->authenticate();
