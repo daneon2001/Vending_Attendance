@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\EmployeeFaceProfileController;
 use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
 use App\Http\Controllers\Api\EmployeeFingerprintDeleteController;
+use App\Http\Controllers\Api\FaceIdTemplateSyncController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
@@ -27,6 +28,8 @@ Route::middleware('device.token')->match(['GET', 'POST'], '/device/ping', functi
         'device_auth' => true,
     ]);
 });
+
+Route::middleware(['auth:sanctum', 'token.expiration'])->post('/faceid/templates/sync', [FaceIdTemplateSyncController::class, 'sync']);
 
 Route::prefix('onprem')
     ->middleware('device.hmac')
