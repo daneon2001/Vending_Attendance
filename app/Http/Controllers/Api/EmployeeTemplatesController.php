@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\EmployeeTemplatesSyncRequest;
 use App\Models\Employee;
+use App\Models\EmployeeFaceTemplate;
 use App\Models\EmployeeFingerprint;
 use App\Models\EmployeeScopeDeletion;
 use App\Models\EmployeeTemplateDeletion;
@@ -43,6 +44,10 @@ class EmployeeTemplatesController extends Controller
         }
         $status = $validated['status'] ?? 'active';
         $biometricType = $validated['biometric_type'] ?? null;
+
+        if ($this->isFaceTemplateRequest($biometricType)) {
+            return $this->indexFaceTemplates($since, $locationId, $status, $biometricType);
+        }
 
         $baseTemplatesQuery = $this->allowedCandidates->getAllowedCandidatesQuery(
             $locationId,
@@ -337,6 +342,137 @@ class EmployeeTemplatesController extends Controller
         }
 
         return hash('sha256', $decoded);
+    }
+
+    private function isFaceTemplateRequest(?string $biometricType): bool
+    {
+        return in_array(strtoupper(trim((string) $biometricType)), ['FACE', 'FACE_ID'], true);
+    }
+
+    private function indexFaceTemplates(?Carbon $since, ?int $locationId, string $status, ?string $requestedBiometricType): JsonResponse
+    {
+        $responseBiometricType = strtoupper(trim((string) $requestedBiometricType)) === 'FACE' ? 'FACE' : 'FACE_ID';
+        $allowedEmployeeIdsQuery = $this->allowedCandidates
+            ->getAllowedEmployeesQuery($locationId, $status)
+            ->select('id');
+
+        $baseTemplatesQuery = EmployeeFaceTemplate::query()
+            ->with('employee')
+            ->where('is_active', true)
+            ->whereNotNull('template_hash')
+            ->where('template_hash', '<>', '')
+            ->whereNotNull('embedding_encrypted')
+            ->where('embedding_encrypted', '<>', '')
+            ->where('model_name', 'FaceRecognitionDotNet')
+            ->whereIn('employee_id', $allowedEmployeeIdsQuery);
+
+        $templatesQuery = clone $baseTemplatesQuery;
+        if ($since) {
+            $templatesQuery->where('updated_at', '>', $since);
+        }
+
+        $templates = $templatesQuery
+            ->orderBy('updated_at')
+            ->get();
+
+        $allowedLocationMap = $this->loadAllowedLocationMap(
+            $templates->pluck('employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all()
+        );
+
+        $tombstonesQuery = EmployeeFaceTemplate::query()
+            ->where('is_active', false)
+            ->whereNotNull('template_hash')
+            ->where('template_hash', '<>', '')
+            ->whereIn('employee_id', $allowedEmployeeIdsQuery);
+
+        if ($since) {
+            $tombstonesQuery->where('updated_at', '>', $since);
+        }
+
+        $tombstones = $tombstonesQuery
+            ->orderBy('updated_at')
+            ->get()
+            ->map(function (EmployeeFaceTemplate $template) use ($responseBiometricType): array {
+                return [
+                    'vendor' => 'facerecognitiondotnet',
+                    'biometric_type' => $responseBiometricType,
+                    'template_source' => 'FACE_ID',
+                    'vendor_template_id' => (string) $template->template_hash,
+                    'template_hash' => (string) $template->template_hash,
+                    'deleted_at' => optional($template->updated_at)?->toIso8601String(),
+                ];
+            })
+            ->values();
+
+        $versionTime = collect([
+            (clone $baseTemplatesQuery)->max('updated_at'),
+            (clone EmployeeFaceTemplate::query()
+                ->where('is_active', false)
+                ->whereNotNull('template_hash')
+                ->where('template_hash', '<>', '')
+                ->whereIn('employee_id', $allowedEmployeeIdsQuery)
+            )->max('updated_at'),
+            $since?->copy(),
+        ])
+            ->filter()
+            ->map(fn ($value) => Carbon::parse($value))
+            ->sort()
+            ->last();
+
+        $this->allowedCandidates->logAllowedEmployees(
+            'onprem.face_templates.allowed_employees',
+            $locationId,
+            $status
+        );
+
+        $data = $templates->map(function (EmployeeFaceTemplate $template) use ($allowedLocationMap, $responseBiometricType): array {
+            $employee = $template->employee;
+            $employeeId = (int) $template->employee_id;
+
+            return [
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => $template->fortia_employee_id !== null ? (string) $template->fortia_employee_id : null,
+                'employee_code' => $template->employee_code !== null ? (string) $template->employee_code : null,
+                'vendor' => 'facerecognitiondotnet',
+                'vendor_template_id' => (string) $template->template_hash,
+                'biometric_type' => $responseBiometricType,
+                'template_source' => 'FACE_ID',
+                'template_format' => 'FRD_128D_BASE64JSON',
+                'template_b64' => (string) $template->embedding_encrypted,
+                'hash_sha256' => hash('sha256', (string) $template->embedding_encrypted),
+                'location_id' => $employee?->base_location_id ? (int) $employee?->base_location_id : null,
+                'base_location_id' => $employee?->base_location_id ? (int) $employee?->base_location_id : null,
+                'can_check_all_branches' => (bool) ($employee?->can_check_all_branches ?? false),
+                'check_scope' => $this->resolveCheckScopeFromEmployee($employee),
+                'allowed_location_ids' => $allowedLocationMap[$employeeId] ?? [],
+                'sync_ready' => (bool) ($employee?->face_sync_ready ?? true),
+                'face_status' => $employee?->face_status !== null ? (string) $employee?->face_status : 'enrolled',
+                'face_enabled' => (bool) ($employee?->face_enabled ?? true),
+                'face_samples_count' => (int) ($employee?->face_samples_count ?? 3),
+                'face_template_version' => $template->model_version !== null ? (string) $template->model_version : null,
+                'face_quality_score' => is_numeric($template->quality_score)
+                    ? (int) round(((float) $template->quality_score) * 100)
+                    : null,
+                'face_updated_at' => optional($employee?->face_updated_at ?: $template->updated_at)?->toIso8601String(),
+                'captured_at' => optional($template->captured_at)?->toIso8601String(),
+                'updated_at' => optional($template->updated_at)?->toIso8601String(),
+                'embedding_encrypted' => (string) $template->embedding_encrypted,
+                'template_hash' => (string) $template->template_hash,
+                'model_name' => (string) $template->model_name,
+                'model_version' => (string) $template->model_version,
+                'quality_score' => is_numeric($template->quality_score) ? round((float) $template->quality_score, 4) : null,
+                'is_active' => (bool) $template->is_active,
+                'synced_at' => optional($template->synced_at)?->toIso8601String(),
+                'created_at' => optional($template->created_at)?->toIso8601String(),
+            ];
+        })->values();
+
+        return response()->json([
+            'version' => ($versionTime ?? now())->format('YmdHis'),
+            'data' => $data,
+            'huellas' => [],
+            'tombstones' => $tombstones,
+        ]);
     }
 
     /**

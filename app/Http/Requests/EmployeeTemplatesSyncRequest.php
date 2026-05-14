@@ -50,7 +50,7 @@ class EmployeeTemplatesSyncRequest extends FormRequest
             ],
             'location_id' => ['nullable', 'integer'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'all'])],
-            'biometric_type' => ['nullable', Rule::in(['FINGERPRINT', 'FACE', 'ALL'])],
+            'biometric_type' => ['nullable', Rule::in(['FINGERPRINT', 'FACE', 'FACE_ID', 'ALL'])],
         ];
     }
 }
