@@ -268,6 +268,70 @@ class EmployeeCompactApiTest extends TestCase
             ->assertJsonPath('data.0.code', '93003');
     }
 
+    public function test_compact_endpoint_supports_flexible_multi_token_search_and_keeps_filters(): void
+    {
+        $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
+        $this->authenticate();
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 12015,
+                'name' => 'DANIEL',
+                'last_name' => 'ANDRADE',
+                'second_last_name' => 'CRUZ',
+                'full_name' => 'ANDRADE CRUZ DANIEL',
+                'status' => 'A',
+                'has_fingerprint' => true,
+                'has_face_enrollment' => true,
+                'face_status' => 'enrolled',
+                'face_enabled' => true,
+                'face_samples_count' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 22015,
+                'name' => 'DANIELA',
+                'last_name' => 'PEREZ',
+                'second_last_name' => 'LOPEZ',
+                'full_name' => 'PEREZ LOPEZ DANIELA',
+                'status' => 'B',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => false,
+                'face_status' => 'none',
+                'face_enabled' => false,
+                'face_samples_count' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $searchByMixedOrder = $this->getJson(self::URI.'?per_page=50&q=DANIEL%20ANDRADE&status=active&fingerprint=with&face=with');
+
+        $searchByMixedOrder->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '12015')
+            ->assertJsonPath('data.0.full_name', 'ANDRADE CRUZ DANIEL');
+
+        $searchByLastTokens = $this->getJson(self::URI.'?per_page=50&q=CRUZ%20DANIEL');
+
+        $searchByLastTokens->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '12015');
+
+        $searchBySingleToken = $this->getJson(self::URI.'?per_page=50&q=ANDRADE');
+
+        $searchBySingleToken->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '12015');
+
+        $searchByNumericCode = $this->getJson(self::URI.'?per_page=50&q=12015');
+
+        $searchByNumericCode->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.code', '12015');
+    }
+
     public function test_compact_endpoint_stays_below_100kb_for_15_items_and_never_exposes_template_b64(): void
     {
         $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
