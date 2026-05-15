@@ -132,7 +132,7 @@ const programStatusLabels = {
     },
     offline: {
         label: 'Apagado',
-        detail: 'Esperando reconexion',
+        detail: 'Apagado o sin señal',
     },
 };
 
@@ -223,16 +223,13 @@ const totalClocks = computed(() => pagination.value?.total ?? clockList.value.le
 const currentPage = computed(() => pagination.value?.current_page ?? 1);
 const totalPages = computed(() => pagination.value?.last_page ?? 1);
 const totalOnline = computed(
-    () => clockList.value.filter((clock) => clock.monitoring_status === 'online').length,
+    () => clockList.value.filter((clock) => clock.is_online && clock.monitoring_status === 'online').length,
 );
 const totalWarning = computed(
-    () => clockList.value.filter((clock) => clock.monitoring_status === 'warning').length,
+    () => clockList.value.filter((clock) => clock.is_online && clock.monitoring_status === 'warning').length,
 );
 const totalOffline = computed(
-    () =>
-        clockList.value.filter(
-            (clock) => clock.monitoring_status === 'offline' || !clock.is_online,
-        ).length,
+    () => clockList.value.filter((clock) => !clock.is_online).length,
 );
 const pageSummary = computed(() => {
     const total = totalClocks.value;
@@ -258,7 +255,7 @@ const pageSummary = computed(() => {
 });
 
 const formatRelative = (timestamp) => {
-    if (!timestamp) return 'Sin beat registrado';
+    if (!timestamp) return 'Sin heartbeat registrado';
     const diffMs = Date.now() - Date.parse(timestamp);
     const diffMinutes = Math.round(diffMs / 60000);
     if (diffMinutes <= 1) return 'Hace instantes';
@@ -1009,7 +1006,7 @@ const resetLogsFilters = () => {
                             v-if="isCollapsed(clock.id)"
                             class="text-xs font-semibold text-slate-500 sm:text-right"
                         >
-                            Último latido: {{ formatRelative(clock.last_heartbeat_at) }}
+                            Último heartbeat: {{ clock.last_heartbeat_human ?? formatRelative(clock.last_heartbeat_at) }}
                         </p>
                         <div class="flex flex-wrap items-center gap-2">
                             <span
@@ -1020,7 +1017,7 @@ const resetLogsFilters = () => {
                                     class="h-2 w-2 rounded-full"
                                     :class="monitoringStyles[clock.monitoring_status || 'offline']?.dot"
                                 />
-                                {{ monitoringStyles[clock.monitoring_status || 'offline']?.label }}
+                                {{ clock.connection_status_label ?? monitoringStyles[clock.monitoring_status || 'offline']?.label }}
                             </span>
                             <span
                                 class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium uppercase tracking-[0.3em]"
@@ -1062,10 +1059,10 @@ const resetLogsFilters = () => {
 
                             <dl class="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
                                 <dt class="text-xs uppercase tracking-wide text-slate-400">
-                                    Último latido
+                                    Último heartbeat
                                 </dt>
                                 <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
-                                    {{ formatRelative(clock.last_heartbeat_at) }}
+                                    {{ clock.last_heartbeat_human ?? formatRelative(clock.last_heartbeat_at) }}
                                 </dd>
                                 <dd class="text-xs text-slate-500">
                                     {{ clock.monitoring_message ?? 'Sin bitácora' }}
@@ -1090,12 +1087,12 @@ const resetLogsFilters = () => {
                                 </dt>
                                 <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
                                     {{
-                                        programStatusLabels[clock.program_status || 'offline']?.label
+                                        programStatusLabels[clock.onprem_program_status || clock.program_status || 'offline']?.label
                                     }}
                                 </dd>
                                 <dd class="text-xs text-slate-500">
                                     {{
-                                        programStatusLabels[clock.program_status || 'offline']?.detail
+                                        programStatusLabels[clock.onprem_program_status || clock.program_status || 'offline']?.detail
                                     }}
                                 </dd>
                             </dl>

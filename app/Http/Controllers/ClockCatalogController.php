@@ -100,14 +100,14 @@ class ClockCatalogController extends Controller
         if ($request->filled('monitoring_status')) {
             $monitoringStatus = trim((string) $request->input('monitoring_status'));
             if ($monitoringStatus !== '') {
-                $query->where('monitoring_status', $monitoringStatus);
+                $query->whereConnectionStatus($monitoringStatus);
             }
         }
 
         if ($request->filled('program_status')) {
             $programStatus = trim((string) $request->input('program_status'));
             if ($programStatus !== '') {
-                $query->where('program_status', $programStatus);
+                $query->whereOnPremProgramStatus($programStatus);
             }
         }
     }

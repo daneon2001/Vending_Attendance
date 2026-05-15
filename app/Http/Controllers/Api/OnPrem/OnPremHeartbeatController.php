@@ -8,6 +8,7 @@ use App\Models\Clock;
 use App\Models\Device;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class OnPremHeartbeatController extends Controller
@@ -31,18 +32,22 @@ class OnPremHeartbeatController extends Controller
         $now = now();
         $lastStatus = $validated['status_message']
             ?? ((array_key_exists('device_ok', $validated) && $validated['device_ok'] === false) ? 'DEVICE_ERROR' : 'OK');
+        [$clock, $clockMatchedBy] = $this->resolveClockForHeartbeat($device, $validated);
+        $monitoringStatus = (($validated['device_ok'] ?? true) === false || ($validated['api_ok'] ?? true) === false)
+            ? 'warning'
+            : 'online';
 
         $device->forceFill([
-            'clock_id' => $validated['clock_id'] ?? $device->clock_id,
-            'unit_id' => $validated['unit_id'] ?? $device->unit_id,
-            'company_id' => $validated['company_id'] ?? $device->company_id,
+            'clock_id' => $clock?->id ?? $validated['clock_id'] ?? $device->clock_id,
+            'unit_id' => $validated['unit_id'] ?? $clock?->location_id ?? $device->unit_id,
+            'company_id' => $validated['company_id'] ?? $clock?->company_id ?? $device->company_id,
             'last_seen_at' => $now,
             'last_heartbeat_at' => $now,
             'last_status' => is_string($lastStatus) ? $lastStatus : null,
         ])->save();
 
-        $clockId = $validated['clock_id'] ?? $device->clock_id;
-        if ($clockId) {
+        $clockUpdated = false;
+        if ($clock) {
             $clockUpdates = [];
 
             if (Schema::hasColumn('clocks', 'last_heartbeat_at')) {
@@ -57,11 +62,42 @@ class OnPremHeartbeatController extends Controller
                 $clockUpdates['last_seen_ip'] = $request->ip();
             }
 
-            if ($clockUpdates !== []) {
-                Clock::query()
-                    ->whereKey($clockId)
-                    ->update($clockUpdates);
+            if (Schema::hasColumn('clocks', 'monitoring_status')) {
+                $clockUpdates['monitoring_status'] = $monitoringStatus;
             }
+
+            if (Schema::hasColumn('clocks', 'program_status')) {
+                $clockUpdates['program_status'] = 'online';
+            }
+
+            if ($clockUpdates !== []) {
+                $clock->forceFill($clockUpdates)->save();
+                $clockUpdated = true;
+            }
+        }
+
+        Log::info('onprem.heartbeat.received', [
+            'clock_id' => $clock?->id ?? $validated['clock_id'] ?? $device->clock_id,
+            'device_serial' => $device->device_serial,
+            'unit_id' => $validated['unit_id'] ?? $clock?->location_id ?? $device->unit_id,
+            'company_id' => $validated['company_id'] ?? $clock?->company_id ?? $device->company_id,
+            'received_at' => $now->toIso8601String(),
+            'ip' => $request->ip(),
+            'status_message' => $lastStatus,
+            'monitoring_status' => $monitoringStatus,
+            'clock_matched_by' => $clockMatchedBy,
+            'clock_updated' => $clockUpdated,
+        ]);
+
+        if (! $clock) {
+            Log::warning('onprem.heartbeat.clock_not_resolved', [
+                'device_serial' => $device->device_serial,
+                'payload_clock_id' => $validated['clock_id'] ?? null,
+                'device_clock_id' => $device->clock_id,
+                'unit_id' => $validated['unit_id'] ?? $device->unit_id,
+                'company_id' => $validated['company_id'] ?? $device->company_id,
+                'received_at' => $now->toIso8601String(),
+            ]);
         }
 
         AuditLogger::log(
@@ -75,6 +111,8 @@ class OnPremHeartbeatController extends Controller
                 'company_id' => $validated['company_id'] ?? $device->company_id,
                 'payload_hash' => $payloadHash,
                 'ip' => $request->ip(),
+                'clock_matched_by' => $clockMatchedBy,
+                'clock_updated' => $clockUpdated,
                 'app_version' => $validated['app_version'] ?? null,
                 'api_ok' => $validated['api_ok'] ?? null,
                 'device_ok' => $validated['device_ok'] ?? null,
@@ -102,6 +140,43 @@ class OnPremHeartbeatController extends Controller
                 'last_status' => $device->last_status,
             ],
         ], 200);
+    }
+
+    /**
+     * @return array{0:\App\Models\Clock|null,1:string|null}
+     */
+    private function resolveClockForHeartbeat(Device $device, array $validated): array
+    {
+        if (! empty($validated['clock_id'])) {
+            $clock = Clock::query()->find((int) $validated['clock_id']);
+            if ($clock) {
+                return [$clock, 'payload.clock_id'];
+            }
+        }
+
+        if (! empty($device->clock_id)) {
+            $clock = Clock::query()->find((int) $device->clock_id);
+            if ($clock) {
+                return [$clock, 'device.clock_id'];
+            }
+        }
+
+        $serialCandidates = array_values(array_filter([
+            trim((string) ($validated['device_serial'] ?? '')),
+            trim((string) ($device->device_serial ?? '')),
+        ]));
+
+        foreach ($serialCandidates as $serial) {
+            $clock = Clock::query()
+                ->where('serial_number', $serial)
+                ->first();
+
+            if ($clock) {
+                return [$clock, 'serial_number'];
+            }
+        }
+
+        return [null, null];
     }
 
     public function ping(): JsonResponse

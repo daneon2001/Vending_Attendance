@@ -242,9 +242,20 @@ abstract class OnPremApiTestCase extends TestCase
                 $table->timestamp('last_heartbeat_at')->nullable();
                 $table->string('last_status_message')->nullable();
                 $table->string('last_seen_ip', 45)->nullable();
+                $table->string('monitoring_status', 20)->default('offline');
+                $table->string('program_status', 30)->default('offline');
                 $table->timestamps();
             });
             $this->createdClocksTable = true;
+        } else {
+            Schema::table('clocks', function (Blueprint $table): void {
+                if (! Schema::hasColumn('clocks', 'monitoring_status')) {
+                    $table->string('monitoring_status', 20)->default('offline');
+                }
+                if (! Schema::hasColumn('clocks', 'program_status')) {
+                    $table->string('program_status', 30)->default('offline');
+                }
+            });
         }
 
         if (! Schema::hasTable('employees')) {
