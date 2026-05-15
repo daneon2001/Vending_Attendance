@@ -48,5 +48,56 @@ class OnPremHeartbeatTest extends OnPremApiTestCase
             'device_serial' => $fixture['device_serial'],
             'last_status' => 'RUNNING',
         ]);
+
+        $this->assertDatabaseHas('clocks', [
+            'id' => $fixture['clock_id'],
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+            'last_status_message' => 'RUNNING',
+            'last_seen_ip' => '127.0.0.1',
+        ]);
+    }
+
+    public function test_heartbeat_resolves_clock_by_serial_when_device_clock_mapping_is_missing(): void
+    {
+        $fixture = $this->seedDeviceFixture('749', 'secret-serial-only');
+
+        \Illuminate\Support\Facades\DB::table('devices')
+            ->where('device_serial', $fixture['device_serial'])
+            ->update([
+                'clock_id' => null,
+                'unit_id' => null,
+                'company_id' => null,
+            ]);
+
+        $response = $this->signedJsonRequest(
+            'POST',
+            '/api/onprem/heartbeat',
+            [
+                'device_serial' => $fixture['device_serial'],
+                'status_message' => 'SERIAL_OK',
+                'device_ok' => true,
+                'api_ok' => true,
+            ],
+            $fixture['device_serial'],
+            $fixture['secret'],
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('devices', [
+            'device_serial' => $fixture['device_serial'],
+            'clock_id' => $fixture['clock_id'],
+            'unit_id' => $fixture['unit_id'],
+            'company_id' => $fixture['company_id'],
+        ]);
+
+        $this->assertDatabaseHas('clocks', [
+            'id' => $fixture['clock_id'],
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+            'last_status_message' => 'SERIAL_OK',
+        ]);
     }
 }

@@ -19,7 +19,7 @@ class UnitDetailResource extends JsonResource
                     'id' => $clock->id,
                     'clock_name' => $clock->clock_name,
                     'ip_address' => $clock->ip_address,
-                    'monitoring_status' => $clock->monitoring_status,
+                    'monitoring_status' => $clock->connection_status,
                     'status' => (int) $clock->status,
                     'last_heartbeat_at' => optional($clock->last_heartbeat_at)?->toIso8601String(),
                 ];
