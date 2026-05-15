@@ -33,7 +33,7 @@
 
             <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.25em] text-soft">
                 Empleado exacto
-                <select name="employee_id" class="rounded-xl border border-app bg-white px-3 py-2 text-sm text-app">
+                <select name="employee_id" data-select-search="on" class="rounded-xl border border-app bg-white px-3 py-2 text-sm text-app">
                     <option value="">Todos</option>
                     @foreach($employees as $employee)
                         <option value="{{ $employee->id }}" @selected(($filters['employee_id'] ?? null) == $employee->id)>
@@ -250,7 +250,7 @@
 
                     <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.25em] text-soft md:col-span-2">
                         Empleado
-                        <select name="employee_id" required class="rounded-xl border border-app bg-white px-3 py-2 text-sm text-app">
+                        <select name="employee_id" data-select-search="on" required class="rounded-xl border border-app bg-white px-3 py-2 text-sm text-app">
                             <option value="">Selecciona empleado</option>
                             @foreach($employees as $employee)
                                 <option value="{{ $employee->id }}" @selected(old('employee_id') == $employee->id)>

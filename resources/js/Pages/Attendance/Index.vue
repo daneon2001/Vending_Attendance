@@ -297,6 +297,7 @@ watch(
                         Empleado exacto
                         <select
                             v-model="filterForm.employee_id"
+                            data-select-search="on"
                             class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todos</option>
@@ -616,6 +617,7 @@ watch(
                         Empleado
                         <select
                             v-model="adjustmentForm.employee_id"
+                            data-select-search="on"
                             required
                             class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >

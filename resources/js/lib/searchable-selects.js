@@ -2,7 +2,9 @@ import TomSelect from 'tom-select';
 
 const SELECTOR = 'select';
 const SKIP_CLASS = 'select-search-skip';
-const SKIP_ATTRIBUTE = 'data-select-search';
+const SELECT_SEARCH_ATTRIBUTE = 'data-select-search';
+const ENHANCE_ATTRIBUTE = 'data-enhance-select';
+const INITIALIZED_ATTRIBUTE = 'data-select-initialized';
 const MODAL_PARENT_SELECTOR = '.modal-content, .modal, [role="dialog"], dialog';
 const managedSelects = new Map();
 const syncQueue = new Set();
@@ -37,6 +39,20 @@ const shouldMoveClassToControl = (className) =>
 
 const isReadonlySelect = (select) => Boolean(select.readOnly || select.hasAttribute('readonly'));
 
+const isExplicitlyEnabledSelect = (select) => {
+    if (!(select instanceof HTMLSelectElement)) {
+        return false;
+    }
+
+    if (select.dataset.selectSearch === 'off' || select.dataset.enhanceSelect === 'false') {
+        return false;
+    }
+
+    return select.dataset.selectSearch === 'on'
+        || select.dataset.enhanceSelect === 'true'
+        || select.classList.contains('js-select-search');
+};
+
 const getSelectValueSignature = (select) => {
     if (select.multiple) {
         return Array.from(select.selectedOptions).map((option) => option.value).join('|');
@@ -62,7 +78,7 @@ const isEligibleSelect = (select) => {
         return false;
     }
 
-    if (select.tomselect || managedSelects.has(select)) {
+    if (select.tomselect || managedSelects.has(select) || select.hasAttribute(INITIALIZED_ATTRIBUTE)) {
         return false;
     }
 
@@ -74,7 +90,7 @@ const isEligibleSelect = (select) => {
         return false;
     }
 
-    if (select.dataset.selectSearch === 'off' || select.classList.contains(SKIP_CLASS)) {
+    if (select.classList.contains(SKIP_CLASS) || !isExplicitlyEnabledSelect(select)) {
         return false;
     }
 
@@ -98,7 +114,7 @@ const shouldDestroyInstance = (select) => {
         || Number(select.getAttribute('size') || 0) > 1
         || select.disabled
         || isReadonlySelect(select)
-        || select.dataset.selectSearch === 'off'
+        || !isExplicitlyEnabledSelect(select)
         || select.classList.contains(SKIP_CLASS);
 };
 
@@ -164,6 +180,7 @@ const destroyManagedSelect = (select) => {
     }
 
     entry.instance.destroy();
+    select.removeAttribute(INITIALIZED_ATTRIBUTE);
     managedSelects.delete(select);
     syncQueue.delete(select);
 };
@@ -219,8 +236,10 @@ const enhanceSelect = (select) => {
     const instance = new TomSelect(select, {
         allowEmptyOption: true,
         copyClassesToDropdown: false,
+        create: false,
         dropdownParent,
-        maxOptions: null,
+        maxOptions: 250,
+        persist: false,
         plugins: ['change_listener', 'dropdown_input'],
         placeholder: resolvePlaceholder(select),
         render: {
@@ -241,6 +260,7 @@ const enhanceSelect = (select) => {
     instance.wrapper.classList.add('fortia-select-search');
     instance.control.classList.add('fortia-select-search__control');
     instance.dropdown.classList.add('fortia-select-search__dropdown');
+    select.setAttribute(INITIALIZED_ATTRIBUTE, 'true');
     moveVisualClassesToControl(select, instance);
 
     const syncOnInteract = () => queueSelectSync(select);
@@ -341,7 +361,7 @@ const startObserver = () => {
     });
 
     domObserver.observe(document.body, {
-        attributeFilter: ['class', 'disabled', 'multiple', 'readonly', SKIP_ATTRIBUTE],
+        attributeFilter: ['class', 'disabled', 'multiple', 'readonly', SELECT_SEARCH_ATTRIBUTE, ENHANCE_ATTRIBUTE],
         attributes: true,
         childList: true,
         subtree: true,
