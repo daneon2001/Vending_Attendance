@@ -7,6 +7,7 @@ use App\Http\Resources\EmployeeCompactResource;
 use App\Models\Employee;
 use App\Models\Location;
 use App\Services\Fortia\FortiaEmployeeService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -84,20 +85,7 @@ class AdminEmployeeController extends Controller
             ->select($select)
             ->with($with);
 
-        if (! empty($validated['q'])) {
-            $needle = trim((string) $validated['q']);
-            $query->where(function ($builder) use ($needle) {
-                $builder->where('full_name', 'like', "%{$needle}%")
-                    ->orWhere('name', 'like', "%{$needle}%")
-                    ->orWhere('last_name', 'like', "%{$needle}%")
-                    ->orWhere('second_last_name', 'like', "%{$needle}%")
-                    ->orWhere('fortia_employee_id', 'like', "%{$needle}%")
-                    ->orWhere('rfc', 'like', "%{$needle}%")
-                    ->orWhere('curp', 'like', "%{$needle}%")
-                    ->orWhere('company_name', 'like', "%{$needle}%")
-                    ->orWhere('base_location_name', 'like', "%{$needle}%");
-            });
-        }
+        $this->applyEmployeeSearch($query, $validated['q'] ?? null);
 
         $locationId = $validated['location_id'] ?? $validated['unit_id'] ?? null;
         if (! empty($locationId)) {
@@ -158,6 +146,72 @@ class AdminEmployeeController extends Controller
     private function normalizeStatusFilter(string $status): string
     {
         return in_array(strtolower($status), ['active', 'a'], true) ? 'A' : 'B';
+    }
+
+    private function applyEmployeeSearch(Builder $query, ?string $search): void
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim((string) $search));
+        if (! is_string($normalized) || $normalized === '') {
+            return;
+        }
+
+        $normalized = mb_substr($normalized, 0, 120);
+        $tokens = collect(explode(' ', $normalized))
+            ->map(static fn ($token) => trim($token))
+            ->filter()
+            ->take(8)
+            ->values();
+
+        if ($tokens->isEmpty()) {
+            return;
+        }
+
+        $searchableColumns = $this->employeeSearchableColumns();
+        if ($searchableColumns === []) {
+            return;
+        }
+
+        $query->where(function (Builder $outer) use ($tokens, $searchableColumns): void {
+            foreach ($tokens as $token) {
+                $outer->where(function (Builder $tokenQuery) use ($token, $searchableColumns): void {
+                    $isNumericToken = preg_match('/^\d+$/', $token) === 1;
+
+                    foreach ($searchableColumns as $column) {
+                        if ($isNumericToken && in_array($column, ['id', 'fortia_employee_id', 'employee_code'], true)) {
+                            $tokenQuery->orWhere($column, $token)
+                                ->orWhere($column, 'like', '%'.$token.'%');
+                        } else {
+                            $tokenQuery->orWhere($column, 'like', '%'.$token.'%');
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function employeeSearchableColumns(): array
+    {
+        $columns = [
+            'id',
+            'full_name',
+            'name',
+            'last_name',
+            'second_last_name',
+            'employee_code',
+            'fortia_employee_id',
+            'rfc',
+            'curp',
+            'company_name',
+            'base_location_name',
+        ];
+
+        return array_values(array_filter(
+            $columns,
+            static fn (string $column): bool => Schema::hasColumn('employees', $column)
+        ));
     }
 
     private function resolveEmployeeBaseLocationId(int $locationFilter): ?int

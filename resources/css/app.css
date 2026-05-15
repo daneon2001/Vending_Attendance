@@ -213,6 +213,11 @@
         @apply rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900;
     }
 
+    .fortia-select-search__dropdown .ts-dropdown-content {
+        max-height: 15rem;
+        overflow-y: auto;
+    }
+
     .fortia-select-search__dropdown .dropdown-input {
         @apply border-b border-slate-200 bg-white px-3 py-2 outline-none dark:border-slate-700 dark:bg-slate-900;
     }

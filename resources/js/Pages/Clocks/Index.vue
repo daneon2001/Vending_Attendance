@@ -1296,6 +1296,7 @@ const resetLogsFilters = () => {
                             Compañía
                             <select
                                 v-model.number="formModal.form.company_id"
+                                data-select-search="on"
                                 class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
                             >
                                 <option :value="null">Sin asignar</option>
@@ -1308,6 +1309,7 @@ const resetLogsFilters = () => {
                             Unidad
                             <select
                                 v-model.number="formModal.form.location_id"
+                                data-select-search="on"
                                 class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
                             >
                                 <option :value="null">Sin asignar</option>
@@ -1416,6 +1418,7 @@ const resetLogsFilters = () => {
                         Selecciona la unidad
                         <select
                             v-model.number="assignModal.location_id"
+                            data-select-search="on"
                             class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
                         >
                             <option :value="null">Sin asignar</option>

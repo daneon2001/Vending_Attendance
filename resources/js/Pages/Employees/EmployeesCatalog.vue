@@ -631,7 +631,12 @@ onMounted(loadEmployees);
                 </label>
                 <label class="flex w-full flex-col sm:w-auto">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Estado</span>
-                    <select v-model="filters.status" class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto" @change="loadEmployees(1)">
+                    <select
+                        v-model="filters.status"
+                        data-select-search="off"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                        @change="loadEmployees(1)"
+                    >
                         <option value="">Todos</option>
                         <option value="active">Activos</option>
                         <option value="inactive">Baja</option>
@@ -639,7 +644,12 @@ onMounted(loadEmployees);
                 </label>
                 <label class="flex w-full flex-col sm:w-auto">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Huella</span>
-                    <select v-model="filters.fingerprint" class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto" @change="loadEmployees(1)">
+                    <select
+                        v-model="filters.fingerprint"
+                        data-select-search="off"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                        @change="loadEmployees(1)"
+                    >
                         <option value="">Todas</option>
                         <option value="with">Con huella</option>
                         <option value="without">Sin huella</option>
@@ -647,7 +657,12 @@ onMounted(loadEmployees);
                 </label>
                 <label class="flex w-full flex-col sm:w-auto">
                     <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Face ID</span>
-                    <select v-model="filters.face" class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto" @change="loadEmployees(1)">
+                    <select
+                        v-model="filters.face"
+                        data-select-search="off"
+                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                        @change="loadEmployees(1)"
+                    >
                         <option value="">Todos</option>
                         <option value="with">Con Face ID</option>
                         <option value="without">Sin Face ID</option>
