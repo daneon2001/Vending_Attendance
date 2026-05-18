@@ -12,7 +12,7 @@ import ImportEmployeesModal from '@/Pages/Employees/Partials/ImportEmployeesModa
 import { apiUrl, appUrl } from '@/utils/url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
 const employees = ref([]);
 const loading = ref(false);
@@ -33,12 +33,6 @@ const selectedEmployee = ref(null);
 const attendancePanelKey = ref(0);
 const isImportModalOpen = ref(false);
 const openActionMenuId = ref(null);
-const actionMenuTrigger = ref(null);
-const actionMenuRef = ref(null);
-const actionMenuStyle = ref({
-    top: '0px',
-    left: '0px',
-});
 const toast = reactive({
     show: false,
     type: 'success',
@@ -567,58 +561,12 @@ const handlePerPageChange = (perPage) => {
     loadEmployees(1);
 };
 
-const findEmployeeById = (employeeId) => employees.value.find((item) => item.id === employeeId) ?? null;
-
 const closeActionMenu = () => {
     openActionMenuId.value = null;
-    actionMenuTrigger.value = null;
-    actionMenuRef.value = null;
 };
 
-const setActionMenuRef = (element) => {
-    actionMenuRef.value = element;
-    if (element) {
-        updateActionMenuPosition();
-    }
-};
-
-const updateActionMenuPosition = () => {
-    if (openActionMenuId.value === null || !actionMenuTrigger.value || !actionMenuRef.value) {
-        return;
-    }
-
-    const triggerRect = actionMenuTrigger.value.getBoundingClientRect();
-    const menuRect = actionMenuRef.value.getBoundingClientRect();
-    const viewportPadding = 12;
-    const offset = 8;
-    const availableBottom = window.innerHeight - triggerRect.bottom;
-    const shouldOpenUpward = availableBottom < menuRect.height + offset && triggerRect.top > menuRect.height;
-
-    const top = shouldOpenUpward
-        ? Math.max(viewportPadding, triggerRect.top - menuRect.height - offset)
-        : Math.min(window.innerHeight - menuRect.height - viewportPadding, triggerRect.bottom + offset);
-
-    const left = Math.min(
-        Math.max(viewportPadding, triggerRect.right - menuRect.width),
-        window.innerWidth - menuRect.width - viewportPadding,
-    );
-
-    actionMenuStyle.value = {
-        top: `${Math.max(viewportPadding, top)}px`,
-        left: `${Math.max(viewportPadding, left)}px`,
-    };
-};
-
-const toggleActionMenu = async (employeeId, event) => {
-    if (openActionMenuId.value === employeeId) {
-        closeActionMenu();
-        return;
-    }
-
-    openActionMenuId.value = employeeId;
-    actionMenuTrigger.value = event.currentTarget;
-    await nextTick();
-    updateActionMenuPosition();
+const toggleActionMenu = (employeeId) => {
+    openActionMenuId.value = openActionMenuId.value === employeeId ? null : employeeId;
 };
 
 const handleActionMenuSelection = (callback) => {
@@ -626,30 +574,13 @@ const handleActionMenuSelection = (callback) => {
     callback();
 };
 
-const handleActionMenuPointerDown = (event) => {
-    if (openActionMenuId.value === null) {
-        return;
-    }
-
-    const menuTarget = event.target.closest?.('[data-action-menu-content]');
-    const triggerTarget = event.target.closest?.(`[data-action-menu-trigger="${openActionMenuId.value}"]`);
-
-    if (menuTarget || triggerTarget) {
-        return;
-    }
-
+const handleOutsideActionMenuClick = () => {
     closeActionMenu();
 };
 
 const handleActionMenuKeydown = (event) => {
     if (event.key === 'Escape' && openActionMenuId.value !== null) {
         closeActionMenu();
-    }
-};
-
-const handleActionMenuViewportChange = () => {
-    if (openActionMenuId.value !== null) {
-        updateActionMenuPosition();
     }
 };
 
@@ -679,17 +610,13 @@ const handleImportCompleted = async (payload) => {
 
 onMounted(() => {
     loadEmployees();
-    document.addEventListener('pointerdown', handleActionMenuPointerDown);
+    document.addEventListener('click', handleOutsideActionMenuClick);
     document.addEventListener('keydown', handleActionMenuKeydown);
-    window.addEventListener('resize', handleActionMenuViewportChange);
-    window.addEventListener('scroll', handleActionMenuViewportChange, true);
 });
 
-onUnmounted(() => {
-    document.removeEventListener('pointerdown', handleActionMenuPointerDown);
+onBeforeUnmount(() => {
+    document.removeEventListener('click', handleOutsideActionMenuClick);
     document.removeEventListener('keydown', handleActionMenuKeydown);
-    window.removeEventListener('resize', handleActionMenuViewportChange);
-    window.removeEventListener('scroll', handleActionMenuViewportChange, true);
 });
 </script>
 
@@ -832,7 +759,7 @@ onUnmounted(() => {
                 message="No hay empleados para los filtros seleccionados."
             />
 
-            <div v-else class="card overflow-hidden">
+            <div v-else class="card overflow-visible">
                 <div class="space-y-3 p-3 sm:hidden">
                     <article
                         v-for="employee in employees"
@@ -876,19 +803,51 @@ onUnmounted(() => {
                         </div>
 
                         <div v-if="hasEmployeeActions" class="mt-3 flex justify-end">
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                :data-action-menu-trigger="employee.id"
-                                @click="toggleActionMenu(employee.id, $event)"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                    <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
-                                    <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
-                                    <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
-                                </svg>
-                                <span>Acciones</span>
-                            </button>
+                            <div class="relative inline-flex justify-end" @click.stop>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    @click.stop="toggleActionMenu(employee.id)"
+                                >
+                                    <span>Acciones</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                        <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                        <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
+                                        <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                    </svg>
+                                </button>
+
+                                <div
+                                    v-if="openActionMenuId === employee.id"
+                                    class="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xl ring-1 ring-slate-200/80"
+                                    @click.stop
+                                >
+                                    <button
+                                        v-if="canViewAttendance"
+                                        type="button"
+                                        class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-app"
+                                        @click="handleActionMenuSelection(() => openAttendance(employee))"
+                                    >
+                                        Ver asistencias
+                                    </button>
+                                    <button
+                                        v-if="canManageFace"
+                                        type="button"
+                                        class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-sky-700 transition hover:bg-sky-50"
+                                        @click="handleActionMenuSelection(() => openFaceModal(employee))"
+                                    >
+                                        Administrar Face ID
+                                    </button>
+                                    <button
+                                        v-if="canDeleteFingerprints"
+                                        type="button"
+                                        class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                                        @click="handleActionMenuSelection(() => openFingerprintModal(employee))"
+                                    >
+                                        Borrar huella
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </article>
                 </div>
@@ -971,70 +930,57 @@ onUnmounted(() => {
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 text-right">
-                                    <button
-                                        v-if="hasEmployeeActions"
-                                        type="button"
-                                        class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                        :data-action-menu-trigger="employee.id"
-                                        @click="toggleActionMenu(employee.id, $event)"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                            <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
-                                            <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
-                                            <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
-                                        </svg>
-                                        <span>Acciones</span>
-                                    </button>
+                                    <div v-if="hasEmployeeActions" class="relative inline-flex justify-end" @click.stop>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            @click.stop="toggleActionMenu(employee.id)"
+                                        >
+                                            <span>Acciones</span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                                <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
+                                                <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                            </svg>
+                                        </button>
+
+                                        <div
+                                            v-if="openActionMenuId === employee.id"
+                                            class="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 text-left shadow-xl ring-1 ring-slate-200/80"
+                                            @click.stop
+                                        >
+                                            <button
+                                                v-if="canViewAttendance"
+                                                type="button"
+                                                class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-app"
+                                                @click="handleActionMenuSelection(() => openAttendance(employee))"
+                                            >
+                                                Ver asistencias
+                                            </button>
+                                            <button
+                                                v-if="canManageFace"
+                                                type="button"
+                                                class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-sky-700 transition hover:bg-sky-50"
+                                                @click="handleActionMenuSelection(() => openFaceModal(employee))"
+                                            >
+                                                Administrar Face ID
+                                            </button>
+                                            <button
+                                                v-if="canDeleteFingerprints"
+                                                type="button"
+                                                class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                                                @click="handleActionMenuSelection(() => openFingerprintModal(employee))"
+                                            >
+                                                Borrar huella
+                                            </button>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-
-            <Teleport to="body">
-                <Transition
-                    enter-active-class="transition ease-out duration-150"
-                    enter-from-class="opacity-0 translate-y-1 scale-95"
-                    enter-to-class="opacity-100 translate-y-0 scale-100"
-                    leave-active-class="transition ease-in duration-100"
-                    leave-from-class="opacity-100 translate-y-0 scale-100"
-                    leave-to-class="opacity-0 translate-y-1 scale-95"
-                >
-                    <div
-                        v-if="openActionMenuId !== null"
-                        :ref="setActionMenuRef"
-                        data-action-menu-content
-                        class="fixed z-[90] w-56 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-slate-200/80"
-                        :style="actionMenuStyle"
-                    >
-                        <button
-                            v-if="canViewAttendance"
-                            type="button"
-                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-app"
-                            @click="handleActionMenuSelection(() => openAttendance(findEmployeeById(openActionMenuId)))"
-                        >
-                            Ver asistencias
-                        </button>
-                        <button
-                            v-if="canManageFace"
-                            type="button"
-                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-sky-700 transition hover:bg-sky-50"
-                            @click="handleActionMenuSelection(() => openFaceModal(findEmployeeById(openActionMenuId)))"
-                        >
-                            Administrar Face ID
-                        </button>
-                        <button
-                            v-if="canDeleteFingerprints"
-                            type="button"
-                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-                            @click="handleActionMenuSelection(() => openFingerprintModal(findEmployeeById(openActionMenuId)))"
-                        >
-                            Borrar huella
-                        </button>
-                    </div>
-                </Transition>
-            </Teleport>
 
             <EmployeeAttendanceDrawer
                 v-if="canViewAttendance"
