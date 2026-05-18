@@ -15,6 +15,7 @@ class EmployeeTemplatesSyncTest extends TestCase
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeFingerprintsTable = false;
+    private bool $createdEmployeeFaceTemplatesTable = false;
     private bool $createdTemplateDeletionsTable = false;
 
     protected function setUp(): void
@@ -85,6 +86,12 @@ class EmployeeTemplatesSyncTest extends TestCase
             $this->createdEmployeeFingerprintsTable = true;
         }
 
+        if (! Schema::hasTable('employee_face_templates')) {
+            $migration = require database_path('migrations/2026_05_14_000001_create_employee_face_templates_table.php');
+            $migration->up();
+            $this->createdEmployeeFaceTemplatesTable = true;
+        }
+
         Schema::table('employee_fingerprints', function (Blueprint $table): void {
             if (! Schema::hasColumn('employee_fingerprints', 'template_vendor')) {
                 $table->string('template_vendor', 80)->nullable();
@@ -119,6 +126,7 @@ class EmployeeTemplatesSyncTest extends TestCase
         });
 
         DB::table('employee_template_deletions')->delete();
+        DB::table('employee_face_templates')->delete();
         DB::table('employee_fingerprints')->delete();
         DB::table('employees')->delete();
         DB::table('locations')->delete();
@@ -128,6 +136,9 @@ class EmployeeTemplatesSyncTest extends TestCase
     {
         if ($this->createdTemplateDeletionsTable && Schema::hasTable('employee_template_deletions')) {
             Schema::drop('employee_template_deletions');
+        }
+        if ($this->createdEmployeeFaceTemplatesTable && Schema::hasTable('employee_face_templates')) {
+            Schema::drop('employee_face_templates');
         }
         if ($this->createdEmployeeFingerprintsTable && Schema::hasTable('employee_fingerprints')) {
             Schema::drop('employee_fingerprints');
@@ -597,6 +608,31 @@ class EmployeeTemplatesSyncTest extends TestCase
         $response->assertJsonCount(2, 'data');
     }
 
+    private function insertFaceTemplate(
+        int $employeeId,
+        string $templateHash,
+        string $embedding,
+        array $overrides = []
+    ): void {
+        DB::table('employee_face_templates')->insert(array_merge([
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => null,
+            'employee_code' => null,
+            'template_hash' => $templateHash,
+            'embedding_encrypted' => base64_encode($embedding),
+            'quality_score' => 0.9500,
+            'model_name' => 'FaceRecognitionDotNet',
+            'model_version' => 'FACE_V1',
+            'source_device' => null,
+            'source_serial' => null,
+            'captured_at' => now(),
+            'synced_at' => now(),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], $overrides));
+    }
+
     public function test_face_filter_uses_same_allowed_universe(): void
     {
         $locA = DB::table('locations')->insertGetId(['name' => 'Unit Face A']);
@@ -642,55 +678,21 @@ class EmployeeTemplatesSyncTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $this->insertFaceTemplate($empLocalFace, 'FACE-LOCAL', 'face-local');
+        $this->insertFaceTemplate($empGlobalFace, 'FACE-GLOBAL', 'face-global');
+        $this->insertFaceTemplate($empOtherFace, 'FACE-OTHER', 'face-other');
+
         DB::table('employee_fingerprints')->insert([
-            [
-                'employee_id' => $empLocalFace,
-                'vendor_template_id' => 'FACE-LOCAL',
-                'template_b64' => base64_encode('face-local'),
-                'template_format' => 'FACE_EMBEDDING_V1',
-                'enrolment_type' => 'FACE',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'employee_id' => $empGlobalFace,
-                'vendor_template_id' => 'FACE-GLOBAL',
-                'template_b64' => base64_encode('face-global'),
-                'template_format' => 'FACE_EMBEDDING_V1',
-                'enrolment_type' => 'FACE',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'employee_id' => $empOtherFace,
-                'vendor_template_id' => 'FACE-OTHER',
-                'template_b64' => base64_encode('face-other'),
-                'template_format' => 'FACE_EMBEDDING_V1',
-                'enrolment_type' => 'FACE',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'employee_id' => $empLocalFace,
-                'vendor_template_id' => 'FP-LOCAL',
-                'template_b64' => base64_encode('fp-local'),
-                'template_format' => 'DPFP_PROPRIETARY',
-                'enrolment_type' => 'FINGERPRINT',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+            'employee_id' => $empLocalFace,
+            'vendor_template_id' => 'FP-LOCAL',
+            'template_b64' => base64_encode('fp-local'),
+            'template_format' => 'DPFP_PROPRIETARY',
+            'enrolment_type' => 'FINGERPRINT',
+            'status' => 'enrolled',
+            'performed_at' => now(),
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FACE');
@@ -743,31 +745,13 @@ class EmployeeTemplatesSyncTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('employee_fingerprints')->insert([
-            [
-                'employee_id' => $readyEmployee,
-                'vendor_template_id' => 'FACE-READY',
-                'template_b64' => base64_encode('face-ready'),
-                'template_format' => 'FACE_EMBEDDING_V2',
-                'enrolment_type' => 'FACE',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'employee_id' => $disabledEmployee,
-                'vendor_template_id' => 'FACE-DISABLED',
-                'template_b64' => base64_encode('face-disabled'),
-                'template_format' => 'FACE_EMBEDDING_V2',
-                'enrolment_type' => 'FACE',
-                'status' => 'enrolled',
-                'performed_at' => now(),
-                'deleted_at' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+        $this->insertFaceTemplate($readyEmployee, 'FACE-READY', 'face-ready', [
+            'quality_score' => 0.9500,
+            'model_version' => 'FACE_V2',
+        ]);
+        $this->insertFaceTemplate($disabledEmployee, 'FACE-DISABLED', 'face-disabled', [
+            'quality_score' => 0.9100,
+            'model_version' => 'FACE_V2',
         ]);
 
         $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FACE');
@@ -779,7 +763,12 @@ class EmployeeTemplatesSyncTest extends TestCase
             'face_template_version' => 'FACE_V2',
             'face_quality_score' => 95,
         ]);
-        $response->assertJsonMissing(['vendor_template_id' => 'FACE-DISABLED']);
+        $response->assertJsonFragment([
+            'vendor_template_id' => 'FACE-DISABLED',
+            'sync_ready' => false,
+            'face_status' => 'disabled',
+            'face_enabled' => false,
+        ]);
     }
 
     public function test_location_specific_tombstones_are_emitted_when_template_leaves_branch_scope(): void
