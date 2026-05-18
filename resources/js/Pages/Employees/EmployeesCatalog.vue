@@ -12,7 +12,7 @@ import ImportEmployeesModal from '@/Pages/Employees/Partials/ImportEmployeesModa
 import { apiUrl, appUrl } from '@/utils/url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 const employees = ref([]);
 const loading = ref(false);
@@ -32,6 +32,13 @@ const isAttendanceOpen = ref(false);
 const selectedEmployee = ref(null);
 const attendancePanelKey = ref(0);
 const isImportModalOpen = ref(false);
+const openActionMenuId = ref(null);
+const actionMenuTrigger = ref(null);
+const actionMenuRef = ref(null);
+const actionMenuStyle = ref({
+    top: '0px',
+    left: '0px',
+});
 const toast = reactive({
     show: false,
     type: 'success',
@@ -234,6 +241,9 @@ const canDisableEmployees = computed(() => can('employees', 'disable'));
 const canViewAttendance = computed(() => can('attendance', 'view'));
 const canDeleteFingerprints = computed(() => can('biometrics', 'fingerprints.delete'));
 const canManageFace = computed(() => can('biometrics', 'face.manage'));
+const hasEmployeeActions = computed(() =>
+    canViewAttendance.value || canManageFace.value || canDeleteFingerprints.value,
+);
 
 const modalDefaults = {
     show: false,
@@ -283,6 +293,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
     loading.value = true;
     loadError.value = '';
     filters.page = pageNumber;
+    openActionMenuId.value = null;
 
     try {
         const { data } = await axios.get(apiUrl('/api/admin/employees'), {
@@ -388,6 +399,8 @@ const openStatusModal = (employee) => {
 };
 
 const openFingerprintModal = (employee) => {
+    if (!employee) return;
+
     modalState.value = {
         ...modalDefaults,
         show: true,
@@ -400,6 +413,8 @@ const openFingerprintModal = (employee) => {
 };
 
 const openFaceDeleteModal = (employee) => {
+    if (!employee) return;
+
     modalState.value = {
         ...modalDefaults,
         show: true,
@@ -412,6 +427,8 @@ const openFaceDeleteModal = (employee) => {
 };
 
 const openFaceModal = (employee) => {
+    if (!employee) return;
+
     faceModal.show = true;
     faceModal.error = '';
     faceModal.employee = employee;
@@ -550,8 +567,94 @@ const handlePerPageChange = (perPage) => {
     loadEmployees(1);
 };
 
+const findEmployeeById = (employeeId) => employees.value.find((item) => item.id === employeeId) ?? null;
+
+const closeActionMenu = () => {
+    openActionMenuId.value = null;
+    actionMenuTrigger.value = null;
+    actionMenuRef.value = null;
+};
+
+const setActionMenuRef = (element) => {
+    actionMenuRef.value = element;
+    if (element) {
+        updateActionMenuPosition();
+    }
+};
+
+const updateActionMenuPosition = () => {
+    if (openActionMenuId.value === null || !actionMenuTrigger.value || !actionMenuRef.value) {
+        return;
+    }
+
+    const triggerRect = actionMenuTrigger.value.getBoundingClientRect();
+    const menuRect = actionMenuRef.value.getBoundingClientRect();
+    const viewportPadding = 12;
+    const offset = 8;
+    const availableBottom = window.innerHeight - triggerRect.bottom;
+    const shouldOpenUpward = availableBottom < menuRect.height + offset && triggerRect.top > menuRect.height;
+
+    const top = shouldOpenUpward
+        ? Math.max(viewportPadding, triggerRect.top - menuRect.height - offset)
+        : Math.min(window.innerHeight - menuRect.height - viewportPadding, triggerRect.bottom + offset);
+
+    const left = Math.min(
+        Math.max(viewportPadding, triggerRect.right - menuRect.width),
+        window.innerWidth - menuRect.width - viewportPadding,
+    );
+
+    actionMenuStyle.value = {
+        top: `${Math.max(viewportPadding, top)}px`,
+        left: `${Math.max(viewportPadding, left)}px`,
+    };
+};
+
+const toggleActionMenu = async (employeeId, event) => {
+    if (openActionMenuId.value === employeeId) {
+        closeActionMenu();
+        return;
+    }
+
+    openActionMenuId.value = employeeId;
+    actionMenuTrigger.value = event.currentTarget;
+    await nextTick();
+    updateActionMenuPosition();
+};
+
+const handleActionMenuSelection = (callback) => {
+    closeActionMenu();
+    callback();
+};
+
+const handleActionMenuPointerDown = (event) => {
+    if (openActionMenuId.value === null) {
+        return;
+    }
+
+    const menuTarget = event.target.closest?.('[data-action-menu-content]');
+    const triggerTarget = event.target.closest?.(`[data-action-menu-trigger="${openActionMenuId.value}"]`);
+
+    if (menuTarget || triggerTarget) {
+        return;
+    }
+
+    closeActionMenu();
+};
+
+const handleActionMenuKeydown = (event) => {
+    if (event.key === 'Escape' && openActionMenuId.value !== null) {
+        closeActionMenu();
+    }
+};
+
+const handleActionMenuViewportChange = () => {
+    if (openActionMenuId.value !== null) {
+        updateActionMenuPosition();
+    }
+};
+
 const openAttendance = (employee) => {
-    if (!canViewAttendance.value) return;
+    if (!employee || !canViewAttendance.value) return;
     if (!selectedEmployee.value || selectedEmployee.value.id !== employee.id) {
         selectedEmployee.value = employee;
         attendancePanelKey.value += 1;
@@ -574,7 +677,20 @@ const handleImportCompleted = async (payload) => {
     });
 };
 
-onMounted(loadEmployees);
+onMounted(() => {
+    loadEmployees();
+    document.addEventListener('pointerdown', handleActionMenuPointerDown);
+    document.addEventListener('keydown', handleActionMenuKeydown);
+    window.addEventListener('resize', handleActionMenuViewportChange);
+    window.addEventListener('scroll', handleActionMenuViewportChange, true);
+});
+
+onUnmounted(() => {
+    document.removeEventListener('pointerdown', handleActionMenuPointerDown);
+    document.removeEventListener('keydown', handleActionMenuKeydown);
+    window.removeEventListener('resize', handleActionMenuViewportChange);
+    window.removeEventListener('scroll', handleActionMenuViewportChange, true);
+});
 </script>
 
 <template>
@@ -759,27 +875,19 @@ onMounted(loadEmployees);
                             <span v-if="employee.face_template_version">Version: {{ employee.face_template_version }}</span>
                         </div>
 
-                        <div class="mt-3 flex flex-col gap-2 text-xs font-semibold">
+                        <div v-if="hasEmployeeActions" class="mt-3 flex justify-end">
                             <button
-                                v-if="canViewAttendance"
-                                class="w-full rounded-2xl border border-app px-3 py-2"
-                                @click="openAttendance(employee)"
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                :data-action-menu-trigger="employee.id"
+                                @click="toggleActionMenu(employee.id, $event)"
                             >
-                                Ver asistencias
-                            </button>
-                            <button
-                                v-if="canManageFace"
-                                class="w-full rounded-2xl border border-app px-3 py-2 text-sky-700"
-                                @click="openFaceModal(employee)"
-                            >
-                                Administrar Face ID
-                            </button>
-                            <button
-                                v-if="canDeleteFingerprints"
-                                class="w-full rounded-2xl border border-app px-3 py-2 text-rose-600"
-                                @click="openFingerprintModal(employee)"
-                            >
-                                Borrar huella
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                    <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
+                                    <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                </svg>
+                                <span>Acciones</span>
                             </button>
                         </div>
                     </article>
@@ -862,36 +970,71 @@ onMounted(loadEmployees);
                                         {{ employee.face_sync_ready ? 'Listo' : 'Pendiente' }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-3">
-                                    <div class="flex flex-col gap-2 text-xs font-semibold sm:flex-row sm:flex-wrap">
-                                        <button
-                                            v-if="canViewAttendance"
-                                            class="w-full rounded-2xl border border-app px-3 py-2 sm:w-auto"
-                                            @click="openAttendance(employee)"
-                                        >
-                                            Ver asistencias
-                                        </button>
-                                        <button
-                                            v-if="canManageFace"
-                                            class="w-full rounded-2xl border border-app px-3 py-2 text-sky-700 sm:w-auto"
-                                            @click="openFaceModal(employee)"
-                                        >
-                                            Administrar Face ID
-                                        </button>
-                                        <button
-                                            v-if="canDeleteFingerprints"
-                                            class="w-full rounded-2xl border border-app px-3 py-2 text-rose-600 sm:w-auto"
-                                            @click="openFingerprintModal(employee)"
-                                        >
-                                            Borrar huella
-                                        </button>
-                                    </div>
+                                <td class="px-4 py-3 text-right">
+                                    <button
+                                        v-if="hasEmployeeActions"
+                                        type="button"
+                                        class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-app shadow-sm transition hover:border-app hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        :data-action-menu-trigger="employee.id"
+                                        @click="toggleActionMenu(employee.id, $event)"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                            <path d="M10 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                            <path d="M10 11.5A1.5 1.5 0 1 0 10 8.5a1.5 1.5 0 0 0 0 3Z" />
+                                            <path d="M10 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                                        </svg>
+                                        <span>Acciones</span>
+                                    </button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            <Teleport to="body">
+                <Transition
+                    enter-active-class="transition ease-out duration-150"
+                    enter-from-class="opacity-0 translate-y-1 scale-95"
+                    enter-to-class="opacity-100 translate-y-0 scale-100"
+                    leave-active-class="transition ease-in duration-100"
+                    leave-from-class="opacity-100 translate-y-0 scale-100"
+                    leave-to-class="opacity-0 translate-y-1 scale-95"
+                >
+                    <div
+                        v-if="openActionMenuId !== null"
+                        :ref="setActionMenuRef"
+                        data-action-menu-content
+                        class="fixed z-[90] w-56 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-slate-200/80"
+                        :style="actionMenuStyle"
+                    >
+                        <button
+                            v-if="canViewAttendance"
+                            type="button"
+                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-app"
+                            @click="handleActionMenuSelection(() => openAttendance(findEmployeeById(openActionMenuId)))"
+                        >
+                            Ver asistencias
+                        </button>
+                        <button
+                            v-if="canManageFace"
+                            type="button"
+                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-sky-700 transition hover:bg-sky-50"
+                            @click="handleActionMenuSelection(() => openFaceModal(findEmployeeById(openActionMenuId)))"
+                        >
+                            Administrar Face ID
+                        </button>
+                        <button
+                            v-if="canDeleteFingerprints"
+                            type="button"
+                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                            @click="handleActionMenuSelection(() => openFingerprintModal(findEmployeeById(openActionMenuId)))"
+                        >
+                            Borrar huella
+                        </button>
+                    </div>
+                </Transition>
+            </Teleport>
 
             <EmployeeAttendanceDrawer
                 v-if="canViewAttendance"
