@@ -41,6 +41,14 @@ const props = defineProps({
         type: Number,
         default: 0,
     },
+    heightClass: {
+        type: String,
+        default: 'h-52 sm:h-56 lg:h-64',
+    },
+    contentClass: {
+        type: String,
+        default: 'p-5 sm:p-6',
+    },
     emptyText: {
         type: String,
         default: 'Sin información disponible',
@@ -193,8 +201,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <article class="card flex h-full flex-col">
-        <div class="flex-1 p-6">
+    <article class="card flex h-full flex-col overflow-hidden">
+        <div :class="['flex-1', contentClass]">
             <header class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -206,7 +214,7 @@ onBeforeUnmount(() => {
                 </div>
             </header>
 
-            <div ref="chartContainerRef" class="mt-6 h-56 sm:h-64 lg:h-72">
+            <div ref="chartContainerRef" :class="['mt-4', heightClass]">
                 <div
                     v-if="loading"
                     class="h-full rounded-2xl bg-slate-100/70 animate-pulse dark:bg-slate-800/60"
@@ -228,6 +236,9 @@ onBeforeUnmount(() => {
                     class="h-full w-full"
                 />
             </div>
+        </div>
+        <div v-if="$slots.footer" class="border-t border-slate-100 px-5 py-4">
+            <slot name="footer" />
         </div>
     </article>
 </template>
