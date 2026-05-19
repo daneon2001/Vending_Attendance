@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Carbon\Carbon;
 use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Company;
@@ -53,6 +54,9 @@ class DashboardExecutiveSummaryTest extends TestCase
 
     public function test_dashboard_summary_returns_executive_operational_payload(): void
     {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+
         $company = Company::query()->create([
             'name' => 'Medical Life',
             'code' => 'ML',
@@ -103,7 +107,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             'status' => 1,
             'monitoring_status' => 'online',
             'program_status' => 'online',
-            'last_heartbeat_at' => now()->subMinutes(2),
+            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(2)->format('Y-m-d H:i:s'),
         ]);
 
         Clock::query()->create([
@@ -114,7 +118,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             'status' => 1,
             'monitoring_status' => 'offline',
             'program_status' => 'offline',
-            'last_heartbeat_at' => now()->subMinutes(10),
+            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(10)->format('Y-m-d H:i:s'),
         ]);
 
         AttendanceLog::query()->create([
@@ -123,7 +127,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             'company_id' => $company->id,
             'location_id' => $location->id,
             'device_id' => $onlineClock->id,
-            'log_date' => now()->subMinutes(15),
+            'log_date' => Carbon::now('UTC')->subMinutes(15)->format('Y-m-d H:i:s'),
             'log_type' => 1,
             'source' => 'api',
             'attendance_status' => 'valida',
@@ -140,6 +144,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonStructure([
                 'ok',
                 'empty',
+                'timezone' => ['name', 'label', 'offset'],
                 'meta' => ['range', 'from', 'to', 'company_id', 'unit_id', 'generated_at_iso'],
                 'summary' => [
                     'employees_active',
@@ -188,6 +193,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('clocks.total', 2)
             ->assertJsonPath('clocks.online', 1)
             ->assertJsonPath('clocks.offline', 1)
+            ->assertJsonPath('timezone.name', 'America/Mexico_City')
             ->assertJsonPath('executive_status.level', 'critical')
             ->assertJsonPath('charts.attendance_donut.present', 1)
             ->assertJsonPath('charts.attendance_donut.pending', 1)
@@ -205,6 +211,7 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('locations.0.name', 'Unidad Centro')
             ->assertJsonPath('recent_activity.0.employee_name', 'Ana Lopez')
             ->assertJsonPath('recent_activity.0.method', 'Huella')
+            ->assertJsonPath('recent_activity.0.source_label', 'API')
             ->assertJsonPath('enrollment.employees_active', 2)
             ->assertJsonPath('enrollment.without_fingerprint', 1)
             ->assertJsonPath('enrollment.without_face', 1)
@@ -285,5 +292,151 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('locations_meta.limit', 6)
             ->assertJsonCount(6, 'locations')
             ->assertJsonMissingPath('locations.6');
+    }
+
+    public function test_dashboard_summary_limits_recent_activity_to_five_and_renames_unknown_event_type(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        $location = Location::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad Norte',
+            'code' => 'NTE',
+            'timezone' => 'America/Mexico_City',
+            'status' => 1,
+        ]);
+
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 3001,
+            'company_id' => $company->id,
+            'base_location_id' => $location->id,
+            'name' => 'Mario',
+            'last_name' => 'Sanchez',
+            'full_name' => 'Mario Sanchez',
+            'status' => 'A',
+            'has_fingerprint' => true,
+        ]);
+
+        $clock = Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'clock_name' => 'Reloj Norte',
+            'serial_number' => 'NTE-1',
+            'status' => 1,
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+            'last_heartbeat_at' => now()->subMinute(),
+        ]);
+
+        foreach (range(0, 5) as $index) {
+            AttendanceLog::query()->create([
+                'log_id' => 5000 + $index,
+                'employee_id' => $employee->id,
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'device_id' => $clock->id,
+                'log_date' => now()->subMinutes($index),
+                'log_type' => $index === 0 ? 99 : 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => ['provider' => $index === 0 ? 'face' : 'fingerprint'],
+            ]);
+        }
+
+        $response = $this->getJson(route('dashboard.summary', [
+            'range' => 'today',
+            'company_id' => $company->id,
+            'unit_id' => $location->id,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonCount(5, 'recent_activity')
+            ->assertJsonPath('recent_activity.0.event_type', 'No clasificado')
+            ->assertJsonPath('recent_activity.0.method', 'Rostro')
+            ->assertJsonPath('recent_activity.0.source_label', 'API')
+            ->assertJsonMissingPath('recent_activity.5');
+    }
+
+    public function test_dashboard_summary_converts_utc_timestamps_to_operational_timezone(): void
+    {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        $location = Location::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad Centro',
+            'code' => 'CTR',
+            'timezone' => 'America/Mexico_City',
+            'status' => 1,
+        ]);
+
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 4001,
+            'company_id' => $company->id,
+            'base_location_id' => $location->id,
+            'name' => 'Sara',
+            'last_name' => 'Mendez',
+            'full_name' => 'Sara Mendez',
+            'status' => 'A',
+            'has_fingerprint' => true,
+        ]);
+
+        $clock = Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'clock_name' => 'Reloj Centro',
+            'serial_number' => 'CTR-UTC-1',
+            'status' => 1,
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+            'last_heartbeat_at' => '2026-05-19 15:29:00',
+        ]);
+
+        AttendanceLog::query()->create([
+            'log_id' => 9001,
+            'employee_id' => $employee->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'device_id' => $clock->id,
+            'log_date' => '2026-05-19 15:25:00',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => ['provider' => 'fingerprint'],
+        ]);
+
+        $response = $this->getJson(route('dashboard.summary', [
+            'range' => 'custom',
+            'from_date' => '19/05/2026',
+            'to_date' => '19/05/2026',
+            'company_id' => $company->id,
+            'unit_id' => $location->id,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('timezone.name', 'America/Mexico_City')
+            ->assertJsonPath('recent_activity.0.occurred_at', '2026-05-19T09:25:00-06:00')
+            ->assertJsonPath('summary.latest_log_at', '2026-05-19T09:25:00-06:00');
+
+        $bullets = implode(' ', $response->json('executive_status.bullets', []));
+        $this->assertStringContainsString('19/05/2026 09:25', $bullets);
+        $this->assertStringNotContainsString('19/05/2026 15:25', $bullets);
+
+        $hourlyActivity = collect($response->json('charts.hourly_activity'));
+        $nineAmBucket = $hourlyActivity->firstWhere('hour', '09:00');
+
+        $this->assertNotNull($nineAmBucket);
+        $this->assertSame(1, (int) ($nineAmBucket['entries'] ?? 0));
+        $this->assertSame(1, (int) ($nineAmBucket['total'] ?? 0));
     }
 }

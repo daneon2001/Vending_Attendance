@@ -73,8 +73,14 @@ const percentFormatter = new Intl.NumberFormat('es-MX', {
     maximumFractionDigits: 1,
 });
 const relativeTimeFormatter = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+const DASHBOARD_TIMEZONE_FALLBACK = 'America/Mexico_City';
 
 const defaultSummary = {
+    timezone: {
+        name: DASHBOARD_TIMEZONE_FALLBACK,
+        label: 'Hora centro de Mexico',
+        offset: '-06:00',
+    },
     meta: null,
     summary: {
         employees_active: 0,
@@ -184,6 +190,10 @@ const filteredLocations = computed(() => {
 });
 
 const summaryData = computed(() => summary.value ?? defaultSummary);
+const dashboardTimezone = computed(() => summaryData.value.timezone?.name ?? DASHBOARD_TIMEZONE_FALLBACK);
+const dashboardTimezoneLabel = computed(() => summaryData.value.timezone?.label ?? 'Hora centro de Mexico');
+const dashboardTimezoneOffset = computed(() => summaryData.value.timezone?.offset ?? '-06:00');
+const dashboardTimezoneNote = computed(() => `Horarios mostrados en ${dashboardTimezoneLabel.value.toLowerCase()}.`);
 const summaryMeta = computed(() => summaryData.value.meta ?? defaultSummary.meta);
 const summaryEmpty = computed(() => summaryData.value.empty ?? false);
 const summaryMessage = computed(() => summaryData.value.message ?? 'Sin datos operativos para el rango seleccionado.');
@@ -195,12 +205,71 @@ const locationsRanking = computed(() => summaryData.value.locations ?? []);
 const locationsMeta = computed(() => summaryData.value.locations_meta ?? defaultSummary.locations_meta);
 const recentActivity = computed(() => summaryData.value.recent_activity ?? []);
 const enrollmentBlock = computed(() => summaryData.value.enrollment ?? defaultSummary.enrollment);
+const recentActivityHeadline = computed(() => {
+    const total = recentActivity.value.length;
+
+    if (total <= 0) {
+        return 'Sin registros recientes';
+    }
+
+    return total === 1 ? '1 registro reciente' : `${formatNumber(total)} registros recientes`;
+});
+
+const extractTimeZoneParts = (value, timeZone = dashboardTimezone.value) => {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+
+    const parts = Object.fromEntries(
+        formatter.formatToParts(date)
+            .filter((part) => part.type !== 'literal')
+            .map((part) => [part.type, part.value]),
+    );
+
+    return {
+        year: Number(parts.year),
+        month: Number(parts.month),
+        day: Number(parts.day),
+        hour: Number(parts.hour),
+        minute: Number(parts.minute),
+        second: Number(parts.second),
+    };
+};
+
+const buildTimeZoneCalendarDate = (value = new Date(), timeZone = dashboardTimezone.value) => {
+    const parts = extractTimeZoneParts(value, timeZone);
+
+    if (!parts) {
+        return new Date();
+    }
+
+    return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0));
+};
+
+const formatTimeZoneInputValue = (value, timeZone = dashboardTimezone.value) => {
+    const parts = extractTimeZoneParts(value, timeZone);
+
+    if (!parts) {
+        return '';
+    }
+
+    return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+};
 
 const formatInputValue = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatTimeZoneInputValue(date, dashboardTimezone.value);
 };
 
 const parseDateInput = (value) => {
@@ -218,18 +287,14 @@ const formatRequestDate = (date) => {
 };
 
 const applyRangeDefaults = (rangeValue) => {
-    const today = new Date();
-    const start = new Date(today);
-    const end = new Date(today);
+    const end = buildTimeZoneCalendarDate(new Date(), dashboardTimezone.value);
+    const start = new Date(end);
 
     if (rangeValue === '7d') {
-        start.setDate(start.getDate() - 6);
+        start.setUTCDate(start.getUTCDate() - 6);
     } else if (rangeValue === '30d') {
-        start.setDate(start.getDate() - 29);
+        start.setUTCDate(start.getUTCDate() - 29);
     }
-
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
 
     filters.from_date = formatInputValue(start);
     filters.to_date = formatInputValue(end);
@@ -390,11 +455,13 @@ const formatDateTime = (value) => {
     if (Number.isNaN(date.getTime())) return 'Sin datos';
 
     return date.toLocaleString('es-MX', {
+        timeZone: dashboardTimezone.value,
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        hour12: true,
     });
 };
 
@@ -404,8 +471,33 @@ const formatTime = (value) => {
     if (Number.isNaN(date.getTime())) return '--:--';
 
     return date.toLocaleTimeString('es-MX', {
+        timeZone: dashboardTimezone.value,
         hour: '2-digit',
         minute: '2-digit',
+        hour12: true,
+    });
+};
+
+const isToday = (value) => {
+    const dateParts = extractTimeZoneParts(value, dashboardTimezone.value);
+    const nowParts = extractTimeZoneParts(new Date(), dashboardTimezone.value);
+
+    if (!dateParts || !nowParts) return false;
+
+    return dateParts.year === nowParts.year
+        && dateParts.month === nowParts.month
+        && dateParts.day === nowParts.day;
+};
+
+const formatActivityDateLabel = (value) => {
+    if (!value || isToday(value)) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleDateString('es-MX', {
+        timeZone: dashboardTimezone.value,
+        day: '2-digit',
+        month: 'short',
     });
 };
 
@@ -428,6 +520,57 @@ const formatRelative = (value) => {
 
     const diffDays = Math.round(diffHours / 24);
     return relativeTimeFormatter.format(diffDays, 'day');
+};
+
+const resolveAttendanceEventLabel = (value) => {
+    const normalized = String(value ?? '')
+        .trim()
+        .toLowerCase();
+
+    if (['1', 'entry', 'entrada', 'in', 'check_in'].includes(normalized)) {
+        return 'Entrada';
+    }
+
+    if (['2', 'exit', 'salida', 'out', 'check_out'].includes(normalized)) {
+        return 'Salida';
+    }
+
+    if (['3', 'break'].includes(normalized)) {
+        return 'Break';
+    }
+
+    if (['4', 'return', 'regreso', 'back'].includes(normalized)) {
+        return 'Regreso';
+    }
+
+    if (['', 'null', 'undefined', 'unknown', 'desconocido', 'no clasificado'].includes(normalized)) {
+        return 'No clasificado';
+    }
+
+    return String(value ?? 'No clasificado').trim() || 'No clasificado';
+};
+
+const resolveAttendanceEventHint = (value) => (
+    resolveAttendanceEventLabel(value) === 'No clasificado'
+        ? 'No se pudo determinar si fue entrada o salida.'
+        : ''
+);
+
+const resolveAttendanceMethodLabel = (value) => {
+    const normalized = String(value ?? '').trim();
+
+    return normalized === '' ? 'No especificado' : normalized;
+};
+
+const resolveAttendanceSourceLabel = (item) => {
+    const source = String(item?.source_label ?? item?.source ?? '').trim();
+    const method = resolveAttendanceMethodLabel(item?.method);
+
+    if (source === '' || source === 'Sin fuente' || source === method) {
+        return '';
+    }
+
+    return source;
 };
 
 const resolveCompanyName = (companyId) => {
@@ -462,8 +605,15 @@ const lastRangeLabel = computed(() => {
         return 'Rango seleccionado';
     }
 
-    const format = (date) =>
-        `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+    const format = (date) => {
+        const parts = extractTimeZoneParts(date, dashboardTimezone.value);
+
+        if (!parts) {
+            return 'Rango seleccionado';
+        }
+
+        return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
+    };
 
     return `${format(from)} al ${format(to)}`;
 });
@@ -914,6 +1064,9 @@ onBeforeUnmount(() => {
                     <span class="rounded-full bg-slate-100 px-3 py-1">
                         Auto refresh cada 60 s
                     </span>
+                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                        {{ dashboardTimezoneLabel }} {{ dashboardTimezoneOffset }}
+                    </span>
                 </div>
             </div>
 
@@ -929,6 +1082,9 @@ onBeforeUnmount(() => {
                                 Ultima actualizacion {{ formatRelative(summaryBlock.last_updated_at) }}
                             </span>
                         </div>
+                        <p class="mt-2 text-xs text-muted">
+                            {{ dashboardTimezoneNote }}
+                        </p>
 
                         <h2 class="mt-4 text-3xl font-semibold text-app sm:text-4xl">
                             Estado general del dia
@@ -1178,11 +1334,14 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
 
-                    <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
-                        <p class="text-sm leading-7 text-slate-600">
-                            {{ executiveStatus.message }}
-                        </p>
-                    </div>
+                        <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                            <p class="text-sm leading-7 text-slate-600">
+                                {{ executiveStatus.message }}
+                            </p>
+                            <p class="mt-2 text-xs text-muted">
+                                {{ dashboardTimezoneNote }}
+                            </p>
+                        </div>
 
                     <div class="mt-5 space-y-3">
                         <article
@@ -1361,56 +1520,66 @@ onBeforeUnmount(() => {
                             <h2 class="mt-1 text-xl font-semibold text-app">
                                 Timeline de registros
                             </h2>
+                            <p class="mt-1 text-xs text-muted">
+                                {{ dashboardTimezoneNote }}
+                            </p>
                         </div>
-                        <span class="text-sm text-muted">{{ recentActivity.length }} registros</span>
+                        <span class="text-sm text-muted">{{ recentActivityHeadline }}</span>
                     </div>
 
-                    <div v-if="recentActivity.length" class="mt-5 space-y-4">
+                    <div v-if="recentActivity.length" class="mt-4 space-y-2.5">
                         <article
                             v-for="item in recentActivity"
                             :key="item.id"
-                            class="grid gap-4 rounded-[2rem] border border-slate-100 bg-slate-50/80 px-4 py-4 sm:grid-cols-[7rem_1fr]"
+                            class="rounded-[1.75rem] border border-slate-100 bg-slate-50/80 px-4 py-3"
                         >
-                            <div class="rounded-2xl bg-white px-3 py-4 text-center shadow-sm">
-                                <p class="text-3xl font-semibold text-app">
-                                    {{ formatTime(item.occurred_at) }}
-                                </p>
-                                <p class="mt-1 text-xs uppercase tracking-[0.3em] text-soft">
-                                    {{ item.event_type }}
-                                </p>
-                            </div>
-
-                            <div>
-                                <div class="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <p class="text-lg font-semibold text-app">
-                                            {{ item.employee_name }}
-                                        </p>
-                                        <p class="text-sm text-muted">
-                                            {{ item.unit_name }}
-                                        </p>
-                                    </div>
-                                    <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                                        {{ item.method || 'No especificado' }}
-                                    </span>
+                            <div class="flex items-start gap-4">
+                                <div class="w-20 shrink-0 rounded-2xl bg-white px-3 py-3 text-center shadow-sm">
+                                    <p class="text-lg font-semibold leading-none text-app sm:text-xl">
+                                        {{ formatTime(item.occurred_at) }}
+                                    </p>
+                                    <p
+                                        v-if="formatActivityDateLabel(item.occurred_at)"
+                                        class="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-soft"
+                                    >
+                                        {{ formatActivityDateLabel(item.occurred_at) }}
+                                    </p>
                                 </div>
 
-                                <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                                    <span class="rounded-full bg-white px-3 py-1 text-slate-600">
-                                        {{ item.clock_name }}
-                                    </span>
-                                    <span class="rounded-full bg-slate-200 px-3 py-1 text-slate-700">
-                                        {{ formatDateTime(item.occurred_at) }}
-                                    </span>
-                                    <span class="rounded-full bg-indigo-100 px-3 py-1 text-indigo-700">
-                                        {{ item.source || 'sync' }}
-                                    </span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-start justify-between gap-2">
+                                        <p class="truncate text-sm font-semibold text-app sm:text-base" :title="item.employee_name">
+                                            {{ item.employee_name }}
+                                        </p>
+                                        <span
+                                            class="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                                            :title="resolveAttendanceEventHint(item.event_type ?? item.log_type)"
+                                        >
+                                            {{ resolveAttendanceEventLabel(item.event_type ?? item.log_type) }}
+                                        </span>
+                                    </div>
+
+                                    <p class="mt-1 truncate text-xs text-muted sm:text-sm" :title="`${item.unit_name} · ${item.clock_name}`">
+                                        {{ item.unit_name }} · {{ item.clock_name }}
+                                    </p>
+
+                                    <div class="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold">
+                                        <span class="rounded-full bg-slate-900 px-2.5 py-1 text-white">
+                                            {{ resolveAttendanceMethodLabel(item.method) }}
+                                        </span>
+                                        <span
+                                            v-if="resolveAttendanceSourceLabel(item)"
+                                            class="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700"
+                                        >
+                                            {{ resolveAttendanceSourceLabel(item) }}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </article>
                     </div>
 
-                    <div v-else class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-muted">
+                    <div v-else class="mt-4 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-muted">
                         Sin registros recientes en el periodo seleccionado.
                     </div>
                 </article>
