@@ -2,23 +2,37 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ChartCard from '@/Components/ChartCard.vue';
 import Toast from '@/Components/Toast.vue';
+import UnitDetailDrawer from '@/Pages/Units/Partials/UnitDetailDrawer.vue';
 import { hasChartData } from '@/utils/chart';
 import { apiUrl } from '@/utils/url';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
+    companies: {
+        type: Array,
+        default: () => [],
+    },
     locations: {
         type: Array,
         default: () => [],
     },
 });
 
+const page = usePage();
+const permissionMatrix = computed(() => page.props.auth?.permissions ?? {});
+const can = (module, action = 'view') => {
+    const actions = permissionMatrix.value?.[module] ?? [];
+    return actions.includes(action) || actions.includes('manage');
+};
+const canViewUnitDetails = computed(() => can('units', 'view'));
+const canViewUnitsPage = computed(() => can('units', 'view'));
+
 const rangeOptions = [
     { value: 'today', label: 'Hoy' },
-    { value: '7d', label: 'Últimos 7 días' },
-    { value: '30d', label: 'Últimos 30 días' },
+    { value: '7d', label: 'Ultimos 7 dias' },
+    { value: '30d', label: 'Ultimos 30 dias' },
     { value: 'custom', label: 'Personalizado' },
 ];
 
@@ -26,6 +40,7 @@ const filters = reactive({
     range: 'today',
     from_date: '',
     to_date: '',
+    company_id: '',
     unit_id: '',
 });
 
@@ -33,9 +48,9 @@ const summary = ref(null);
 const loading = ref(false);
 const errorMessage = ref('');
 const validationError = ref('');
-const lastUpdated = ref('--');
 const requestCounter = ref(0);
-const isDev = import.meta.env.DEV;
+const chartVersion = ref(0);
+let refreshTimer = null;
 
 const toast = reactive({
     show: false,
@@ -45,15 +60,141 @@ const toast = reactive({
     duration: 5000,
 });
 
-const devLog = (...args) => {
-    if (isDev) {
-        // eslint-disable-next-line no-console
-        console.debug('[Dashboard]', ...args);
-    }
+const detailState = reactive({
+    open: false,
+    data: null,
+    loading: false,
+    error: '',
+});
+
+const numberFormatter = new Intl.NumberFormat('es-MX');
+const percentFormatter = new Intl.NumberFormat('es-MX', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+});
+const relativeTimeFormatter = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+
+const defaultSummary = {
+    meta: null,
+    summary: {
+        employees_active: 0,
+        attendance_registered: 0,
+        attendance_pending: 0,
+        attendance_coverage: 0,
+        entries_total: 0,
+        exits_total: 0,
+        latest_log_at: null,
+        last_updated_at: null,
+    },
+    clocks: {
+        total: 0,
+        online: 0,
+        offline: 0,
+        warning: 0,
+        heartbeat_recent: 0,
+        heartbeat_stale: 0,
+        never_connected: 0,
+        last_reporting_clock: null,
+        status: 'nodata',
+        status_label: 'Sin datos',
+        status_reason: 'No hay relojes configurados.',
+        online_threshold_minutes: 5,
+    },
+    executive_status: {
+        level: 'nodata',
+        title: 'Sin datos operativos',
+        message: 'No hay datos operativos suficientes para evaluar el periodo seleccionado.',
+        bullets: [],
+    },
+    alerts: [],
+    locations: [],
+    locations_meta: {
+        total: 0,
+        shown: 0,
+        has_more: false,
+        mode: 'priority',
+        message: 'Mostrando unidades que requieren mayor atencion',
+        limit: 6,
+    },
+    recent_activity: [],
+    enrollment: {
+        employees_active: 0,
+        without_fingerprint: 0,
+        without_face: 0,
+        without_any_biometric: 0,
+        with_any_biometric: 0,
+        coverage_percentage: 0,
+    },
+    kpis: {
+        checkins_total: 0,
+        employees_active: 0,
+        clocks_with_alerts: 0,
+        clocks_offline: 0,
+    },
+    charts: {
+        attendance_donut: {
+            present: 0,
+            pending: 0,
+            percentage: 0,
+        },
+        clocks_donut: {
+            online: 0,
+            offline: 0,
+            stale: 0,
+        },
+        hourly_activity: [],
+        enrollment: {
+            with_any_biometric: 0,
+            without_any_biometric: 0,
+            without_fingerprint: 0,
+            without_face: 0,
+            percentage: 0,
+        },
+        people_present_by_day: { labels: [], values: [] },
+        employees_status: { labels: [], values: [] },
+        clock_health: { labels: [], values: [] },
+        top_branches: { labels: [], values: [] },
+    },
+    empty: false,
+    message: null,
+};
+
+const showToast = ({ type = 'info', title = '', message = '', duration }) => {
+    toast.type = type;
+    toast.title = title;
+    toast.message = message;
+    toast.duration = duration ?? (type === 'error' ? 9000 : 5000);
+    toast.show = true;
+};
+
+const closeToast = () => {
+    toast.show = false;
 };
 
 const locationOptions = computed(() => props.locations ?? []);
+const companyOptions = computed(() => props.companies ?? []);
 const hasCustomRange = computed(() => filters.range === 'custom');
+
+const filteredLocations = computed(() => {
+    if (!filters.company_id) {
+        return locationOptions.value;
+    }
+
+    return locationOptions.value.filter((location) => String(location.company_id ?? '') === String(filters.company_id));
+});
+
+const summaryData = computed(() => summary.value ?? defaultSummary);
+const summaryMeta = computed(() => summaryData.value.meta ?? defaultSummary.meta);
+const summaryEmpty = computed(() => summaryData.value.empty ?? false);
+const summaryMessage = computed(() => summaryData.value.message ?? 'Sin datos operativos para el rango seleccionado.');
+const summaryBlock = computed(() => summaryData.value.summary ?? defaultSummary.summary);
+const clockBlock = computed(() => summaryData.value.clocks ?? defaultSummary.clocks);
+const executiveStatus = computed(() => summaryData.value.executive_status ?? defaultSummary.executive_status);
+const alertsList = computed(() => summaryData.value.alerts ?? []);
+const locationsRanking = computed(() => summaryData.value.locations ?? []);
+const locationsMeta = computed(() => summaryData.value.locations_meta ?? defaultSummary.locations_meta);
+const recentActivity = computed(() => summaryData.value.recent_activity ?? []);
+const enrollmentBlock = computed(() => summaryData.value.enrollment ?? defaultSummary.enrollment);
 
 const formatInputValue = (date) => {
     const year = date.getFullYear();
@@ -78,8 +219,8 @@ const formatRequestDate = (date) => {
 
 const applyRangeDefaults = (rangeValue) => {
     const today = new Date();
-    let start = new Date(today);
-    let end = new Date(today);
+    const start = new Date(today);
+    const end = new Date(today);
 
     if (rangeValue === '7d') {
         start.setDate(start.getDate() - 6);
@@ -94,21 +235,13 @@ const applyRangeDefaults = (rangeValue) => {
     filters.to_date = formatInputValue(end);
 };
 
-const showToast = ({ type = 'info', title = '', message = '', duration }) => {
-    toast.type = type;
-    toast.title = title;
-    toast.message = message;
-    toast.duration = duration ?? (type === 'error' ? 9000 : 5000);
-    toast.show = true;
-};
-
-const closeToast = () => {
-    toast.show = false;
-};
-
 const buildParams = () => {
     validationError.value = '';
     const params = { range: filters.range };
+
+    if (filters.company_id) {
+        params.company_id = filters.company_id;
+    }
 
     if (filters.unit_id) {
         params.unit_id = filters.unit_id;
@@ -137,13 +270,13 @@ const buildParams = () => {
 
 const fetchSummary = async () => {
     let params;
+
     try {
         params = buildParams();
-        devLog('Parámetros', params);
     } catch (error) {
         showToast({
             type: 'error',
-            title: 'Rango inválido',
+            title: 'Rango invalido',
             message: error.message,
         });
         return;
@@ -155,22 +288,13 @@ const fetchSummary = async () => {
 
     try {
         const { data } = await axios.get(apiUrl('/api/dashboard/summary'), { params });
+
         if (requestId !== requestCounter.value) {
             return;
         }
+
         summary.value = data;
-        lastUpdated.value = data.meta?.generated_at_local ?? '--';
-        errorMessage.value = '';
-
-        if (data.empty && data.message) {
-            showToast({
-                type: 'info',
-                title: 'Sin datos',
-                message: data.message,
-            });
-        }
-
-        devLog('Respuesta', data);
+        chartVersion.value += 1;
     } catch (error) {
         if (requestId !== requestCounter.value) {
             return;
@@ -178,11 +302,11 @@ const fetchSummary = async () => {
 
         if (error.response?.status === 422) {
             const errors = error.response?.data?.errors ?? {};
-            validationError.value = Object.values(errors)[0]?.[0] ?? 'Datos inválidos.';
+            validationError.value = Object.values(errors)[0]?.[0] ?? 'Datos invalidos.';
             errorMessage.value = validationError.value;
         } else {
             validationError.value = '';
-            errorMessage.value = error.response?.data?.message ?? 'Error al cargar la información.';
+            errorMessage.value = error.response?.data?.message ?? 'Error al cargar la informacion.';
         }
 
         showToast({
@@ -208,13 +332,14 @@ const applyCustomRange = () => {
         return;
     }
 
-    const from = parseDateInput(filters.from_date);
-    const to = parseDateInput(filters.to_date);
-    if (!from || !to || from > to) {
+    const fromDate = parseDateInput(filters.from_date);
+    const toDate = parseDateInput(filters.to_date);
+
+    if (!fromDate || !toDate || fromDate > toDate) {
         validationError.value = 'Revisa tus fechas. La inicial debe ser menor o igual a la final.';
         showToast({
             type: 'error',
-            title: 'Rango inválido',
+            title: 'Rango invalido',
             message: validationError.value,
         });
         return;
@@ -222,6 +347,417 @@ const applyCustomRange = () => {
 
     fetchSummary();
 };
+
+const viewLocationDetail = async (locationId) => {
+    if (!locationId) return;
+
+    detailState.open = true;
+    detailState.loading = true;
+    detailState.error = '';
+    detailState.data = null;
+
+    try {
+        const { data } = await axios.get(route('units.show', locationId));
+        detailState.data = data.data ?? null;
+    } catch (error) {
+        detailState.error = error.response?.data?.message ?? 'No se pudo cargar el detalle de la unidad.';
+    } finally {
+        detailState.loading = false;
+    }
+};
+
+const setupAutoRefresh = () => {
+    if (typeof window === 'undefined') return;
+
+    refreshTimer = window.setInterval(() => {
+        fetchSummary();
+    }, 60000);
+};
+
+const clearAutoRefresh = () => {
+    if (refreshTimer && typeof window !== 'undefined') {
+        window.clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+};
+
+const formatNumber = (value) => numberFormatter.format(value ?? 0);
+const formatPercent = (value) => `${percentFormatter.format(value ?? 0)}%`;
+
+const formatDateTime = (value) => {
+    if (!value) return 'Sin datos';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin datos';
+
+    return date.toLocaleString('es-MX', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
+
+const formatTime = (value) => {
+    if (!value) return '--:--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--:--';
+
+    return date.toLocaleTimeString('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
+
+const formatRelative = (value) => {
+    if (!value) return 'Sin datos';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin datos';
+
+    const diffMs = date.getTime() - Date.now();
+    const diffMinutes = Math.round(diffMs / 60000);
+
+    if (Math.abs(diffMinutes) < 60) {
+        return relativeTimeFormatter.format(diffMinutes, 'minute');
+    }
+
+    const diffHours = Math.round(diffMinutes / 60);
+    if (Math.abs(diffHours) < 24) {
+        return relativeTimeFormatter.format(diffHours, 'hour');
+    }
+
+    const diffDays = Math.round(diffHours / 24);
+    return relativeTimeFormatter.format(diffDays, 'day');
+};
+
+const resolveCompanyName = (companyId) => {
+    if (!companyId) return 'Todas las empresas';
+    const company = companyOptions.value.find((item) => String(item.id) === String(companyId));
+    if (!company) return 'Empresa seleccionada';
+    return `${company.name}${company.code ? ` (${company.code})` : ''}`;
+};
+
+const currentLocationLabel = computed(() => {
+    if (!filters.unit_id) {
+        return 'Todas las sucursales';
+    }
+
+    const location = filteredLocations.value.find((item) => String(item.id) === String(filters.unit_id));
+    if (!location) return 'Sucursal seleccionada';
+
+    return `${location.name}${location.code ? ` (${location.code})` : ''}`;
+});
+
+const lastRangeLabel = computed(() => {
+    const meta = summaryMeta.value;
+
+    if (!meta?.from || !meta?.to) {
+        return 'Rango seleccionado';
+    }
+
+    const from = new Date(meta.from);
+    const to = new Date(meta.to);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        return 'Rango seleccionado';
+    }
+
+    const format = (date) =>
+        `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+
+    return `${format(from)} al ${format(to)}`;
+});
+
+const summaryCards = computed(() => [
+    {
+        id: 'employees-active',
+        title: 'Empleados activos',
+        value: formatNumber(summaryBlock.value.employees_active ?? 0),
+        hint: 'Base operativa actual',
+        tone: 'from-slate-50 to-white',
+    },
+    {
+        id: 'attendance-registered',
+        title: 'Asistencias',
+        value: formatNumber(summaryBlock.value.attendance_registered ?? 0),
+        hint: 'Personal con al menos una marca',
+        tone: 'from-emerald-50 to-white',
+    },
+    {
+        id: 'attendance-pending',
+        title: 'Pendientes',
+        value: formatNumber(summaryBlock.value.attendance_pending ?? 0),
+        hint: 'Empleados activos sin registro',
+        tone: 'from-amber-50 to-white',
+    },
+    {
+        id: 'entries-total',
+        title: 'Entradas',
+        value: formatNumber(summaryBlock.value.entries_total ?? 0),
+        hint: 'Eventos tipo entrada',
+        tone: 'from-sky-50 to-white',
+    },
+    {
+        id: 'exits-total',
+        title: 'Salidas',
+        value: formatNumber(summaryBlock.value.exits_total ?? 0),
+        hint: 'Eventos tipo salida',
+        tone: 'from-rose-50 to-white',
+    },
+    {
+        id: 'last-updated',
+        title: 'Ultima actualizacion',
+        value: formatRelative(summaryBlock.value.last_updated_at),
+        hint: formatDateTime(summaryBlock.value.last_updated_at),
+        tone: 'from-indigo-50 to-white',
+    },
+]);
+
+const executiveHeroClasses = computed(() => {
+    switch (executiveStatus.value.level) {
+        case 'critical':
+            return {
+                panel: 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-amber-50',
+                badge: 'bg-rose-600 text-white',
+                accent: 'text-rose-700',
+                dot: 'bg-rose-500',
+            };
+        case 'warning':
+            return {
+                panel: 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50',
+                badge: 'bg-amber-500 text-white',
+                accent: 'text-amber-700',
+                dot: 'bg-amber-500',
+            };
+        case 'normal':
+            return {
+                panel: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50',
+                badge: 'bg-emerald-600 text-white',
+                accent: 'text-emerald-700',
+                dot: 'bg-emerald-500',
+            };
+        default:
+            return {
+                panel: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100',
+                badge: 'bg-slate-500 text-white',
+                accent: 'text-slate-700',
+                dot: 'bg-slate-400',
+            };
+    }
+});
+
+const heroIndicators = computed(() => [
+    {
+        id: 'coverage',
+        label: 'Cobertura asistencia',
+        value: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
+        hint: `${formatNumber(summaryBlock.value.attendance_registered ?? 0)} de ${formatNumber(summaryBlock.value.employees_active ?? 0)} empleados`,
+    },
+    {
+        id: 'clocks-online',
+        label: 'Relojes en linea',
+        value: `${formatNumber(clockBlock.value.online ?? 0)} / ${formatNumber(clockBlock.value.total ?? 0)}`,
+        hint: `${formatNumber(clockBlock.value.offline ?? 0)} sin conexion`,
+    },
+    {
+        id: 'alerts-active',
+        label: 'Alertas activas',
+        value: formatNumber(alertsList.value.length),
+        hint: `${formatNumber(alertsList.value.filter((item) => item.level === 'critical').length)} criticas`,
+    },
+]);
+
+const attendanceDonutData = computed(() => ({
+    labels: ['Asistieron', 'Pendientes'],
+    datasets: [
+        {
+            label: 'Cobertura',
+            data: [
+                summaryData.value.charts?.attendance_donut?.present ?? 0,
+                summaryData.value.charts?.attendance_donut?.pending ?? 0,
+            ],
+            backgroundColor: ['#0f766e', '#e2e8f0'],
+            borderWidth: 0,
+            hoverOffset: 6,
+        },
+    ],
+}));
+
+const clocksDonutData = computed(() => ({
+    labels: ['En linea', 'Sin conexion', 'Sin actividad'],
+    datasets: [
+        {
+            label: 'Conectividad',
+            data: [
+                summaryData.value.charts?.clocks_donut?.online ?? 0,
+                summaryData.value.charts?.clocks_donut?.offline ?? 0,
+                summaryData.value.charts?.clocks_donut?.stale ?? 0,
+            ],
+            backgroundColor: ['#16a34a', '#ef4444', '#f59e0b'],
+            borderWidth: 0,
+            hoverOffset: 6,
+        },
+    ],
+}));
+
+const hourlyActivityData = computed(() => ({
+    labels: (summaryData.value.charts?.hourly_activity ?? []).map((item) => item.hour),
+    datasets: [
+        {
+            label: 'Entradas',
+            data: (summaryData.value.charts?.hourly_activity ?? []).map((item) => item.entries ?? 0),
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+            fill: true,
+            tension: 0.35,
+        },
+        {
+            label: 'Salidas',
+            data: (summaryData.value.charts?.hourly_activity ?? []).map((item) => item.exits ?? 0),
+            borderColor: '#e11d48',
+            backgroundColor: 'rgba(225, 29, 72, 0.08)',
+            fill: false,
+            tension: 0.35,
+        },
+        {
+            label: 'Total',
+            data: (summaryData.value.charts?.hourly_activity ?? []).map((item) => item.total ?? 0),
+            borderColor: '#0f766e',
+            backgroundColor: 'rgba(15, 118, 110, 0.08)',
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0.25,
+        },
+    ],
+}));
+
+const peopleChartData = computed(() => ({
+    labels: summaryData.value.charts?.people_present_by_day?.labels ?? [],
+    datasets: [
+        {
+            label: 'Personas presentes',
+            data: summaryData.value.charts?.people_present_by_day?.values ?? [],
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.14)',
+            tension: 0.35,
+            fill: true,
+        },
+    ],
+}));
+
+const employeeStatusData = computed(() => ({
+    labels: summaryData.value.charts?.employees_status?.labels ?? [],
+    datasets: [
+        {
+            label: 'Colaboradores',
+            data: summaryData.value.charts?.employees_status?.values ?? [],
+            backgroundColor: ['#16a34a', '#e11d48'],
+            borderWidth: 0,
+        },
+    ],
+}));
+
+const topBranchesData = computed(() => ({
+    labels: summaryData.value.charts?.top_branches?.labels ?? [],
+    datasets: [
+        {
+            label: 'Asistencias por unidad',
+            data: summaryData.value.charts?.top_branches?.values ?? [],
+            backgroundColor: '#0f766e',
+            borderRadius: 12,
+            borderSkipped: false,
+        },
+    ],
+}));
+
+const attendanceHasData = computed(() => hasChartData(attendanceDonutData.value));
+const clocksHasData = computed(() => hasChartData(clocksDonutData.value));
+const hourlyHasData = computed(() => hasChartData(hourlyActivityData.value));
+const presenceHasData = computed(() => hasChartData(peopleChartData.value));
+const employeeStatusHasData = computed(() => hasChartData(employeeStatusData.value));
+const topBranchesHasData = computed(() => hasChartData(topBranchesData.value));
+
+const attendanceChartOptions = {
+    cutout: '72%',
+    plugins: {
+        legend: { position: 'bottom' },
+    },
+};
+
+const clocksChartOptions = {
+    cutout: '70%',
+    plugins: {
+        legend: { position: 'bottom' },
+    },
+};
+
+const hourlyChartOptions = {
+    plugins: {
+        legend: { position: 'bottom' },
+    },
+    scales: {
+        y: {
+            beginAtZero: true,
+        },
+    },
+};
+
+const locationStatusClasses = (status) => {
+    switch (status) {
+        case 'normal':
+            return 'bg-emerald-100 text-emerald-700';
+        case 'warning':
+            return 'bg-amber-100 text-amber-700';
+        case 'critical':
+            return 'bg-rose-100 text-rose-700';
+        default:
+            return 'bg-slate-100 text-slate-600';
+    }
+};
+
+const alertGroups = computed(() => {
+    const alerts = alertsList.value;
+    const definitions = [
+        {
+            key: 'critical',
+            title: 'Criticas',
+            description: 'Requieren accion inmediata.',
+            wrap: 'border-rose-200 bg-rose-50',
+            badge: 'bg-rose-600 text-white',
+            text: 'text-rose-700',
+        },
+        {
+            key: 'warning',
+            title: 'Atencion',
+            description: 'Seguimiento preventivo durante el dia.',
+            wrap: 'border-amber-200 bg-amber-50',
+            badge: 'bg-amber-500 text-white',
+            text: 'text-amber-700',
+        },
+        {
+            key: 'info',
+            title: 'Informativas',
+            description: 'Contexto operativo complementario.',
+            wrap: 'border-sky-200 bg-sky-50',
+            badge: 'bg-sky-600 text-white',
+            text: 'text-sky-700',
+        },
+    ];
+
+    return definitions.map((group) => ({
+        ...group,
+        items: alerts.filter((alert) => alert.level === group.key),
+        count: alerts.filter((alert) => alert.level === group.key).length,
+    }));
+});
+
+const enrollmentRingStyle = computed(() => {
+    const percentage = Math.max(0, Math.min(summaryData.value.charts?.enrollment?.percentage ?? 0, 100));
+
+    return {
+        background: `conic-gradient(#2563eb 0 ${percentage}%, #e2e8f0 ${percentage}% 100%)`,
+    };
+});
 
 watch(
     () => filters.range,
@@ -237,6 +773,20 @@ watch(
 );
 
 watch(
+    () => filters.company_id,
+    () => {
+        const validLocationIds = new Set(filteredLocations.value.map((location) => String(location.id)));
+
+        if (filters.unit_id && !validLocationIds.has(String(filters.unit_id))) {
+            filters.unit_id = '';
+            return;
+        }
+
+        fetchSummary();
+    },
+);
+
+watch(
     () => filters.unit_id,
     () => {
         fetchSummary();
@@ -246,171 +796,39 @@ watch(
 onMounted(() => {
     applyRangeDefaults(filters.range);
     fetchSummary();
+    setupAutoRefresh();
 });
 
-const summaryData = computed(() => summary.value ?? { meta: null, kpis: {}, charts: {} });
-const summaryEmpty = computed(() => summary.value?.empty ?? false);
-const emptyMessage = computed(() => summary.value?.message ?? 'Sin datos para el rango seleccionado.');
-const chartsLoading = computed(() => loading.value && !summary.value);
-const chartError = computed(() => (errorMessage.value ? errorMessage.value : null));
-
-const kpiCards = computed(() => {
-    const kpis = summary.value?.kpis ?? {};
-    return [
-        {
-            id: 'checkins',
-            title: 'Checadas registradas',
-            value: kpis.checkins_total ?? 0,
-            hint: 'Movimientos en el rango',
-            accent: 'from-indigo-50 to-white dark:from-indigo-900/30 dark:to-slate-900',
-        },
-        {
-            id: 'employees-active',
-            title: 'Empleados activos',
-            value: kpis.employees_active ?? 0,
-            hint: 'Catálogo vivo',
-            accent: 'from-emerald-50 to-white dark:from-emerald-900/30 dark:to-slate-900',
-        },
-        {
-            id: 'clocks-warning',
-            title: 'Relojes con alertas',
-            value: kpis.clocks_with_alerts ?? 0,
-            hint: 'Necesitan seguimiento',
-            accent: 'from-amber-50 to-white dark:from-amber-900/30 dark:to-slate-900',
-        },
-        {
-            id: 'clocks-offline',
-            title: 'Relojes sin conexión',
-            value: kpis.clocks_offline ?? 0,
-            hint: 'Prioriza soporte',
-            accent: 'from-rose-50 to-white dark:from-rose-900/30 dark:to-slate-900',
-        },
-    ];
+onBeforeUnmount(() => {
+    clearAutoRefresh();
 });
-
-const peopleChartData = computed(() => ({
-    labels: summary.value?.charts?.people_present_by_day?.labels ?? [],
-    datasets: [
-        {
-            label: 'Personas presentes',
-            data: summary.value?.charts?.people_present_by_day?.values ?? [],
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99, 102, 241, 0.15)',
-            tension: 0.35,
-            fill: true,
-        },
-    ],
-}));
-
-const employeeStatusData = computed(() => ({
-    labels: summary.value?.charts?.employees_status?.labels ?? [],
-    datasets: [
-        {
-            label: 'Colaboradores',
-            data: summary.value?.charts?.employees_status?.values ?? [],
-            backgroundColor: ['#22c55e', '#e11d48'],
-            borderWidth: 0,
-        },
-    ],
-}));
-
-const clockHealthData = computed(() => ({
-    labels: summary.value?.charts?.clock_health?.labels ?? [],
-    datasets: [
-        {
-            label: 'Relojes',
-            data: summary.value?.charts?.clock_health?.values ?? [],
-            backgroundColor: ['#22c55e', '#f97316', '#ef4444'],
-            borderWidth: 0,
-        },
-    ],
-}));
-
-const chartKeys = reactive({
-    people: 0,
-    employeeStatus: 0,
-    clockHealth: 0,
-});
-
-watch(peopleChartData, () => {
-    chartKeys.people += 1;
-    devLog('Dataset personas', peopleChartData.value);
-}, { deep: true });
-
-watch(employeeStatusData, () => {
-    chartKeys.employeeStatus += 1;
-    devLog('Dataset empleados', employeeStatusData.value);
-}, { deep: true });
-
-watch(clockHealthData, () => {
-    chartKeys.clockHealth += 1;
-    devLog('Dataset relojes', clockHealthData.value);
-}, { deep: true });
-
-const presenceHasData = computed(() => hasChartData(peopleChartData.value));
-const employeeStatusHasData = computed(() => hasChartData(employeeStatusData.value));
-const clockHealthHasData = computed(() => hasChartData(clockHealthData.value));
-
-const lastRangeLabel = computed(() => {
-    if (!summary.value?.meta) {
-        return 'Rango seleccionado';
-    }
-
-    const meta = summary.value.meta;
-    const from = meta.from ? new Date(meta.from) : null;
-    const to = meta.to ? new Date(meta.to) : null;
-
-    if (!from || !to) {
-        return 'Rango seleccionado';
-    }
-
-    const format = (date) =>
-        `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-
-    return `${format(from)} al ${format(to)}`;
-});
-
-const currentLocationLabel = computed(() => {
-    if (!filters.unit_id) {
-        return 'Todas las sucursales';
-    }
-    const location = locationOptions.value.find((loc) => String(loc.id) === String(filters.unit_id));
-    if (!location) return 'Sucursal seleccionada';
-    return `${location.name}${location.code ? ` (${location.code})` : ''}`;
-});
-
-const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0);
 </script>
 
 <template>
-    <Head title="Panel general" />
+    <Head title="Dashboard ejecutivo" />
 
     <AuthenticatedLayout>
         <template #header>
             <div>
                 <h1 class="text-app text-2xl font-semibold leading-tight">
-                    Panel general
+                    Dashboard general
                 </h1>
                 <p class="text-sm text-muted">
-                    Seguimiento consolidado de asistencias y dispositivos.
+                    Centro de mando ejecutivo para asistencia, biometria y conectividad.
                 </p>
             </div>
         </template>
 
         <section class="space-y-6">
-            <div class="card flex flex-col gap-4 px-4 py-4 sm:px-6">
+            <div class="card px-4 py-4 sm:px-6">
                 <div class="flex flex-wrap items-end gap-4">
                     <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
                         Rango
                         <select
                             v-model="filters.range"
-                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900 sm:w-auto"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
                         >
-                            <option
-                                v-for="option in rangeOptions"
-                                :key="option.value"
-                                :value="option.value"
-                            >
+                            <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
                             </option>
                         </select>
@@ -418,27 +836,27 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
 
                     <div
                         v-if="hasCustomRange"
-                        class="grid w-full gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:grid-cols-2 lg:w-auto lg:grid-cols-[1fr_1fr_auto]"
+                        class="grid w-full gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:grid-cols-2 xl:w-auto xl:grid-cols-[1fr_1fr_auto]"
                     >
-                        <label class="flex flex-col gap-2 sm:flex-col">
+                        <label class="flex flex-col gap-2">
                             Desde
                             <input
                                 v-model="filters.from_date"
                                 type="date"
-                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
                             />
                         </label>
-                        <label class="flex flex-col gap-2 sm:flex-col">
+                        <label class="flex flex-col gap-2">
                             Hasta
                             <input
                                 v-model="filters.to_date"
                                 type="date"
-                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900"
+                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
                             />
                         </label>
                         <button
                             type="button"
-                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500 lg:w-auto"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500 xl:w-auto"
                             :disabled="loading"
                             @click="applyCustomRange"
                         >
@@ -447,151 +865,676 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
                     </div>
 
                     <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
+                        Empresa
+                        <select
+                            v-model="filters.company_id"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
+                        >
+                            <option value="">Todas</option>
+                            <option v-for="company in companyOptions" :key="company.id" :value="company.id">
+                                {{ company.name }}{{ company.code ? ` (${company.code})` : '' }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
                         Sucursal
                         <select
                             v-model="filters.unit_id"
-                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold dark:bg-slate-900 sm:w-auto"
+                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
                         >
                             <option value="">Todas</option>
-                            <option
-                                v-for="location in locationOptions"
-                                :key="location.id"
-                                :value="location.id"
-                            >
-                                {{ location.name }} {{ location.code ? `(${location.code})` : '' }}
+                            <option v-for="location in filteredLocations" :key="location.id" :value="location.id">
+                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
                             </option>
                         </select>
                     </label>
 
                     <button
                         type="button"
-                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40 sm:w-auto"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:w-auto"
                         :disabled="loading"
                         @click="fetchSummary"
                     >
-                        <span v-if="loading">Actualizando…</span>
-                        <span v-else>Actualizar</span>
-                        <span aria-hidden="true">↻</span>
+                        <span v-if="loading">Actualizando...</span>
+                        <span v-else>Actualizar dashboard</span>
                     </button>
+                </div>
 
-                    <div class="min-w-0 w-full space-y-1 text-left sm:ml-auto sm:w-auto sm:min-w-[200px] sm:text-right">
-                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                            Última actualización
+                <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                        {{ resolveCompanyName(filters.company_id) }}
+                    </span>
+                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                        {{ currentLocationLabel }}
+                    </span>
+                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                        {{ lastRangeLabel }}
+                    </span>
+                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                        Auto refresh cada 60 s
+                    </span>
+                </div>
+            </div>
+
+            <article class="card overflow-hidden border px-5 py-5 sm:px-6" :class="executiveHeroClasses.panel">
+                <div class="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]" :class="executiveHeroClasses.badge">
+                                <span class="h-2.5 w-2.5 rounded-full bg-white/90" />
+                                {{ executiveStatus.title }}
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-muted">
+                                Ultima actualizacion {{ formatRelative(summaryBlock.last_updated_at) }}
+                            </span>
+                        </div>
+
+                        <h2 class="mt-4 text-3xl font-semibold text-app sm:text-4xl">
+                            Estado general del dia
+                        </h2>
+                        <p class="mt-3 max-w-3xl text-base leading-7 text-slate-600">
+                            {{ executiveStatus.message }}
                         </p>
-                        <p class="text-app text-base font-semibold">
-                            {{ lastUpdated }}
-                        </p>
-                        <p class="text-xs text-muted">
-                            {{ currentLocationLabel }}
-                        </p>
+
+                        <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                            <article
+                                v-for="indicator in heroIndicators"
+                                :key="indicator.id"
+                                class="rounded-3xl border border-white/70 bg-white/80 px-4 py-4 shadow-sm backdrop-blur"
+                            >
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                    {{ indicator.label }}
+                                </p>
+                                <p class="mt-3 text-3xl font-semibold text-app">
+                                    {{ indicator.value }}
+                                </p>
+                                <p class="mt-2 text-sm text-muted">
+                                    {{ indicator.hint }}
+                                </p>
+                            </article>
+                        </div>
+                    </div>
+
+                    <div class="rounded-[2rem] border border-white/80 bg-white/80 p-5 shadow-sm backdrop-blur">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                    Lectura ejecutiva
+                                </p>
+                                <h3 class="mt-1 text-xl font-semibold text-app">
+                                    Lo que importa ahora
+                                </h3>
+                            </div>
+                            <span class="h-3.5 w-3.5 rounded-full" :class="executiveHeroClasses.dot" />
+                        </div>
+
+                        <ul class="mt-5 space-y-3 text-sm text-slate-600">
+                            <li
+                                v-for="(bullet, index) in executiveStatus.bullets"
+                                :key="`${index}-${bullet}`"
+                                class="flex gap-3 rounded-2xl bg-slate-50 px-3 py-3"
+                            >
+                                <span class="mt-1 h-2 w-2 rounded-full bg-slate-400" />
+                                <span>{{ bullet }}</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
-                <p class="text-xs text-muted">
-                    Intervalo aplicado: {{ lastRangeLabel }}
-                </p>
-                <p v-if="validationError" class="text-xs font-semibold text-rose-600">
-                    {{ validationError }}
-                </p>
-            </div>
+            </article>
 
-            <div
-                v-if="errorMessage"
-                class="card flex flex-wrap items-center justify-between gap-3 border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
-            >
-                <span>{{ errorMessage }}</span>
-                <button
-                    type="button"
-                    class="w-full rounded-2xl border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-rose-600 hover:bg-rose-100 dark:border-rose-500/60 dark:hover:bg-rose-900/30 sm:w-auto"
-                    @click="fetchSummary"
-                >
-                    Reintentar
-                </button>
-            </div>
-            <div
-                v-else-if="summaryEmpty"
-                class="card border border-slate-100 bg-white/80 px-4 py-3 text-sm text-muted dark:border-slate-800 dark:bg-slate-900/40"
-            >
-                {{ emptyMessage }}
-            </div>
-
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                 <article
-                    v-for="card in kpiCards"
-                    :key="card.id"
-                    class="rounded-3xl border border-white/50 bg-gradient-to-br p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800"
-                    :class="card.accent"
+                    v-for="item in summaryCards"
+                    :key="item.id"
+                    class="card bg-gradient-to-br px-4 py-4"
+                    :class="item.tone"
                 >
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
-                        {{ card.title }}
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                        {{ item.title }}
                     </p>
                     <p class="mt-3 text-3xl font-semibold text-app">
-                        <span v-if="!loading">{{ formatNumber(card.value) }}</span>
-                        <span v-else class="inline-block h-8 w-24 animate-pulse rounded-full bg-white/40 dark:bg-slate-800/80" />
+                        {{ item.value }}
                     </p>
-                    <p class="text-sm text-muted">
-                        {{ card.hint }}
+                    <p class="mt-2 text-sm text-muted">
+                        {{ item.hint }}
                     </p>
                 </article>
             </div>
 
-            <div class="grid gap-6 lg:grid-cols-2">
+            <div class="grid gap-6 xl:grid-cols-3 xl:items-start">
+                <ChartCard
+                    title="Asistencia del dia"
+                    description="Asistieron vs pendientes"
+                    type="doughnut"
+                    :options="attendanceChartOptions"
+                    :dataset="attendanceDonutData"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
+                    :has-data="attendanceHasData"
+                    :chart-key="chartVersion"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin registros de asistencia para el periodo"
+                >
+                    <template #footer>
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                                <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">Asistieron</p>
+                                <p class="mt-2 text-2xl font-semibold text-emerald-700">{{ formatNumber(summaryData.charts.attendance_donut.present) }}</p>
+                            </div>
+                            <div class="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-3">
+                                <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-700">Pendientes</p>
+                                <p class="mt-2 text-2xl font-semibold text-amber-700">{{ formatNumber(summaryData.charts.attendance_donut.pending) }}</p>
+                            </div>
+                        </div>
+                    </template>
+                </ChartCard>
+
+                <ChartCard
+                    title="Estado de relojes"
+                    description="En linea, sin conexion y sin actividad"
+                    type="doughnut"
+                    :options="clocksChartOptions"
+                    :dataset="clocksDonutData"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
+                    :has-data="clocksHasData"
+                    :chart-key="chartVersion + 1"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin relojes configurados"
+                >
+                    <template #footer>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-sm font-semibold text-app">{{ clockBlock.status_label }}</span>
+                                <span class="rounded-full px-3 py-1 text-[11px] font-semibold uppercase" :class="executiveHeroClasses.badge">
+                                    {{ clockBlock.status }}
+                                </span>
+                            </div>
+                            <div class="grid gap-2 sm:grid-cols-3 text-sm">
+                                <div class="rounded-2xl bg-emerald-50 px-3 py-3 text-center">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">En linea</p>
+                                    <p class="mt-1 text-xl font-semibold text-emerald-700">{{ formatNumber(clockBlock.online) }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-rose-50 px-3 py-3 text-center">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-rose-700">Offline</p>
+                                    <p class="mt-1 text-xl font-semibold text-rose-700">{{ formatNumber(clockBlock.offline) }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-amber-50 px-3 py-3 text-center">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-700">Sin actividad</p>
+                                    <p class="mt-1 text-xl font-semibold text-amber-700">{{ formatNumber(clockBlock.heartbeat_stale) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </ChartCard>
+
+                <ChartCard
+                    title="Linea de tiempo por hora"
+                    description="Actividad real del dia"
+                    :options="hourlyChartOptions"
+                    :dataset="hourlyActivityData"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
+                    :has-data="hourlyHasData"
+                    :chart-key="chartVersion + 2"
+                    height-class="h-60 sm:h-64 lg:h-[21rem]"
+                    content-class="p-5"
+                    empty-text="No hay actividad horaria para el periodo"
+                >
+                    <template #footer>
+                        <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+                            <span>Heartbeat reciente: {{ formatNumber(clockBlock.heartbeat_recent) }}</span>
+                            <span v-if="clockBlock.last_reporting_clock">
+                                Ultimo reloj: {{ clockBlock.last_reporting_clock.name }}
+                            </span>
+                            <span v-else>Sin registros recientes</span>
+                        </div>
+                    </template>
+                </ChartCard>
+            </div>
+
+            <div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] xl:items-start">
+                <article class="card relative isolate overflow-hidden px-5 py-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Alertas agrupadas
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Prioridades operativas
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ alertsList.length ? `${alertsList.length} alertas` : 'Sin alertas' }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 grid gap-4">
+                        <article
+                            v-for="group in alertGroups"
+                            :key="group.key"
+                            class="relative overflow-hidden rounded-3xl border px-4 py-4"
+                            :class="group.wrap"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="text-lg font-semibold" :class="group.text">
+                                            {{ group.title }}
+                                        </h3>
+                                        <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="group.badge">
+                                            {{ formatNumber(group.count) }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-sm" :class="group.text">
+                                        {{ group.description }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-if="group.items.length" class="mt-4 space-y-3">
+                                <article
+                                    v-for="item in group.items"
+                                    :key="item.id"
+                                    class="rounded-2xl bg-white/80 px-3 py-3 text-sm text-slate-700"
+                                >
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="font-semibold text-app">
+                                                {{ item.title }}
+                                            </p>
+                                            <p class="mt-1 text-sm text-muted">
+                                                {{ item.message }}
+                                            </p>
+                                        </div>
+                                        <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+                                            {{ formatNumber(item.metric) }}
+                                        </span>
+                                    </div>
+                                </article>
+                            </div>
+                            <div v-else class="mt-4 rounded-2xl bg-white/70 px-3 py-3 text-sm text-muted">
+                                Sin alertas en este grupo.
+                            </div>
+                        </article>
+                    </div>
+                </article>
+
+                <article class="card relative isolate overflow-hidden px-5 py-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Lectura ejecutiva
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Resumen integrado
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ executiveStatus.title }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                        <p class="text-sm leading-7 text-slate-600">
+                            {{ executiveStatus.message }}
+                        </p>
+                    </div>
+
+                    <div class="mt-5 space-y-3">
+                        <article
+                            v-for="(bullet, index) in executiveStatus.bullets"
+                            :key="`${index}-${bullet}`"
+                            class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm"
+                        >
+                            <div class="flex gap-3">
+                                <span class="mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                                <p class="text-sm text-slate-700">
+                                    {{ bullet }}
+                                </p>
+                            </div>
+                        </article>
+                    </div>
+                </article>
+            </div>
+
+            <article class="card px-5 py-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                            Mapa operativo por unidad
+                        </p>
+                        <h2 class="mt-1 text-xl font-semibold text-app">
+                            Cobertura y conectividad por sucursal
+                        </h2>
+                        <p class="mt-2 text-sm text-muted">
+                            {{ locationsMeta.message }}
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-sm text-muted">
+                        <span class="rounded-full bg-slate-100 px-3 py-1">
+                            {{ locationsMeta.shown }} de {{ locationsMeta.total }} unidades mostradas
+                        </span>
+                        <Link
+                            v-if="canViewUnitsPage && locationsMeta.has_more"
+                            :href="route('units.index')"
+                            class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-app transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                        >
+                            Ver todas las unidades
+                        </Link>
+                    </div>
+                </div>
+
+                <div v-if="locationsRanking.length" class="mt-5 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+                    <article
+                        v-for="location in locationsRanking"
+                        :key="location.id"
+                        class="rounded-[2rem] border border-slate-100 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-4 py-4 shadow-sm"
+                    >
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-base font-semibold text-app">
+                                    {{ location.name }}
+                                </p>
+                                <p class="text-xs text-muted">
+                                    {{ location.code || 'Sin codigo' }}
+                                </p>
+                            </div>
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="locationStatusClasses(location.status)">
+                                {{ location.status_label }}
+                            </span>
+                        </div>
+
+                        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Asistencia</p>
+                                <p class="mt-1 text-2xl font-semibold text-app">
+                                    {{ formatPercent(location.attendance_coverage) }}
+                                </p>
+                            </div>
+                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Online</p>
+                                <p class="mt-1 text-2xl font-semibold text-emerald-700">
+                                    {{ formatNumber(location.clocks_online) }}
+                                </p>
+                            </div>
+                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Offline</p>
+                                <p class="mt-1 text-2xl font-semibold text-rose-700">
+                                    {{ formatNumber(location.clocks_offline) }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                <span>Avance de asistencia</span>
+                                <span>{{ formatNumber(location.attendance_registered) }} / {{ formatNumber(location.employees_active) }}</span>
+                            </div>
+                            <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 transition-all"
+                                    :style="{ width: `${Math.min(location.attendance_coverage ?? 0, 100)}%` }"
+                                />
+                            </div>
+                        </div>
+
+                        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+                            <span>
+                                {{ location.employees_active > 0 ? `${formatNumber(location.employees_active)} empleados activos` : 'Sin empleados activos' }}
+                            </span>
+                            <button
+                                v-if="canViewUnitDetails"
+                                type="button"
+                                class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-app transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                                @click="viewLocationDetail(location.id)"
+                            >
+                                Ver detalle
+                            </button>
+                        </div>
+                    </article>
+                </div>
+
+                <div v-else class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-muted">
+                    No hay unidades configuradas para los filtros seleccionados.
+                </div>
+
+                <div v-if="locationsRanking.length" class="mt-6 overflow-x-auto rounded-3xl border border-slate-100">
+                    <table class="min-w-full divide-y divide-slate-100 text-sm">
+                        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                            <tr>
+                                <th class="px-5 py-3">Unidad</th>
+                                <th class="px-4 py-3 text-right">Activos</th>
+                                <th class="px-4 py-3 text-right">Asistencias</th>
+                                <th class="px-4 py-3 text-right">% asistencia</th>
+                                <th class="px-4 py-3 text-right">Online</th>
+                                <th class="px-4 py-3 text-right">Offline</th>
+                                <th class="px-4 py-3">Estado</th>
+                                <th v-if="canViewUnitDetails" class="px-5 py-3 text-right">Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="row in locationsRanking"
+                                :key="`table-${row.id}`"
+                                class="border-t border-slate-100 hover:bg-slate-50/80"
+                            >
+                                <td class="px-5 py-3">
+                                    <p class="font-semibold text-app">{{ row.name }}</p>
+                                    <p class="text-xs text-muted">{{ row.code || 'Sin codigo' }}</p>
+                                </td>
+                                <td class="px-4 py-3 text-right text-app">{{ formatNumber(row.employees_active) }}</td>
+                                <td class="px-4 py-3 text-right text-app">{{ formatNumber(row.attendance_registered) }}</td>
+                                <td class="px-4 py-3 text-right text-app">{{ formatPercent(row.attendance_coverage) }}</td>
+                                <td class="px-4 py-3 text-right text-emerald-700">{{ formatNumber(row.clocks_online) }}</td>
+                                <td class="px-4 py-3 text-right text-rose-700">{{ formatNumber(row.clocks_offline) }}</td>
+                                <td class="px-4 py-3">
+                                    <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="locationStatusClasses(row.status)">
+                                        {{ row.status_label }}
+                                    </span>
+                                </td>
+                                <td v-if="canViewUnitDetails" class="px-5 py-3 text-right">
+                                    <button
+                                        type="button"
+                                        class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-app transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                                        @click="viewLocationDetail(row.id)"
+                                    >
+                                        Ver detalle
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <div class="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
+                <article class="card px-5 py-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Actividad reciente
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Timeline de registros
+                            </h2>
+                        </div>
+                        <span class="text-sm text-muted">{{ recentActivity.length }} registros</span>
+                    </div>
+
+                    <div v-if="recentActivity.length" class="mt-5 space-y-4">
+                        <article
+                            v-for="item in recentActivity"
+                            :key="item.id"
+                            class="grid gap-4 rounded-[2rem] border border-slate-100 bg-slate-50/80 px-4 py-4 sm:grid-cols-[7rem_1fr]"
+                        >
+                            <div class="rounded-2xl bg-white px-3 py-4 text-center shadow-sm">
+                                <p class="text-3xl font-semibold text-app">
+                                    {{ formatTime(item.occurred_at) }}
+                                </p>
+                                <p class="mt-1 text-xs uppercase tracking-[0.3em] text-soft">
+                                    {{ item.event_type }}
+                                </p>
+                            </div>
+
+                            <div>
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p class="text-lg font-semibold text-app">
+                                            {{ item.employee_name }}
+                                        </p>
+                                        <p class="text-sm text-muted">
+                                            {{ item.unit_name }}
+                                        </p>
+                                    </div>
+                                    <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+                                        {{ item.method || 'No especificado' }}
+                                    </span>
+                                </div>
+
+                                <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                                    <span class="rounded-full bg-white px-3 py-1 text-slate-600">
+                                        {{ item.clock_name }}
+                                    </span>
+                                    <span class="rounded-full bg-slate-200 px-3 py-1 text-slate-700">
+                                        {{ formatDateTime(item.occurred_at) }}
+                                    </span>
+                                    <span class="rounded-full bg-indigo-100 px-3 py-1 text-indigo-700">
+                                        {{ item.source || 'sync' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+
+                    <div v-else class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-muted">
+                        Sin registros recientes en el periodo seleccionado.
+                    </div>
+                </article>
+
+                <article class="card px-5 py-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Enrolamiento biometrico
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Cobertura de biometria
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
+                            {{ formatPercent(summaryData.charts.enrollment.percentage) }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 grid gap-5 lg:grid-cols-[13rem_1fr]">
+                        <div class="flex flex-col items-center justify-center rounded-[2rem] border border-slate-100 bg-slate-50 px-4 py-5">
+                            <div class="flex h-36 w-36 items-center justify-center rounded-full p-3" :style="enrollmentRingStyle">
+                                <div class="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
+                                    <p class="text-3xl font-semibold text-app">
+                                        {{ formatPercent(summaryData.charts.enrollment.percentage) }}
+                                    </p>
+                                    <p class="mt-1 text-xs uppercase tracking-[0.3em] text-soft">
+                                        Cobertura
+                                    </p>
+                                </div>
+                            </div>
+                            <p class="mt-4 text-center text-sm text-muted">
+                                {{ formatPercent(summaryData.charts.enrollment.percentage) }} del personal activo cuenta con al menos una biometria.
+                            </p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="rounded-3xl border border-slate-100 bg-white px-4 py-4">
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                    Con al menos una biometria
+                                </p>
+                                <p class="mt-2 text-3xl font-semibold text-app">
+                                    {{ formatNumber(enrollmentBlock.with_any_biometric) }}
+                                </p>
+                                <p class="text-sm text-muted">
+                                    Sobre {{ formatNumber(enrollmentBlock.employees_active) }} empleados activos.
+                                </p>
+                            </div>
+
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div class="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4">
+                                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Sin huella</p>
+                                    <p class="mt-2 text-3xl font-semibold text-amber-700">{{ formatNumber(enrollmentBlock.without_fingerprint) }}</p>
+                                </div>
+                                <div class="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-4">
+                                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-sky-700">Sin Face ID</p>
+                                    <p class="mt-2 text-3xl font-semibold text-sky-700">{{ formatNumber(enrollmentBlock.without_face) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4">
+                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-700">Sin ningun metodo</p>
+                                <p class="mt-2 text-3xl font-semibold text-rose-700">{{ formatNumber(enrollmentBlock.without_any_biometric) }}</p>
+                                <div class="mt-4 h-3 overflow-hidden rounded-full bg-white">
+                                    <div
+                                        class="h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 transition-all"
+                                        :style="{ width: `${Math.min(summaryData.charts.enrollment.percentage ?? 0, 100)}%` }"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-3">
                 <ChartCard
                     title="Personas presentes"
                     description="Colaboradores con al menos una checada"
                     :dataset="peopleChartData"
-                    :loading="chartsLoading"
-                    :error="chartError"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
                     :has-data="presenceHasData"
-                    :chart-key="chartKeys.people"
-                    empty-text="Sin datos para el rango seleccionado"
+                    :chart-key="chartVersion + 3"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin personas registradas en el periodo"
                 />
+
                 <ChartCard
                     title="Estado de empleados"
                     description="Activos vs bajas"
                     type="doughnut"
-                    :options="{ plugins: { legend: { position: 'bottom' } } }"
+                    :options="{ plugins: { legend: { position: 'bottom' } }, cutout: '68%' }"
                     :dataset="employeeStatusData"
-                    :loading="chartsLoading"
-                    :error="chartError"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
                     :has-data="employeeStatusHasData"
-                    :chart-key="chartKeys.employeeStatus"
-                    empty-text="Sin datos para el rango seleccionado"
+                    :chart-key="chartVersion + 4"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin empleados para el filtro actual"
                 />
+
                 <ChartCard
-                    title="Salud de relojes"
-                    description="Monitoreo general"
-                    type="doughnut"
-                    :options="{ plugins: { legend: { position: 'bottom' } } }"
-                    :dataset="clockHealthData"
-                    :loading="chartsLoading"
-                    :error="chartError"
-                    :has-data="clockHealthHasData"
-                    :chart-key="chartKeys.clockHealth"
-                    empty-text="Sin datos para el rango seleccionado"
+                    title="Volumen por unidad"
+                    description="Top sucursales con registros"
+                    type="bar"
+                    :dataset="topBranchesData"
+                    :loading="loading && !summary"
+                    :error="errorMessage || null"
+                    :has-data="topBranchesHasData"
+                    :chart-key="chartVersion + 5"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin unidades con registros para el periodo"
                 />
-                <article class="card flex flex-col justify-between px-6 py-5">
-                    <div>
-                        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                            Contexto del periodo
-                        </p>
-                        <p class="mt-2 text-lg font-semibold text-app">
-                            {{ lastRangeLabel }}
-                        </p>
-                        <p class="text-sm text-muted">
-                            {{ currentLocationLabel }}
-                        </p>
-                    </div>
-                    <div class="mt-4 space-y-2 text-sm text-muted">
-                        <p>
-                            <span class="font-semibold text-app">Checadas:</span>
-                            {{ formatNumber(summaryData.kpis?.checkins_total ?? 0) }}
-                        </p>
-                        <p>
-                            <span class="font-semibold text-app">Última actualización:</span>
-                            {{ lastUpdated }}
-                        </p>
-                    </div>
-                </article>
+            </div>
+
+            <div
+                v-if="summaryEmpty && !errorMessage"
+                class="card border border-slate-100 bg-white px-5 py-4 text-sm text-muted"
+            >
+                {{ summaryMessage }}
             </div>
         </section>
 
@@ -602,6 +1545,14 @@ const formatNumber = (value) => new Intl.NumberFormat('es-MX').format(value ?? 0
             :message="toast.message"
             :duration="toast.duration"
             @close="closeToast"
+        />
+
+        <UnitDetailDrawer
+            :open="detailState.open"
+            :detail="detailState.data"
+            :loading="detailState.loading"
+            :error="detailState.error"
+            @close="detailState.open = false"
         />
     </AuthenticatedLayout>
 </template>

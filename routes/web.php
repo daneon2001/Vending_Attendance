@@ -18,6 +18,7 @@ use App\Http\Controllers\Settings\SettingsIndexController;
 use App\Http\Controllers\Settings\UserPageController;
 use App\Http\Controllers\UnitCatalogController;
 use App\Http\Controllers\UnitController;
+use App\Models\Company;
 use App\Models\Location;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -27,12 +28,18 @@ Route::get('/', function () {
 });
 
 Route::get('/dashboard', function () {
-    $locations = Location::query()
+    $companies = Company::query()
         ->select('id', 'name', 'code')
         ->orderBy('name')
         ->get();
 
+    $locations = Location::query()
+        ->select('id', 'name', 'code', 'company_id')
+        ->orderBy('name')
+        ->get();
+
     return Inertia::render('Dashboard', [
+        'companies' => $companies,
         'locations' => $locations,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
