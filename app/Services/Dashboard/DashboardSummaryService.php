@@ -17,6 +17,7 @@ class DashboardSummaryService
 {
     public const ONLINE_THRESHOLD_MINUTES = 5;
     public const PRIORITY_LOCATION_LIMIT = 6;
+    public const RECENT_ACTIVITY_LIMIT = 5;
 
     /**
      * @param  array<string, mixed>  $filters
@@ -24,18 +25,21 @@ class DashboardSummaryService
      */
     public function build(array $filters = []): array
     {
-        $timezone = config('app.timezone', 'UTC');
+        $timezone = $this->operationsTimezone();
+        $storageTimezone = $this->storageTimezone();
         $range = (string) ($filters['range'] ?? 'today');
         $companyId = isset($filters['company_id']) && $filters['company_id'] !== '' ? (int) $filters['company_id'] : null;
         $unitId = isset($filters['unit_id']) && $filters['unit_id'] !== '' ? (int) $filters['unit_id'] : null;
         $employeeBaseLocationId = $unitId ? $this->resolveEmployeeBaseLocationId($unitId) : null;
 
-        [$from, $to] = $this->resolveRange(
+        [$fromLocal, $toLocal] = $this->resolveRange(
             $range,
             isset($filters['from_date']) ? (string) $filters['from_date'] : null,
             isset($filters['to_date']) ? (string) $filters['to_date'] : null,
             $timezone,
         );
+        $from = $this->toStorageTimezone($fromLocal, $storageTimezone);
+        $to = $this->toStorageTimezone($toLocal, $storageTimezone);
 
         $entryTypes = collect(config('attendance.consolidation.entry_log_types', [1]))
             ->map(fn ($value) => (int) $value)
@@ -49,7 +53,7 @@ class DashboardSummaryService
         $attendanceBase = $this->attendanceQuery($from, $to, $companyId, $unitId);
         $activeEmployeesQuery = $this->activeEmployeesQuery($companyId, $employeeBaseLocationId);
         $clocksBase = $this->clocksQuery($companyId, $unitId);
-        $onlineThreshold = now()->subMinutes(self::ONLINE_THRESHOLD_MINUTES);
+        $onlineThreshold = now($storageTimezone)->subMinutes(self::ONLINE_THRESHOLD_MINUTES);
 
         $employeesActive = (clone $activeEmployeesQuery)->count();
         $attendanceRegistered = (clone $attendanceBase)
@@ -97,8 +101,8 @@ class DashboardSummaryService
 
         $employeeStatus = $this->buildEmployeeStatusDataset($companyId, $employeeBaseLocationId);
         $clockHealth = $this->buildClockHealthDataset($clocksOnline, $clocksWarning, $clocksOffline);
-        $presenceSeries = $this->buildPresenceSeries($from, $to, clone $attendanceBase);
-        $hourlyActivity = $this->buildHourlyActivity(clone $attendanceBase, $entryTypes, $exitTypes);
+        $presenceSeries = $this->buildPresenceSeries($fromLocal, $toLocal, clone $attendanceBase, $timezone, $storageTimezone);
+        $hourlyActivity = $this->buildHourlyActivity(clone $attendanceBase, $entryTypes, $exitTypes, $timezone, $storageTimezone);
 
         $locations = $this->buildLocationRanking(
             $companyId,
@@ -109,7 +113,7 @@ class DashboardSummaryService
         $priorityLocations = $this->buildPriorityLocations($locations);
 
         $enrollment = $this->buildEnrollmentSummary($companyId, $employeeBaseLocationId);
-        $syncState = $this->resolveLatestSyncState();
+        $syncState = $this->resolveLatestSyncState($timezone, $storageTimezone);
         $clockStatus = $this->resolveClockStatus(
             $clocksTotal,
             $clocksOnline,
@@ -151,13 +155,13 @@ class DashboardSummaryService
 
         $meta = [
             'range' => $range,
-            'from' => $from->toIso8601String(),
-            'to' => $to->toIso8601String(),
+            'from' => $fromLocal->toIso8601String(),
+            'to' => $toLocal->toIso8601String(),
             'company_id' => $companyId,
             'unit_id' => $unitId,
             'generated_at_local' => now($timezone)->format('d/m/Y H:i:s'),
             'generated_at_iso' => now($timezone)->toIso8601String(),
-            'latest_attendance_at' => $latestAttendanceAt ? Carbon::parse($latestAttendanceAt)->toIso8601String() : null,
+            'latest_attendance_at' => $this->toOperationsIsoString($latestAttendanceAt, $timezone, $storageTimezone),
         ];
 
         $summary = [
@@ -167,7 +171,7 @@ class DashboardSummaryService
             'attendance_coverage' => $attendanceCoverage,
             'entries_total' => $entriesTotal,
             'exits_total' => $exitsTotal,
-            'latest_log_at' => $latestAttendanceAt ? Carbon::parse($latestAttendanceAt)->toIso8601String() : null,
+            'latest_log_at' => $this->toOperationsIsoString($latestAttendanceAt, $timezone, $storageTimezone),
             'last_updated_at' => $meta['generated_at_iso'],
         ];
 
@@ -227,6 +231,11 @@ class DashboardSummaryService
             'ok' => true,
             'empty' => $isEmpty,
             'message' => $isEmpty ? 'No hay datos operativos para el rango seleccionado.' : null,
+            'timezone' => [
+                'name' => $timezone,
+                'label' => $this->operationsTimezoneLabel(),
+                'offset' => $this->timezoneOffsetString($timezone),
+            ],
             'meta' => $meta,
             'summary' => $summary,
             'clocks' => $clocks,
@@ -318,10 +327,18 @@ class DashboardSummaryService
         return round(($part / $total) * 100, 1);
     }
 
-    protected function buildPresenceSeries(Carbon $from, Carbon $to, Builder $attendanceBase): array
+    protected function buildPresenceSeries(
+        Carbon $from,
+        Carbon $to,
+        Builder $attendanceBase,
+        string $timezone,
+        string $storageTimezone
+    ): array
     {
+        $dayExpression = $this->dateBucketExpression('log_date', $timezone, $storageTimezone);
+
         $records = $attendanceBase
-            ->selectRaw('DATE(log_date) as day')
+            ->selectRaw($dayExpression.' as day')
             ->selectRaw('COUNT(DISTINCT employee_id) as total')
             ->whereNotNull('employee_id')
             ->groupBy('day')
@@ -376,9 +393,15 @@ class DashboardSummaryService
      * @param  array<int, int>  $exitTypes
      * @return array<int, array<string, int|string>>
      */
-    protected function buildHourlyActivity(Builder $attendanceBase, array $entryTypes, array $exitTypes): array
+    protected function buildHourlyActivity(
+        Builder $attendanceBase,
+        array $entryTypes,
+        array $exitTypes,
+        string $timezone,
+        string $storageTimezone
+    ): array
     {
-        $hourExpression = $this->hourBucketExpression('log_date');
+        $hourExpression = $this->hourBucketExpression('log_date', $timezone, $storageTimezone);
         $entrySql = $entryTypes === [] ? '0' : 'SUM(CASE WHEN log_type IN ('.implode(',', $entryTypes).') THEN 1 ELSE 0 END)';
         $exitSql = $exitTypes === [] ? '0' : 'SUM(CASE WHEN log_type IN ('.implode(',', $exitTypes).') THEN 1 ELSE 0 END)';
 
@@ -869,7 +892,8 @@ class DashboardSummaryService
         }
 
         if ($latestAttendanceAt) {
-            $bullets[] = 'Ultima asistencia detectada el '.Carbon::parse($latestAttendanceAt)->timezone($timezone)->format('d/m/Y H:i').'.';
+            $lastAttendanceLocal = $this->toOperationsDateTime($latestAttendanceAt, $timezone, $this->storageTimezone());
+            $bullets[] = 'Ultima asistencia detectada el '.($lastAttendanceLocal?->format('d/m/Y H:i') ?? 'Sin datos').'.';
         } else {
             $bullets[] = 'No se detectaron asistencias recientes.';
         }
@@ -901,7 +925,7 @@ class DashboardSummaryService
         return implode(', ', $parts).' y '.$last;
     }
 
-    protected function resolveLatestSyncState(): ?array
+    protected function resolveLatestSyncState(string $timezone, string $storageTimezone): ?array
     {
         try {
             $state = EmployeeSyncState::query()
@@ -913,14 +937,23 @@ class DashboardSummaryService
                 return null;
             }
 
-            $lastSuccessAt = $state->last_success_at ?? $state->last_synced_at;
+            $lastSuccessAt = $this->toOperationsDateTime(
+                $state->getRawOriginal('last_success_at') ?: $state->getRawOriginal('last_synced_at'),
+                $timezone,
+                $storageTimezone
+            );
+            $lastSyncedAt = $this->toOperationsDateTime(
+                $state->getRawOriginal('last_synced_at'),
+                $timezone,
+                $storageTimezone
+            );
 
             return [
                 'source' => $state->source,
                 'last_sync_status' => $state->last_sync_status,
-                'last_synced_at' => optional($state->last_synced_at)?->toIso8601String(),
+                'last_synced_at' => $lastSyncedAt?->toIso8601String(),
                 'last_success_at' => optional($lastSuccessAt)?->toIso8601String(),
-                'minutes_since_success' => $lastSuccessAt ? $lastSuccessAt->diffInMinutes(now()) : null,
+                'minutes_since_success' => $lastSuccessAt ? $lastSuccessAt->diffInMinutes(now($timezone)) : null,
             ];
         } catch (\Throwable) {
             return null;
@@ -936,10 +969,14 @@ class DashboardSummaryService
                 'clock:id,clock_name,serial_number',
             ])
             ->orderByDesc('log_date')
-            ->limit(12)
+            ->limit(self::RECENT_ACTIVITY_LIMIT)
             ->get()
             ->map(function (AttendanceLog $log) use ($timezone): array {
-                $occurredAt = $log->log_date?->copy()?->timezone($timezone);
+                $occurredAt = $this->toOperationsDateTime(
+                    $log->getRawOriginal('log_date'),
+                    $timezone,
+                    $this->storageTimezone()
+                );
 
                 return [
                     'id' => (int) $log->id,
@@ -950,6 +987,7 @@ class DashboardSummaryService
                     'log_type' => (int) $log->log_type,
                     'method' => $this->resolveAttendanceMethod($log),
                     'source' => $log->source ?? 'sync',
+                    'source_label' => $this->resolveAttendanceSource($log),
                     'occurred_at' => $occurredAt?->toIso8601String(),
                     'occurred_at_display' => $occurredAt?->format('d/m/Y H:i:s'),
                 ];
@@ -992,7 +1030,21 @@ class DashboardSummaryService
             2 => 'Salida',
             3 => 'Break',
             4 => 'Regreso',
-            default => 'Desconocido',
+            default => 'No clasificado',
+        };
+    }
+
+    protected function resolveAttendanceSource(AttendanceLog $log): string
+    {
+        $normalized = strtolower(trim((string) ($log->source ?? '')));
+
+        return match ($normalized) {
+            'api' => 'API',
+            'manual' => 'Manual',
+            'sync' => 'Sync',
+            'device', 'clock', 'reloj' => 'Reloj',
+            '', 'unknown', 'desconocido' => 'Sin fuente',
+            default => ucfirst($normalized),
         };
     }
 
@@ -1022,12 +1074,18 @@ class DashboardSummaryService
             return null;
         }
 
+        $lastHeartbeatAt = $this->toOperationsDateTime(
+            $clock->getRawOriginal('last_heartbeat_at'),
+            $this->operationsTimezone(),
+            $this->storageTimezone()
+        );
+
         return [
             'id' => (int) $clock->id,
             'name' => $clock->clock_name ?: 'Reloj #'.$clock->id,
             'serial_number' => $clock->serial_number,
             'location_name' => $clock->location?->name,
-            'last_heartbeat_at' => optional($clock->last_heartbeat_at)?->toIso8601String(),
+            'last_heartbeat_at' => $lastHeartbeatAt?->toIso8601String(),
             'monitoring_status' => $clock->monitoring_status ?? 'offline',
         ];
     }
@@ -1067,11 +1125,87 @@ class DashboardSummaryService
         return $unitId;
     }
 
-    protected function hourBucketExpression(string $column): string
+    protected function hourBucketExpression(string $column, string $timezone, string $storageTimezone): string
     {
+        $offsetMinutes = $this->timezoneOffsetMinutes($timezone, $storageTimezone);
+        $sqliteModifier = $this->sqliteOffsetModifier($offsetMinutes);
+
         return match (DB::connection()->getDriverName()) {
-            'sqlite' => "strftime('%H', {$column})",
-            default => "LPAD(HOUR({$column}), 2, '0')",
+            'sqlite' => "strftime('%H', datetime({$column}, '{$sqliteModifier}'))",
+            default => "LPAD(HOUR(TIMESTAMPADD(MINUTE, {$offsetMinutes}, {$column})), 2, '0')",
         };
+    }
+
+    protected function dateBucketExpression(string $column, string $timezone, string $storageTimezone): string
+    {
+        $offsetMinutes = $this->timezoneOffsetMinutes($timezone, $storageTimezone);
+        $sqliteModifier = $this->sqliteOffsetModifier($offsetMinutes);
+
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "strftime('%Y-%m-%d', datetime({$column}, '{$sqliteModifier}'))",
+            default => "DATE(TIMESTAMPADD(MINUTE, {$offsetMinutes}, {$column}))",
+        };
+    }
+
+    protected function operationsTimezone(): string
+    {
+        return (string) config('operations.timezone', 'America/Mexico_City');
+    }
+
+    protected function operationsTimezoneLabel(): string
+    {
+        return (string) config('operations.timezone_label', 'Hora centro de Mexico');
+    }
+
+    protected function storageTimezone(): string
+    {
+        return (string) config('operations.storage_timezone', 'UTC');
+    }
+
+    protected function toStorageTimezone(Carbon $date, string $storageTimezone): Carbon
+    {
+        return $date->copy()->setTimezone($storageTimezone);
+    }
+
+    protected function toOperationsIsoString(mixed $value, string $timezone, string $storageTimezone): ?string
+    {
+        return $this->toOperationsDateTime($value, $timezone, $storageTimezone)?->toIso8601String();
+    }
+
+    protected function toOperationsDateTime(mixed $value, string $timezone, string $storageTimezone): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof Carbon) {
+            return Carbon::parse($value->format('Y-m-d H:i:s'), $storageTimezone)->setTimezone($timezone);
+        }
+
+        return Carbon::parse((string) $value, $storageTimezone)->setTimezone($timezone);
+    }
+
+    protected function timezoneOffsetMinutes(string $timezone, string $storageTimezone): int
+    {
+        $reference = now('UTC');
+        $storageOffset = $reference->copy()->setTimezone($storageTimezone)->utcOffset();
+        $operationsOffset = $reference->copy()->setTimezone($timezone)->utcOffset();
+
+        return $operationsOffset - $storageOffset;
+    }
+
+    protected function timezoneOffsetString(string $timezone): string
+    {
+        return now($timezone)->format('P');
+    }
+
+    protected function sqliteOffsetModifier(int $offsetMinutes): string
+    {
+        $sign = $offsetMinutes >= 0 ? '+' : '-';
+        $absolute = abs($offsetMinutes);
+        $hours = str_pad((string) intdiv($absolute, 60), 2, '0', STR_PAD_LEFT);
+        $minutes = str_pad((string) ($absolute % 60), 2, '0', STR_PAD_LEFT);
+
+        return "{$sign}{$hours}:{$minutes}";
     }
 }
