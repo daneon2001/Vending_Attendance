@@ -14,6 +14,7 @@ class EmployeesCatalogSyncTest extends TestCase
 
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
+    private bool $createdEmployeeAllowedLocationsTable = false;
     private bool $createdEmployeeScopeDeletionsTable = false;
 
     protected function setUp(): void
@@ -48,6 +49,7 @@ class EmployeesCatalogSyncTest extends TestCase
                 $table->unsignedBigInteger('fortia_employee_id')->unique();
                 $table->unsignedBigInteger('base_location_id')->nullable();
                 $table->boolean('can_check_all_branches')->default(false);
+                $table->string('check_scope', 40)->nullable();
                 $table->string('name')->nullable();
                 $table->string('last_name')->nullable();
                 $table->string('full_name')->nullable();
@@ -55,6 +57,21 @@ class EmployeesCatalogSyncTest extends TestCase
                 $table->timestamps();
             });
             $this->createdEmployeesTable = true;
+        }
+        Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'check_scope')) {
+                $table->string('check_scope', 40)->nullable();
+            }
+        });
+
+        if (! Schema::hasTable('employee_allowed_locations')) {
+            Schema::create('employee_allowed_locations', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->unsignedBigInteger('location_id');
+                $table->timestamps();
+            });
+            $this->createdEmployeeAllowedLocationsTable = true;
         }
 
         if (! Schema::hasTable('employee_scope_deletions')) {
@@ -70,6 +87,7 @@ class EmployeesCatalogSyncTest extends TestCase
         }
 
         DB::table('employee_scope_deletions')->delete();
+        DB::table('employee_allowed_locations')->delete();
         DB::table('employees')->delete();
         DB::table('locations')->delete();
     }
@@ -78,6 +96,9 @@ class EmployeesCatalogSyncTest extends TestCase
     {
         if ($this->createdEmployeeScopeDeletionsTable && Schema::hasTable('employee_scope_deletions')) {
             Schema::drop('employee_scope_deletions');
+        }
+        if ($this->createdEmployeeAllowedLocationsTable && Schema::hasTable('employee_allowed_locations')) {
+            Schema::drop('employee_allowed_locations');
         }
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
             Schema::drop('employees');
@@ -301,6 +322,110 @@ class EmployeesCatalogSyncTest extends TestCase
             'tombstones.0.employee_id',
             DB::table('employees')->where('fortia_employee_id', 7104)->value('id')
         );
+    }
+
+    public function test_catalog_includes_selected_branch_employees_even_when_check_scope_is_desynced(): void
+    {
+        $locA = DB::table('locations')->insertGetId([
+            'name' => 'Unit Allowed A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locB = DB::table('locations')->insertGetId([
+            'name' => 'Unit Allowed B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $selectedEmployeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 7151,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'check_scope' => 'HOME_ONLY',
+            'name' => 'Permitido',
+            'last_name' => 'Seleccionado',
+            'full_name' => 'Permitido Seleccionado',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_allowed_locations')->insert([
+            'employee_id' => $selectedEmployeeId,
+            'location_id' => $locA,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'fortia_employee_id' => 7152,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'check_scope' => 'HOME_ONLY',
+            'name' => 'Fuera',
+            'last_name' => 'Scope',
+            'full_name' => 'Fuera Scope',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locA);
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.fortia_employee_id', 7151)
+            ->assertJsonPath('data.0.check_scope', 'HOME_ONLY')
+            ->assertJsonPath('data.0.allowed_location_ids.0', $locA);
+    }
+
+    public function test_catalog_includes_global_scope_employees_even_when_check_scope_is_desynced(): void
+    {
+        $locA = DB::table('locations')->insertGetId([
+            'name' => 'Unit Global A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locB = DB::table('locations')->insertGetId([
+            'name' => 'Unit Global B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 7161,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => true,
+                'check_scope' => 'HOME_ONLY',
+                'name' => 'Global',
+                'last_name' => 'Desalineado',
+                'full_name' => 'Global Desalineado',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 7162,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => false,
+                'check_scope' => 'HOME_ONLY',
+                'name' => 'Local',
+                'last_name' => 'B',
+                'full_name' => 'Local B',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locA);
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.fortia_employee_id', 7161)
+            ->assertJsonPath('data.0.can_check_all_branches', true)
+            ->assertJsonPath('data.0.check_scope', 'HOME_ONLY');
     }
 
     public function test_catalog_returns_scope_tombstones_when_employee_leaves_branch(): void
