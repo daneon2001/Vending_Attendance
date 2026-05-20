@@ -8,6 +8,13 @@ import { useTheme } from '@/composables/useTheme';
 import { useSidebar } from '@/composables/useSidebar';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
+const props = defineProps({
+    contentOverflowVisible: {
+        type: Boolean,
+        default: false,
+    },
+});
+
 const mobileSidebarOpen = ref(false);
 const { theme, toggleTheme } = useTheme();
 const { isCollapsed, collapseSidebar, expandSidebar } = useSidebar();
@@ -43,6 +50,13 @@ const navGroups = [
                 label: 'Central de asistencias',
                 description: 'Registros crudos y ajustes',
                 routeName: 'admin.asistencias.index',
+                icon: 'attendance',
+                requiredPermission: { module: 'asistencias', action: 'view' },
+            },
+            {
+                label: 'Tarjeta de asistencia',
+                description: 'Consulta RH y exportacion',
+                routeName: 'attendance-cards.index',
                 icon: 'attendance',
                 requiredPermission: { module: 'asistencias', action: 'view' },
             },
@@ -533,7 +547,12 @@ watch(
                 </header>
 
                 <main class="flex-1 min-w-0 px-3 py-6 sm:px-6 sm:py-8 lg:px-10">
-                    <div class="card overflow-hidden p-4 sm:p-6">
+                    <div
+                        :class="[
+                            'card p-4 sm:p-6',
+                            props.contentOverflowVisible ? 'overflow-visible' : 'overflow-hidden',
+                        ]"
+                    >
                         <slot />
                     </div>
                 </main>
