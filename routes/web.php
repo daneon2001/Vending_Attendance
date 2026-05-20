@@ -6,6 +6,7 @@ use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
 use App\Http\Controllers\CompanyCatalogController;
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\AttendanceCardController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\AuditLogController;
@@ -59,6 +60,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/employees', function () {
         return Inertia::render('Employees/EmployeesCatalog');
     })->name('employees.index');
+
+    Route::get('/attendance-cards', [AttendanceCardController::class, 'index'])
+        ->middleware('perm:asistencias,view')
+        ->name('attendance-cards.index');
+    Route::get('/attendance-cards/export', [AttendanceCardController::class, 'export'])
+        ->middleware('perm:asistencias,export')
+        ->name('attendance-cards.export');
 
     Route::get('/companies', CompanyCatalogController::class)
         ->middleware('perm:companies,view')
