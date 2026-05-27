@@ -33,11 +33,13 @@ class ClockResource extends JsonResource
             'status_label' => $this->status ? 'Activo' : 'Inactivo',
             'monitoring_status' => $connectionStatus,
             'connection_status_label' => match ($connectionStatus) {
-                'online' => 'En línea',
-                'warning' => 'Con alertas',
-                default => 'Sin conexión',
+                'inactive' => 'Inactivo',
+                'online' => 'En linea',
+                'warning' => 'Con alerta',
+                default => 'Sin conexion',
             },
             'connection_status_color' => match ($connectionStatus) {
+                'inactive' => 'slate',
                 'online' => 'emerald',
                 'warning' => 'amber',
                 default => 'rose',
