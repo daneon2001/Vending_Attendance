@@ -255,9 +255,32 @@ const totalLocations = computed(() => locationOptions.value.length);
 const totalClocks = computed(() => pagination.value?.total ?? clockList.value.length);
 const currentPage = computed(() => pagination.value?.current_page ?? 1);
 const totalPages = computed(() => pagination.value?.last_page ?? 1);
-const totalOnline = computed(() => Number(summary.value?.online ?? 0));
-const totalWarning = computed(() => Number(summary.value?.warnings ?? 0));
-const totalOffline = computed(() => Number(summary.value?.offline ?? 0));
+const selectedMonitoringStatus = computed(() => filterForm.monitoring_status ?? '');
+
+const totalOnline = computed(() => {
+    if (selectedMonitoringStatus.value === 'online') {
+        return Number(pagination.value?.total ?? summary.value?.online ?? 0);
+    }
+
+    return Number(summary.value?.online ?? 0);
+});
+
+const totalWarning = computed(() => {
+    if (selectedMonitoringStatus.value === 'warning') {
+        return Number(pagination.value?.total ?? summary.value?.warnings ?? 0);
+    }
+
+    return Number(summary.value?.warnings ?? 0);
+});
+
+const totalOffline = computed(() => {
+    if (selectedMonitoringStatus.value === 'offline') {
+        return Number(pagination.value?.total ?? summary.value?.offline ?? 0);
+    }
+
+    return Number(summary.value?.offline ?? 0);
+});
+
 const pageSummary = computed(() => {
     const total = totalClocks.value;
     if (!total) {
