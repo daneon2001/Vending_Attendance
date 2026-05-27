@@ -7,26 +7,33 @@ use App\Http\Requests\ClockRequest;
 use App\Http\Resources\ClockResource;
 use App\Models\Clock;
 use App\Services\Audit\AuditLogger;
+use App\Services\ClockCatalogService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class ClockController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function __construct(
+        protected ClockCatalogService $clockCatalogService
+    ) {
+    }
+
+    public function index(\Illuminate\Http\Request $request): JsonResponse
     {
-        $query = Clock::query()
-            ->with(['company', 'location']);
-
-        $this->applyCatalogFilters($query, $request);
-
-        $clocks = $query
-            ->orderBy('clock_name')
-            ->paginate($request->integer('per_page', 12))
-            ->withQueryString();
+        $filters = [
+            'q' => trim((string) $request->input('q', '')),
+            'company_id' => $request->input('company_id'),
+            'location_id' => $request->input('location_id'),
+            'status' => $request->input('status'),
+            'monitoring_status' => $request->input('monitoring_status'),
+            'program_status' => $request->input('program_status'),
+        ];
+        $clocks = $this->clockCatalogService->paginate($filters, $request->integer('per_page', 12));
+        $summary = $this->clockCatalogService->summarize($filters);
 
         return response()->json([
             'data' => ClockResource::collection($clocks)->resolve(),
+            'summary' => $summary,
             'meta' => [
                 'current_page' => $clocks->currentPage(),
                 'last_page' => $clocks->lastPage(),
