@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
 class Clock extends Model
 {
     use HasFactory;
+
+    public const HEARTBEAT_ONLINE_THRESHOLD_MINUTES = 5;
 
     protected $fillable = [
         'company_id',
@@ -48,12 +51,67 @@ class Clock extends Model
         return $this->hasMany(ClockLog::class);
     }
 
-    public function getIsOnlineAttribute(): bool
+    public static function heartbeatOnlineThreshold(): Carbon
+    {
+        return now()->subMinutes(self::HEARTBEAT_ONLINE_THRESHOLD_MINUTES);
+    }
+
+    public function hasRecentHeartbeat(): bool
     {
         if (! $this->last_heartbeat_at instanceof Carbon) {
             return false;
         }
 
-        return $this->last_heartbeat_at->greaterThan(now()->subMinutes(5));
+        return $this->last_heartbeat_at->greaterThanOrEqualTo(self::heartbeatOnlineThreshold());
+    }
+
+    public function resolvedMonitoringStatus(): string
+    {
+        if ($this->hasRecentHeartbeat()) {
+            return 'online';
+        }
+
+        if ($this->monitoring_status === 'warning' && $this->last_heartbeat_at instanceof Carbon) {
+            return 'warning';
+        }
+
+        return 'offline';
+    }
+
+    public function scopeMonitoringOnline(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('last_heartbeat_at')
+            ->where('last_heartbeat_at', '>=', self::heartbeatOnlineThreshold());
+    }
+
+    public function scopeMonitoringWarning(Builder $query): Builder
+    {
+        return $query
+            ->where('monitoring_status', 'warning')
+            ->whereNotNull('last_heartbeat_at')
+            ->where('last_heartbeat_at', '<', self::heartbeatOnlineThreshold());
+    }
+
+    public function scopeMonitoringOffline(Builder $query): Builder
+    {
+        return $query->where(function (Builder $offlineQuery): void {
+            $offlineQuery
+                ->whereNull('last_heartbeat_at')
+                ->orWhere(function (Builder $staleQuery): void {
+                    $staleQuery
+                        ->where('last_heartbeat_at', '<', self::heartbeatOnlineThreshold())
+                        ->where(function (Builder $warningQuery): void {
+                            $warningQuery
+                                ->whereNull('monitoring_status')
+                                ->orWhere('monitoring_status', '!=', 'warning');
+                        });
+                });
+        });
+    }
+
+    public function getIsOnlineAttribute(): bool
+    {
+        return $this->hasRecentHeartbeat();
     }
 }

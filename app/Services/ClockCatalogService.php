@@ -33,17 +33,10 @@ class ClockCatalogService
 
         $this->applyCatalogFilters($query, $filters, false);
 
-        $rows = (clone $query)
-            ->selectRaw("CASE WHEN monitoring_status IS NULL OR monitoring_status = '' THEN 'offline' ELSE monitoring_status END as monitoring_bucket")
-            ->selectRaw('COUNT(*) as total')
-            ->groupBy('monitoring_bucket')
-            ->get()
-            ->keyBy('monitoring_bucket');
-
         return [
-            'online' => (int) ($rows->get('online')->total ?? 0),
-            'warnings' => (int) ($rows->get('warning')->total ?? 0),
-            'offline' => (int) ($rows->get('offline')->total ?? 0),
+            'online' => (int) (clone $query)->monitoringOnline()->count(),
+            'warnings' => (int) (clone $query)->monitoringWarning()->count(),
+            'offline' => (int) (clone $query)->monitoringOffline()->count(),
             'total' => (int) (clone $query)->count(),
         ];
     }
@@ -90,11 +83,21 @@ class ClockCatalogService
         }
 
         if ($includeMonitoringStatus && isset($filters['monitoring_status']) && trim((string) $filters['monitoring_status']) !== '') {
-            $query->where('monitoring_status', trim((string) $filters['monitoring_status']));
+            $this->applyMonitoringStatusFilter($query, trim((string) $filters['monitoring_status']));
         }
 
         if (isset($filters['program_status']) && trim((string) $filters['program_status']) !== '') {
             $query->where('program_status', trim((string) $filters['program_status']));
         }
+    }
+
+    protected function applyMonitoringStatusFilter(Builder $query, string $monitoringStatus): void
+    {
+        match ($monitoringStatus) {
+            'online' => $query->monitoringOnline(),
+            'warning' => $query->monitoringWarning(),
+            'offline' => $query->monitoringOffline(),
+            default => null,
+        };
     }
 }

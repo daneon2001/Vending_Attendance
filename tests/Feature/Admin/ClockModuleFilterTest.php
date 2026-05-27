@@ -262,6 +262,7 @@ class ClockModuleFilterTest extends TestCase
                 'serial_number' => 'ON-'.$index,
                 'company_id' => $company->id,
                 'status' => 1,
+                'last_heartbeat_at' => now()->subMinute(),
                 'monitoring_status' => 'online',
                 'program_status' => 'online',
             ]);
@@ -273,6 +274,7 @@ class ClockModuleFilterTest extends TestCase
                 'serial_number' => 'WR-'.$index,
                 'company_id' => $company->id,
                 'status' => 1,
+                'last_heartbeat_at' => now()->subMinutes(6),
                 'monitoring_status' => 'warning',
                 'program_status' => 'online',
             ]);
@@ -284,6 +286,7 @@ class ClockModuleFilterTest extends TestCase
                 'serial_number' => 'OFF-'.$index,
                 'company_id' => $company->id,
                 'status' => 1,
+                'last_heartbeat_at' => null,
                 'monitoring_status' => 'offline',
                 'program_status' => 'offline',
             ]);
@@ -304,6 +307,64 @@ class ClockModuleFilterTest extends TestCase
             ->assertJsonPath('summary.total', 84);
     }
 
+    public function test_online_filter_only_returns_clocks_with_recent_heartbeat(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        Clock::query()->create([
+            'clock_name' => 'Reloj Reciente',
+            'serial_number' => 'HB-RECENT',
+            'company_id' => $company->id,
+            'status' => 1,
+            'last_heartbeat_at' => now()->subMinute(),
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+        ]);
+
+        Clock::query()->create([
+            'clock_name' => 'Reloj Rezagado',
+            'serial_number' => 'HB-STALE',
+            'company_id' => $company->id,
+            'status' => 1,
+            'last_heartbeat_at' => now()->subMinutes(6),
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+        ]);
+
+        Clock::query()->create([
+            'clock_name' => 'Reloj Sin Heartbeat',
+            'serial_number' => 'HB-NONE',
+            'company_id' => $company->id,
+            'status' => 1,
+            'last_heartbeat_at' => null,
+            'monitoring_status' => 'offline',
+            'program_status' => 'offline',
+        ]);
+
+        $response = $this->getJson(route('clocks.list', [
+            'company_id' => $company->id,
+            'monitoring_status' => 'online',
+            'per_page' => 12,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.serial_number', 'HB-RECENT')
+            ->assertJsonPath('data.0.monitoring_status', 'online')
+            ->assertJsonPath('data.0.is_online', true)
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('summary.online', 1)
+            ->assertJsonPath('summary.warnings', 0)
+            ->assertJsonPath('summary.offline', 2)
+            ->assertJsonPath('summary.total', 3);
+    }
+
     public function test_clocks_page_exposes_summary_for_all_matching_clocks(): void
     {
         $this->actingAs(User::factory()->create());
@@ -320,6 +381,7 @@ class ClockModuleFilterTest extends TestCase
                 'serial_number' => 'ONPAGE-'.$index,
                 'company_id' => $company->id,
                 'status' => 1,
+                'last_heartbeat_at' => now()->subMinute(),
                 'monitoring_status' => 'online',
                 'program_status' => 'online',
             ]);
