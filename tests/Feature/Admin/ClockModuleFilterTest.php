@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Location;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ClockModuleFilterTest extends TestCase
@@ -243,5 +244,100 @@ class ClockModuleFilterTest extends TestCase
         $this->assertStringContainsString('q=Alpha', $nextPageUrl);
         $this->assertStringContainsString('company_id='.$company->id, $nextPageUrl);
         $this->assertStringContainsString('per_page=1', $nextPageUrl);
+    }
+
+    public function test_clocks_summary_uses_filtered_universe_but_ignores_monitoring_filter_for_kpis(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        foreach (range(1, 79) as $index) {
+            Clock::query()->create([
+                'clock_name' => 'Reloj Online '.$index,
+                'serial_number' => 'ON-'.$index,
+                'company_id' => $company->id,
+                'status' => 1,
+                'monitoring_status' => 'online',
+                'program_status' => 'online',
+            ]);
+        }
+
+        foreach (range(1, 3) as $index) {
+            Clock::query()->create([
+                'clock_name' => 'Reloj Warning '.$index,
+                'serial_number' => 'WR-'.$index,
+                'company_id' => $company->id,
+                'status' => 1,
+                'monitoring_status' => 'warning',
+                'program_status' => 'online',
+            ]);
+        }
+
+        foreach (range(1, 2) as $index) {
+            Clock::query()->create([
+                'clock_name' => 'Reloj Offline '.$index,
+                'serial_number' => 'OFF-'.$index,
+                'company_id' => $company->id,
+                'status' => 1,
+                'monitoring_status' => 'offline',
+                'program_status' => 'offline',
+            ]);
+        }
+
+        $response = $this->getJson(route('clocks.list', [
+            'company_id' => $company->id,
+            'monitoring_status' => 'online',
+            'per_page' => 12,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonCount(12, 'data')
+            ->assertJsonPath('meta.total', 79)
+            ->assertJsonPath('summary.online', 79)
+            ->assertJsonPath('summary.warnings', 3)
+            ->assertJsonPath('summary.offline', 2)
+            ->assertJsonPath('summary.total', 84);
+    }
+
+    public function test_clocks_page_exposes_summary_for_all_matching_clocks(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        foreach (range(1, 79) as $index) {
+            Clock::query()->create([
+                'clock_name' => 'Reloj Online '.$index,
+                'serial_number' => 'ONPAGE-'.$index,
+                'company_id' => $company->id,
+                'status' => 1,
+                'monitoring_status' => 'online',
+                'program_status' => 'online',
+            ]);
+        }
+
+        $this->get(route('clocks.index', [
+            'company_id' => $company->id,
+            'monitoring_status' => 'online',
+            'per_page' => 12,
+        ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Clocks/Index')
+                ->where('initialClocks.meta.total', 79)
+                ->where('summary.online', 79)
+                ->where('summary.warnings', 0)
+                ->where('summary.offline', 0)
+                ->where('summary.total', 79)
+            );
     }
 }

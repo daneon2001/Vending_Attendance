@@ -3,28 +3,34 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\ClockResource;
-use App\Models\Clock;
 use App\Models\Company;
 use App\Models\Location;
+use App\Services\ClockCatalogService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ClockCatalogController extends Controller
 {
+    public function __construct(
+        protected ClockCatalogService $clockCatalogService
+    ) {
+    }
+
     public function index(Request $request): Response
     {
         $perPage = $request->integer('per_page', 12);
+        $filters = [
+            'q' => trim((string) $request->input('q', '')),
+            'company_id' => $request->input('company_id'),
+            'location_id' => $request->input('location_id'),
+            'status' => $request->input('status'),
+            'monitoring_status' => $request->input('monitoring_status'),
+            'program_status' => $request->input('program_status'),
+        ];
 
-        $query = Clock::query()
-            ->with(['company', 'location']);
-
-        $this->applyCatalogFilters($query, $request);
-
-        $clocks = $query
-            ->orderBy('clock_name')
-            ->paginate($perPage)
-            ->withQueryString();
+        $clocks = $this->clockCatalogService->paginate($filters, $perPage);
+        $summary = $this->clockCatalogService->summarize($filters);
 
         $locations = Location::select('id', 'name', 'code')->orderBy('name')->get();
         $companies = Company::select('id', 'name')->orderBy('name')->get();
@@ -43,16 +49,12 @@ class ClockCatalogController extends Controller
                     'to' => $clocks->lastItem(),
                 ],
             ],
+            'summary' => $summary,
             'locations' => $locations,
             'companies' => $companies,
             'perPage' => $perPage,
             'filters' => [
-                'q' => trim((string) $request->input('q', '')),
-                'company_id' => $request->input('company_id'),
-                'location_id' => $request->input('location_id'),
-                'status' => $request->input('status'),
-                'monitoring_status' => $request->input('monitoring_status'),
-                'program_status' => $request->input('program_status'),
+                ...$filters,
                 'per_page' => $perPage,
             ],
         ]);
