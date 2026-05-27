@@ -225,6 +225,8 @@ class EnrolmentCompleteTest extends TestCase
             'employee_id' => $employeeId,
             'clock_id' => $clockId,
             'vendor_template_id' => 'TPL-REUSED',
+            'template_b64' => base64_encode('existing-template'),
+            'template_format' => 'zkteco-v1',
             'status' => 'enrolled',
             'enrolled_at' => now(),
             'performed_at' => now(),
