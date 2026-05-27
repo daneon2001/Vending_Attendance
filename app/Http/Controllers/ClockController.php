@@ -7,26 +7,33 @@ use App\Http\Requests\ClockRequest;
 use App\Http\Resources\ClockResource;
 use App\Models\Clock;
 use App\Services\Audit\AuditLogger;
+use App\Services\ClockCatalogService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class ClockController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function __construct(
+        protected ClockCatalogService $clockCatalogService
+    ) {
+    }
+
+    public function index(\Illuminate\Http\Request $request): JsonResponse
     {
-        $query = Clock::query()
-            ->with(['company', 'location']);
-
-        $this->applyCatalogFilters($query, $request);
-
-        $clocks = $query
-            ->orderBy('clock_name')
-            ->paginate($request->integer('per_page', 12))
-            ->withQueryString();
+        $filters = [
+            'q' => trim((string) $request->input('q', '')),
+            'company_id' => $request->input('company_id'),
+            'location_id' => $request->input('location_id'),
+            'status' => $request->input('status'),
+            'monitoring_status' => $request->input('monitoring_status'),
+            'program_status' => $request->input('program_status'),
+        ];
+        $clocks = $this->clockCatalogService->paginate($filters, $request->integer('per_page', 12));
+        $summary = $this->clockCatalogService->summarize($filters);
 
         return response()->json([
             'data' => ClockResource::collection($clocks)->resolve(),
+            'summary' => $summary,
             'meta' => [
                 'current_page' => $clocks->currentPage(),
                 'last_page' => $clocks->lastPage(),
@@ -107,59 +114,5 @@ class ClockController extends Controller
                 $clock->load(['company', 'location'])
             )->resolve(),
         ]);
-    }
-
-    private function applyCatalogFilters($query, Request $request): void
-    {
-        $query->when($request->filled('q'), function ($clockQuery) use ($request): void {
-            $q = trim((string) $request->input('q'));
-            if ($q === '') {
-                return;
-            }
-
-            $clockQuery->where(function ($subQuery) use ($q): void {
-                $subQuery
-                    ->where('clock_name', 'like', "%{$q}%")
-                    ->orWhere('serial_number', 'like', "%{$q}%")
-                    ->orWhere('ip_address', 'like', "%{$q}%")
-                    ->orWhere('last_seen_ip', 'like', "%{$q}%")
-                    ->orWhereHas('company', fn ($companyQuery) => $companyQuery->where('name', 'like', "%{$q}%"))
-                    ->orWhereHas('location', fn ($locationQuery) => $locationQuery->where('name', 'like', "%{$q}%"));
-            });
-        });
-
-        if ($request->filled('company_id') && is_numeric($request->input('company_id'))) {
-            $query->where('company_id', (int) $request->input('company_id'));
-        }
-
-        if ($request->filled('location_id')) {
-            $locationFilter = (string) $request->input('location_id');
-            if ($locationFilter === 'unassigned') {
-                $query->whereNull('location_id');
-            } elseif (is_numeric($locationFilter)) {
-                $query->where('location_id', (int) $locationFilter);
-            }
-        }
-
-        if ($request->filled('status')) {
-            $status = (string) $request->input('status');
-            if (in_array($status, ['0', '1'], true)) {
-                $query->where('status', (int) $status);
-            }
-        }
-
-        if ($request->filled('monitoring_status')) {
-            $monitoringStatus = trim((string) $request->input('monitoring_status'));
-            if ($monitoringStatus !== '') {
-                $query->where('monitoring_status', $monitoringStatus);
-            }
-        }
-
-        if ($request->filled('program_status')) {
-            $programStatus = trim((string) $request->input('program_status'));
-            if ($programStatus !== '') {
-                $query->where('program_status', $programStatus);
-            }
-        }
     }
 }

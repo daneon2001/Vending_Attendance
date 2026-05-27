@@ -25,6 +25,15 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    summary: {
+        type: Object,
+        default: () => ({
+            online: 0,
+            warnings: 0,
+            offline: 0,
+            total: 0,
+        }),
+    },
     perPage: {
         type: Number,
         default: 12,
@@ -33,6 +42,12 @@ const props = defineProps({
 
 const clockList = ref(props.initialClocks?.data ?? []);
 const pagination = ref(props.initialClocks?.meta ?? null);
+const summary = ref(props.summary ?? {
+    online: 0,
+    warnings: 0,
+    offline: 0,
+    total: 0,
+});
 const perPage = ref(pagination.value?.per_page ?? props.perPage ?? 12);
 const listLoading = ref(false);
 const perPageOptions = [10, 12, 20, 50];
@@ -71,6 +86,19 @@ watch(
         if (value?.meta?.per_page) {
             perPage.value = value.meta.per_page;
         }
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.summary,
+    (value) => {
+        summary.value = value ?? {
+            online: 0,
+            warnings: 0,
+            offline: 0,
+            total: 0,
+        };
     },
     { deep: true },
 );
@@ -222,18 +250,9 @@ const totalLocations = computed(() => locationOptions.value.length);
 const totalClocks = computed(() => pagination.value?.total ?? clockList.value.length);
 const currentPage = computed(() => pagination.value?.current_page ?? 1);
 const totalPages = computed(() => pagination.value?.last_page ?? 1);
-const totalOnline = computed(
-    () => clockList.value.filter((clock) => clock.monitoring_status === 'online').length,
-);
-const totalWarning = computed(
-    () => clockList.value.filter((clock) => clock.monitoring_status === 'warning').length,
-);
-const totalOffline = computed(
-    () =>
-        clockList.value.filter(
-            (clock) => clock.monitoring_status === 'offline' || !clock.is_online,
-        ).length,
-);
+const totalOnline = computed(() => Number(summary.value?.online ?? 0));
+const totalWarning = computed(() => Number(summary.value?.warnings ?? 0));
+const totalOffline = computed(() => Number(summary.value?.offline ?? 0));
 const pageSummary = computed(() => {
     const total = totalClocks.value;
     if (!total) {
@@ -394,6 +413,12 @@ const fetchClocks = async (page = currentPage.value) => {
 
         clockList.value = data.data ?? [];
         pagination.value = data.meta ?? null;
+        summary.value = data.summary ?? {
+            online: 0,
+            warnings: 0,
+            offline: 0,
+            total: 0,
+        };
     } catch (error) {
         // eslint-disable-next-line no-console
         console.error('No se pudo actualizar el catálogo de relojes', error);
@@ -430,7 +455,7 @@ const applyFilters = (page = 1) => {
         preserveState: true,
         preserveScroll: true,
         replace: true,
-        only: ['initialClocks', 'filters', 'perPage'],
+        only: ['initialClocks', 'summary', 'filters', 'perPage'],
         onStart: () => {
             listLoading.value = true;
         },
