@@ -130,13 +130,20 @@ class Clock extends Model
 
     public function getConnectionStatusAttribute(): string
     {
-        if (! $this->is_online) {
-            return 'offline';
+        if ($this->is_online) {
+            return 'online';
         }
 
-        return strtolower(trim((string) $this->monitoring_status)) === 'warning'
-            ? 'warning'
-            : 'online';
+        $lastHeartbeatAt = $this->last_heartbeat_at;
+
+        if (
+            $lastHeartbeatAt !== null
+            && $this->monitoring_status === 'warning'
+        ) {
+            return 'warning';
+        }
+
+        return 'offline';
     }
 
     public function getOnpremProgramStatusAttribute(): string
@@ -165,5 +172,42 @@ class Clock extends Model
             : now();
 
         return $base->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES);
+    }
+
+    public function scopeMonitoringOnline(Builder $query, ?CarbonInterface $reference = null): Builder
+    {
+        return $query->whereConnectionStatus('online', $reference);
+    }
+
+    public function scopeMonitoringWarning(Builder $query, ?CarbonInterface $reference = null): Builder
+    {
+        $reference ??= now();
+
+        return $query
+            ->where('monitoring_status', 'warning')
+            ->whereNotNull('last_heartbeat_at')
+            ->where('last_heartbeat_at', '<', $reference->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES));
+    }
+
+    public function scopeMonitoringOffline(Builder $query, ?CarbonInterface $reference = null): Builder
+    {
+        $reference ??= now();
+
+        return $query
+            ->where(function (Builder $offlineQuery) use ($reference): void {
+                $offlineQuery
+                    ->whereNull('last_heartbeat_at')
+                    ->orWhere('last_heartbeat_at', '<', $reference->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES));
+            })
+            ->where(function (Builder $notWarningQuery): void {
+                $notWarningQuery
+                    ->whereNull('monitoring_status')
+                    ->orWhere('monitoring_status', '!=', 'warning');
+            });
+    }
+
+    public function resolvedMonitoringStatus(): string
+    {
+        return $this->connection_status;
     }
 }
