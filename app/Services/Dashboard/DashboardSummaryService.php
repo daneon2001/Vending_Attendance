@@ -15,6 +15,12 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardSummaryService
 {
+    public const TAB_SUMMARY = 'resumen';
+    public const TAB_CLOCKS = 'relojes';
+    public const TAB_LOCATIONS = 'unidades';
+    public const TAB_ACTIVITY = 'actividad';
+    public const TAB_ENROLLMENT = 'enrolamiento';
+    public const TAB_ALERTS = 'alertas';
     public const ONLINE_THRESHOLD_MINUTES = 5;
     public const PRIORITY_LOCATION_LIMIT = 6;
     public const RECENT_ACTIVITY_LIMIT = 5;
@@ -27,6 +33,7 @@ class DashboardSummaryService
     {
         $timezone = $this->operationsTimezone();
         $storageTimezone = $this->storageTimezone();
+        $activeTab = $this->normalizeTab(isset($filters['tab']) ? (string) $filters['tab'] : null);
         $range = (string) ($filters['range'] ?? 'today');
         $companyId = isset($filters['company_id']) && $filters['company_id'] !== '' ? (int) $filters['company_id'] : null;
         $unitId = isset($filters['unit_id']) && $filters['unit_id'] !== '' ? (int) $filters['unit_id'] : null;
@@ -97,23 +104,6 @@ class DashboardSummaryService
             })
             ->count();
         $clocksOfflineOnly = max($clocksTotal - $clocksOnline - $clocksStaleOnly, 0);
-        $lastReportingClock = $this->resolveLastReportingClock(clone $clocksBase);
-
-        $employeeStatus = $this->buildEmployeeStatusDataset($companyId, $employeeBaseLocationId);
-        $clockHealth = $this->buildClockHealthDataset($clocksOnline, $clocksWarning, $clocksOffline);
-        $presenceSeries = $this->buildPresenceSeries($fromLocal, $toLocal, clone $attendanceBase, $timezone, $storageTimezone);
-        $hourlyActivity = $this->buildHourlyActivity(clone $attendanceBase, $entryTypes, $exitTypes, $timezone, $storageTimezone);
-
-        $locations = $this->buildLocationRanking(
-            $companyId,
-            $unitId,
-            clone $attendanceBase,
-            $onlineThreshold
-        );
-        $priorityLocations = $this->buildPriorityLocations($locations);
-
-        $enrollment = $this->buildEnrollmentSummary($companyId, $employeeBaseLocationId);
-        $syncState = $this->resolveLatestSyncState($timezone, $storageTimezone);
         $clockStatus = $this->resolveClockStatus(
             $clocksTotal,
             $clocksOnline,
@@ -121,37 +111,94 @@ class DashboardSummaryService
             $clocksWarning,
             $heartbeatStale
         );
-        $alerts = $this->buildAlerts(
-            employeesActive: $employeesActive,
-            pendingAttendance: $pendingAttendance,
-            attendanceCoverage: $attendanceCoverage,
-            clocksTotal: $clocksTotal,
-            clocksOnline: $clocksOnline,
-            clocksOffline: $clocksOffline,
-            clocksNeverConnected: $clocksNeverConnected,
-            heartbeatStale: $heartbeatStale,
-            locations: $locations,
-            enrollment: $enrollment,
-            syncState: $syncState,
-        );
-        $recentActivity = $this->buildRecentActivity(clone $attendanceBase, $timezone);
-        $topBranches = $this->buildTopBranchesChart($locations);
-        $executiveStatus = $this->buildExecutiveStatus(
-            employeesActive: $employeesActive,
-            attendanceRegistered: $attendanceRegistered,
-            pendingAttendance: $pendingAttendance,
-            attendanceCoverage: $attendanceCoverage,
-            validLogsTotal: $validLogsTotal,
-            latestAttendanceAt: $latestAttendanceAt,
-            clocksTotal: $clocksTotal,
-            clocksOnline: $clocksOnline,
-            clocksOffline: $clocksOffline,
-            clocksWarning: $clocksWarning,
-            locations: $locations,
-            alerts: $alerts,
-            enrollment: $enrollment,
-            timezone: $timezone,
-        );
+        $lastReportingClock = $this->shouldIncludeLastReportingClock($activeTab)
+            ? $this->resolveLastReportingClock(clone $clocksBase)
+            : null;
+
+        $locations = $this->shouldIncludeLocations($activeTab)
+            ? $this->buildLocationRanking(
+                $companyId,
+                $unitId,
+                clone $attendanceBase,
+                $onlineThreshold
+            )
+            : collect();
+        $priorityLocations = $locations->isNotEmpty()
+            ? $this->buildPriorityLocations($locations)
+            : collect();
+
+        $enrollment = $this->shouldIncludeEnrollment($activeTab)
+            ? $this->buildEnrollmentSummary($companyId, $employeeBaseLocationId)
+            : null;
+
+        $syncState = $this->shouldIncludeAlerts($activeTab)
+            ? $this->resolveLatestSyncState($timezone, $storageTimezone)
+            : null;
+
+        $alerts = $this->shouldIncludeAlerts($activeTab)
+            ? $this->buildAlerts(
+                employeesActive: $employeesActive,
+                pendingAttendance: $pendingAttendance,
+                attendanceCoverage: $attendanceCoverage,
+                clocksTotal: $clocksTotal,
+                clocksOnline: $clocksOnline,
+                clocksOffline: $clocksOffline,
+                clocksNeverConnected: $clocksNeverConnected,
+                heartbeatStale: $heartbeatStale,
+                locations: $locations,
+                enrollment: $enrollment ?? $this->emptyEnrollmentSummary(),
+                syncState: $syncState,
+            )
+            : collect();
+
+        $connectivityAlerts = $this->shouldIncludeConnectivityAlerts($activeTab)
+            ? $this->buildConnectivityAlerts(
+                clocksTotal: $clocksTotal,
+                clocksOnline: $clocksOnline,
+                clocksOffline: $clocksOffline,
+                clocksNeverConnected: $clocksNeverConnected,
+                heartbeatStale: $heartbeatStale,
+            )
+            : collect();
+
+        $executiveStatus = $this->shouldIncludeExecutiveStatus($activeTab)
+            ? $this->buildExecutiveStatus(
+                employeesActive: $employeesActive,
+                attendanceRegistered: $attendanceRegistered,
+                pendingAttendance: $pendingAttendance,
+                attendanceCoverage: $attendanceCoverage,
+                validLogsTotal: $validLogsTotal,
+                latestAttendanceAt: $latestAttendanceAt,
+                clocksTotal: $clocksTotal,
+                clocksOnline: $clocksOnline,
+                clocksOffline: $clocksOffline,
+                clocksWarning: $clocksWarning,
+                locations: $locations,
+                alerts: $alerts,
+                enrollment: $enrollment ?? $this->emptyEnrollmentSummary(),
+                timezone: $timezone,
+            )
+            : null;
+
+        $recentActivity = $this->includesTab($activeTab, self::TAB_ACTIVITY)
+            ? $this->buildRecentActivity(clone $attendanceBase, $timezone)
+            : collect();
+
+        $presenceSeries = $this->includesTab($activeTab, self::TAB_SUMMARY)
+            ? $this->buildPresenceSeries($fromLocal, $toLocal, clone $attendanceBase, $timezone, $storageTimezone)
+            : null;
+
+        $employeeStatus = $this->includesTab($activeTab, self::TAB_SUMMARY)
+            ? $this->buildEmployeeStatusDataset($companyId, $employeeBaseLocationId)
+            : null;
+
+        $hourlyActivity = $this->includesTab($activeTab, self::TAB_ACTIVITY)
+            ? $this->buildHourlyActivity(clone $attendanceBase, $entryTypes, $exitTypes, $timezone, $storageTimezone)
+            : null;
+
+        $topBranches = $this->includesTab($activeTab, self::TAB_LOCATIONS) && $locations->isNotEmpty()
+            ? $this->buildTopBranchesChart($locations)
+            : null;
 
         $meta = [
             'range' => $range,
@@ -208,27 +255,15 @@ class DashboardSummaryService
                 'offline' => $clocksOfflineOnly,
                 'stale' => $clocksStaleOnly,
             ],
-            'hourly_activity' => $hourlyActivity,
-            'enrollment' => [
-                'with_any_biometric' => (int) ($enrollment['with_any_biometric'] ?? 0),
-                'without_any_biometric' => (int) ($enrollment['without_any_biometric'] ?? 0),
-                'without_fingerprint' => (int) ($enrollment['without_fingerprint'] ?? 0),
-                'without_face' => (int) ($enrollment['without_face'] ?? 0),
-                'percentage' => (float) ($enrollment['coverage_percentage'] ?? 0),
-            ],
-            'people_present_by_day' => $presenceSeries,
-            'employees_status' => $employeeStatus,
-            'clock_health' => $clockHealth,
-            'top_branches' => $topBranches,
         ];
 
         $isEmpty = $employeesActive === 0
             && $clocksTotal === 0
-            && $validLogsTotal === 0
-            && $locations->isEmpty();
+            && $validLogsTotal === 0;
 
-        return [
+        $response = [
             'ok' => true,
+            'active_tab' => $activeTab ?? self::TAB_SUMMARY,
             'empty' => $isEmpty,
             'message' => $isEmpty ? 'No hay datos operativos para el rango seleccionado.' : null,
             'timezone' => [
@@ -239,21 +274,137 @@ class DashboardSummaryService
             'meta' => $meta,
             'summary' => $summary,
             'clocks' => $clocks,
-            'executive_status' => $executiveStatus,
-            'alerts' => $alerts->values()->all(),
-            'locations' => $priorityLocations->values()->all(),
-            'locations_meta' => [
+            'connectivity_alerts' => $connectivityAlerts->values()->all(),
+            'kpis' => $kpis,
+            'charts' => $charts,
+        ];
+
+        if ($executiveStatus !== null) {
+            $response['executive_status'] = $executiveStatus;
+        }
+
+        if ($alerts->isNotEmpty() || $this->shouldIncludeAlerts($activeTab)) {
+            $response['alerts'] = $alerts->values()->all();
+        }
+
+        if ($enrollment !== null) {
+            $response['enrollment'] = $enrollment;
+            $response['charts']['enrollment'] = [
+                'with_any_biometric' => (int) ($enrollment['with_any_biometric'] ?? 0),
+                'without_any_biometric' => (int) ($enrollment['without_any_biometric'] ?? 0),
+                'without_fingerprint' => (int) ($enrollment['without_fingerprint'] ?? 0),
+                'without_face' => (int) ($enrollment['without_face'] ?? 0),
+                'percentage' => (float) ($enrollment['coverage_percentage'] ?? 0),
+            ];
+        }
+
+        if ($this->shouldIncludeLocations($activeTab)) {
+            $response['locations'] = $priorityLocations->values()->all();
+            $response['locations_meta'] = [
                 'total' => $locations->count(),
                 'shown' => $priorityLocations->count(),
                 'has_more' => $locations->count() > $priorityLocations->count(),
                 'mode' => 'priority',
                 'message' => 'Mostrando unidades que requieren mayor atencion',
                 'limit' => self::PRIORITY_LOCATION_LIMIT,
-            ],
-            'recent_activity' => $recentActivity->values()->all(),
-            'enrollment' => $enrollment,
-            'kpis' => $kpis,
-            'charts' => $charts,
+            ];
+        }
+
+        if ($recentActivity->isNotEmpty() || $this->includesTab($activeTab, self::TAB_ACTIVITY)) {
+            $response['recent_activity'] = $recentActivity->values()->all();
+            $response['charts']['hourly_activity'] = $hourlyActivity ?? [];
+        }
+
+        if ($presenceSeries !== null) {
+            $response['charts']['people_present_by_day'] = $presenceSeries;
+        }
+
+        if ($employeeStatus !== null) {
+            $response['charts']['employees_status'] = $employeeStatus;
+        }
+
+        if ($topBranches !== null) {
+            $response['charts']['top_branches'] = $topBranches;
+        }
+
+        return $response;
+    }
+
+    protected function normalizeTab(?string $tab): ?string
+    {
+        if ($tab === null || trim($tab) === '') {
+            return null;
+        }
+
+        $normalized = strtolower(trim($tab));
+
+        return in_array($normalized, [
+            self::TAB_SUMMARY,
+            self::TAB_CLOCKS,
+            self::TAB_LOCATIONS,
+            self::TAB_ACTIVITY,
+            self::TAB_ENROLLMENT,
+            self::TAB_ALERTS,
+        ], true)
+            ? $normalized
+            : null;
+    }
+
+    protected function includesTab(?string $activeTab, string $tab): bool
+    {
+        return $activeTab === null || $activeTab === $tab;
+    }
+
+    protected function shouldIncludeLocations(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_LOCATIONS)
+            || $this->includesTab($activeTab, self::TAB_ALERTS);
+    }
+
+    protected function shouldIncludeEnrollment(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_ENROLLMENT)
+            || $this->includesTab($activeTab, self::TAB_ALERTS);
+    }
+
+    protected function shouldIncludeAlerts(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_ALERTS);
+    }
+
+    protected function shouldIncludeConnectivityAlerts(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_CLOCKS);
+    }
+
+    protected function shouldIncludeExecutiveStatus(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_ALERTS);
+    }
+
+    protected function shouldIncludeLastReportingClock(?string $activeTab): bool
+    {
+        return $this->includesTab($activeTab, self::TAB_SUMMARY)
+            || $this->includesTab($activeTab, self::TAB_CLOCKS);
+    }
+
+    /**
+     * @return array<string, int|float>
+     */
+    protected function emptyEnrollmentSummary(): array
+    {
+        return [
+            'employees_active' => 0,
+            'without_fingerprint' => 0,
+            'without_face' => 0,
+            'without_any_biometric' => 0,
+            'with_any_biometric' => 0,
+            'coverage_percentage' => 0,
         ];
     }
 
@@ -789,6 +940,69 @@ class DashboardSummaryService
                 return ((int) ($right['metric'] ?? 0)) <=> ((int) ($left['metric'] ?? 0));
             })
             ->take(8)
+            ->values();
+    }
+
+    protected function buildConnectivityAlerts(
+        int $clocksTotal,
+        int $clocksOnline,
+        int $clocksOffline,
+        int $clocksNeverConnected,
+        int $heartbeatStale
+    ): Collection {
+        $alerts = collect();
+
+        if ($clocksTotal > 0 && $clocksOnline === 0) {
+            $alerts->push($this->makeAlert(
+                'critical',
+                'Sin heartbeat reciente',
+                'Ningun reloj biometrico ha reportado dentro de los ultimos '.self::ONLINE_THRESHOLD_MINUTES.' minutos.',
+                $clocksOffline
+            ));
+        } elseif ($clocksOffline > 0) {
+            $alerts->push($this->makeAlert(
+                'critical',
+                'Relojes sin conexion',
+                $clocksOffline.' reloj(es) no han reportado dentro del umbral operativo.',
+                $clocksOffline
+            ));
+        }
+
+        if ($heartbeatStale > 0 && $clocksOnline > 0) {
+            $alerts->push($this->makeAlert(
+                'warning',
+                'Heartbeat con rezago',
+                $heartbeatStale.' reloj(es) tienen mas de '.self::ONLINE_THRESHOLD_MINUTES.' minutos sin actividad.',
+                $heartbeatStale
+            ));
+        }
+
+        if ($clocksNeverConnected > 0) {
+            $alerts->push($this->makeAlert(
+                'warning',
+                'Relojes nunca conectados',
+                $clocksNeverConnected.' reloj(es) estan registrados pero nunca han reportado heartbeat.',
+                $clocksNeverConnected
+            ));
+        }
+
+        return $alerts
+            ->sort(function (array $left, array $right): int {
+                $priority = [
+                    'critical' => 0,
+                    'warning' => 1,
+                    'info' => 2,
+                ];
+
+                $leftPriority = $priority[$left['level']] ?? 99;
+                $rightPriority = $priority[$right['level']] ?? 99;
+
+                if ($leftPriority !== $rightPriority) {
+                    return $leftPriority <=> $rightPriority;
+                }
+
+                return ((int) ($right['metric'] ?? 0)) <=> ((int) ($left['metric'] ?? 0));
+            })
             ->values();
     }
 

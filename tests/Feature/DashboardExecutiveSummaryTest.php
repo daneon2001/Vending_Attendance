@@ -222,6 +222,66 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('charts.enrollment.percentage', 50);
     }
 
+    public function test_dashboard_summary_can_refresh_only_clocks_tab(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'status' => 1,
+        ]);
+
+        $location = Location::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad Centro',
+            'code' => 'CTR',
+            'timezone' => 'America/Mexico_City',
+            'status' => 1,
+        ]);
+
+        Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'clock_name' => 'Reloj Centro 1',
+            'serial_number' => 'CTR-1',
+            'status' => 1,
+            'monitoring_status' => 'online',
+            'program_status' => 'online',
+            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(2)->format('Y-m-d H:i:s'),
+        ]);
+
+        Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'clock_name' => 'Reloj Centro 2',
+            'serial_number' => 'CTR-2',
+            'status' => 1,
+            'monitoring_status' => 'offline',
+            'program_status' => 'offline',
+            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(12)->format('Y-m-d H:i:s'),
+        ]);
+
+        $response = $this->getJson(route('dashboard.summary', [
+            'range' => 'today',
+            'company_id' => $company->id,
+            'unit_id' => $location->id,
+            'tab' => 'relojes',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('active_tab', 'relojes')
+            ->assertJsonPath('clocks.total', 2)
+            ->assertJsonPath('clocks.online', 1)
+            ->assertJsonPath('clocks.offline', 1)
+            ->assertJsonPath('charts.clocks_donut.online', 1)
+            ->assertJsonPath('charts.clocks_donut.offline', 1)
+            ->assertJsonCount(2, 'connectivity_alerts')
+            ->assertJsonMissingPath('alerts')
+            ->assertJsonMissingPath('locations')
+            ->assertJsonMissingPath('recent_activity')
+            ->assertJsonMissingPath('enrollment')
+            ->assertJsonMissingPath('charts.hourly_activity');
+    }
+
     public function test_dashboard_summary_limits_locations_to_priority_slice(): void
     {
         $company = Company::query()->create([

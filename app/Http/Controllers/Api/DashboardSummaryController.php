@@ -23,6 +23,14 @@ class DashboardSummaryController extends Controller
             'to_date' => ['required_if:range,custom', 'nullable', 'date_format:d/m/Y'],
             'company_id' => ['nullable', 'integer', 'exists:companies,id'],
             'unit_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'tab' => ['nullable', Rule::in([
+                DashboardSummaryService::TAB_SUMMARY,
+                DashboardSummaryService::TAB_CLOCKS,
+                DashboardSummaryService::TAB_LOCATIONS,
+                DashboardSummaryService::TAB_ACTIVITY,
+                DashboardSummaryService::TAB_ENROLLMENT,
+                DashboardSummaryService::TAB_ALERTS,
+            ])],
         ]);
 
         return response()->json($this->summaryService->build($validated));
