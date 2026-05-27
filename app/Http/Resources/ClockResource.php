@@ -19,7 +19,7 @@ class ClockResource extends JsonResource
             ? $this->last_heartbeat_at->copy()
             : null;
         $secondsSinceHeartbeat = $lastHeartbeatAt?->diffInSeconds(now());
-        $connectionStatus = (string) ($this->connection_status ?? 'offline');
+        $connectionStatus = $this->resolvedMonitoringStatus();
         $programStatus = (string) ($this->onprem_program_status ?? 'offline');
 
         return [

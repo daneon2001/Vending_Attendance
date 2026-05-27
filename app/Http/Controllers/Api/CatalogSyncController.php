@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class CatalogSyncController extends Controller
@@ -77,6 +78,7 @@ class CatalogSyncController extends Controller
 
     public function employeesCatalog(Request $request): JsonResponse
     {
+        $startedAt = microtime(true);
         $validated = $request->validate([
             'since' => [
                 'nullable',
@@ -231,7 +233,7 @@ class CatalogSyncController extends Controller
             $locationId
         );
 
-        return response()->json([
+        $payload = [
             'version' => ($versionTime ?? now())->format('YmdHis'),
             'data' => $rows->map(function (Employee $employee) use ($allowedLocationMap): array {
                 $name = trim((string) ($employee->full_name ?: ''));
@@ -265,7 +267,33 @@ class CatalogSyncController extends Controller
                 ];
             })->values(),
             'tombstones' => $tombstones,
+        ];
+
+        $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+        $bodyBytes = is_string($payloadJson) ? strlen($payloadJson) : 0;
+
+        Log::info('onprem.employees_catalog.response', [
+            'location_id' => $locationId,
+            'since' => $validated['since'] ?? null,
+            'data_count' => $rows->count(),
+            'tombstones_count' => $tombstones->count(),
+            'payload_bytes' => $bodyBytes,
+            'duration_ms' => $durationMs,
         ]);
+
+        if ($durationMs > 10000) {
+            Log::warning('onprem.employees_catalog.slow', [
+                'location_id' => $locationId,
+                'since' => $validated['since'] ?? null,
+                'data_count' => $rows->count(),
+                'tombstones_count' => $tombstones->count(),
+                'payload_bytes' => $bodyBytes,
+                'duration_ms' => $durationMs,
+            ]);
+        }
+
+        return response()->json($payload);
     }
 
     private function parseSince(string $value): ?Carbon

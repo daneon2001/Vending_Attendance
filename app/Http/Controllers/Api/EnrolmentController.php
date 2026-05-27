@@ -22,13 +22,13 @@ class EnrolmentController extends Controller
         $enrolmentType = (string) $validated['enrolment_type'];
         $vendorTemplateId = (string) $validated['template_vendor_id'];
         $employee = $this->resolveEmployee($validated);
-        $fortiaEmployeeId = trim((string) ($validated['fortia_employee_id'] ?? ''));
+        $requestedFortiaEmployeeId = trim((string) ($validated['fortia_employee_id'] ?? ''));
 
         if (! $employee) {
             return response()->json([
                 'success' => false,
                 'employee_id' => null,
-                'fortia_employee_id' => $fortiaEmployeeId !== '' ? $fortiaEmployeeId : null,
+                'fortia_employee_id' => $requestedFortiaEmployeeId !== '' ? $requestedFortiaEmployeeId : null,
                 'clock_id' => isset($validated['clock_id']) ? (int) $validated['clock_id'] : null,
                 'unit_id' => isset($validated['unit_id']) ? (int) $validated['unit_id'] : null,
                 'vendor_template_id' => $vendorTemplateId,
@@ -41,6 +41,20 @@ class EnrolmentController extends Controller
         $fortiaEmployeeId = $employee->fortia_employee_id !== null
             ? (string) $employee->fortia_employee_id
             : (string) $employeeId;
+
+        if ($requestedFortiaEmployeeId !== '' && $fortiaEmployeeId !== '' && $requestedFortiaEmployeeId !== $fortiaEmployeeId) {
+            return response()->json([
+                'success' => false,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => $fortiaEmployeeId,
+                'clock_id' => isset($validated['clock_id']) ? (int) $validated['clock_id'] : null,
+                'unit_id' => isset($validated['unit_id']) ? (int) $validated['unit_id'] : null,
+                'vendor_template_id' => $vendorTemplateId,
+                'action' => 'REJECTED',
+                'message' => 'The provided fortia_employee_id does not match the resolved employee_id.',
+            ], 422);
+        }
+
         $clock = $this->resolveClock($validated);
         $requestedUnitId = isset($validated['unit_id'])
             ? $this->resolveInternalUnitId((int) $validated['unit_id'])
@@ -112,6 +126,13 @@ class EnrolmentController extends Controller
         $existingByVendor = EmployeeFingerprint::query()
             ->where('vendor_template_id', $vendorTemplateId)
             ->first();
+        $existingTemplateIsIncomplete = $existingByVendor
+            && (int) $existingByVendor->employee_id === $employeeId
+            && $enrolmentType === EmployeeFingerprint::TYPE_FINGERPRINT
+            && (
+                blank($existingByVendor->template_b64)
+                || blank($existingByVendor->template_format)
+            );
 
         if ($existingByVendor && (int) $existingByVendor->employee_id !== $employeeId) {
             $this->audit($auditPayload, EnrolmentAudit::STATUS_CONFLICT, 'Template is already assigned to another employee.');
@@ -133,6 +154,7 @@ class EnrolmentController extends Controller
                 ! $request->filled('template_b64')
                 && ! $request->filled('template_format')
                 && ! $request->filled('device_serial')
+                && ! $existingTemplateIsIncomplete
             ) {
                 $employee->refreshFingerprintFlag();
                 $employee->refresh();
@@ -154,6 +176,18 @@ class EnrolmentController extends Controller
         }
 
         if ($enrolmentType === EmployeeFingerprint::TYPE_FINGERPRINT) {
+            if ($existingTemplateIsIncomplete && (! $request->filled('template_b64') || ! $request->filled('template_format'))) {
+                $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Existing fingerprint template is incomplete and requires template_b64/template_format.');
+
+                return response()->json([
+                    'message' => EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE,
+                    'errors' => [
+                        'template_b64' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_REQUIRED_MESSAGE],
+                        'template_format' => [EnrolmentCompleteRequest::FINGERPRINT_TEMPLATE_FORMAT_REQUIRED_MESSAGE],
+                    ],
+                ], 422);
+            }
+
             $invalidFingerprintResponse = $this->validateNewFingerprintTemplate($request, $auditPayload);
             if ($invalidFingerprintResponse instanceof JsonResponse) {
                 return $invalidFingerprintResponse;
@@ -170,14 +204,14 @@ class EnrolmentController extends Controller
         }
 
         $templatePayload = [
-            'clock_id' => $clockId,
+            'clock_id' => $clockId ?? $existingByVendor?->clock_id,
             'status' => 'enrolled',
             'enrolment_type' => $validated['enrolment_type'],
-            'template_b64' => $validated['template_b64'],
-            'template_format' => $validated['template_format'] ?? null,
+            'template_b64' => $validated['template_b64'] ?? $existingByVendor?->template_b64,
+            'template_format' => $validated['template_format'] ?? $existingByVendor?->template_format,
             'template_vendor' => $this->resolveTemplateVendor($enrolmentType),
             'template_source' => $this->resolveTemplateSource($enrolmentType),
-            'device_serial' => $validated['device_serial'] ?? null,
+            'device_serial' => $validated['device_serial'] ?? $existingByVendor?->device_serial,
             'enrolled_at' => $validated['performed_at'],
             'performed_at' => $validated['performed_at'],
             'deleted_at' => null,
