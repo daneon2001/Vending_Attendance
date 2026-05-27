@@ -120,8 +120,13 @@ const monitoringStyles = {
         badge: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100',
         dot: 'bg-emerald-500',
     },
+    inactive: {
+        label: 'Inactivo',
+        badge: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+        dot: 'bg-slate-400',
+    },
     warning: {
-        label: 'Con alertas',
+        label: 'Con alerta',
         badge: 'bg-amber-50 text-amber-700 ring-1 ring-amber-100',
         dot: 'bg-amber-400',
     },
@@ -134,7 +139,7 @@ const monitoringStyles = {
 
 const monitoringOptions = [
     { value: 'online', label: 'En linea' },
-    { value: 'warning', label: 'Con alertas' },
+    { value: 'warning', label: 'Con alerta' },
     { value: 'offline', label: 'Sin conexion' },
 ];
 
@@ -250,15 +255,9 @@ const totalLocations = computed(() => locationOptions.value.length);
 const totalClocks = computed(() => pagination.value?.total ?? clockList.value.length);
 const currentPage = computed(() => pagination.value?.current_page ?? 1);
 const totalPages = computed(() => pagination.value?.last_page ?? 1);
-const totalOnline = computed(
-    () => clockList.value.filter((clock) => clock.is_online && clock.monitoring_status === 'online').length,
-);
-const totalWarning = computed(
-    () => clockList.value.filter((clock) => clock.is_online && clock.monitoring_status === 'warning').length,
-);
-const totalOffline = computed(
-    () => clockList.value.filter((clock) => !clock.is_online).length,
-);
+const totalOnline = computed(() => Number(summary.value?.online ?? 0));
+const totalWarning = computed(() => Number(summary.value?.warnings ?? 0));
+const totalOffline = computed(() => Number(summary.value?.offline ?? 0));
 const pageSummary = computed(() => {
     const total = totalClocks.value;
     if (!total) {
@@ -784,16 +783,16 @@ const resetLogsFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ totalOnline }}
                     </p>
-                    <p class="text-sm text-slate-500">Operando y sincronizando</p>
+                    <p class="text-sm text-slate-500">Activos con heartbeat en los ultimos 5 minutos</p>
                 </article>
                 <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-amber-50 to-white p-4">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-500">
-                        Alertas
+                        Con alerta
                     </p>
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ totalWarning }}
                     </p>
-                    <p class="text-sm text-slate-500">Beats tardíos o firmas pendientes</p>
+                    <p class="text-sm text-slate-500">Heartbeat con rezago durante el dia actual</p>
                 </article>
                 <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-rose-50 to-white p-4">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">
@@ -802,8 +801,15 @@ const resetLogsFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
                         {{ totalOffline }}
                     </p>
-                    <p class="text-sm text-slate-500">Programas on-prem fuera de línea</p>
+                    <p class="text-sm text-slate-500">Activos sin heartbeat en el dia actual</p>
                 </article>
+
+                <p
+                    v-if="filterForm.status === '0'"
+                    class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:col-span-3"
+                >
+                    El monitoreo operativo de estos KPIs se calcula solo sobre checadores activos.
+                </p>
 
                 <div
                     v-if="totalClocks > 0 || clocks.length"
@@ -957,7 +963,7 @@ const resetLogsFilters = () => {
                             class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
-                            <option value="">Todos</option>
+                            <option value="">Operativo (activos)</option>
                             <option value="1">Activos</option>
                             <option value="0">Inactivos</option>
                         </select>

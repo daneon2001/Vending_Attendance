@@ -52,6 +52,11 @@ class Clock extends Model
         return $this->hasMany(ClockLog::class);
     }
 
+    public function scopeActiveOperational(Builder $query): Builder
+    {
+        return $query->where('status', 1);
+    }
+
     public function scopeHeartbeatOnline(Builder $query, ?CarbonInterface $reference = null): Builder
     {
         return $query
@@ -73,19 +78,25 @@ class Clock extends Model
     public function scopeWhereConnectionStatus(Builder $query, string $status, ?CarbonInterface $reference = null): Builder
     {
         $status = strtolower(trim($status));
+        $onlineThreshold = self::heartbeatOnlineThreshold($reference);
+        $dayStartThreshold = self::operationsDayStartThreshold($reference);
 
         return match ($status) {
             'online' => $query
-                ->heartbeatOnline($reference)
-                ->where(function (Builder $onlineQuery): void {
-                    $onlineQuery
-                        ->whereNull('monitoring_status')
-                        ->orWhere('monitoring_status', '!=', 'warning');
-                }),
+                ->activeOperational()
+                ->heartbeatOnline($reference),
             'warning' => $query
-                ->heartbeatOnline($reference)
-                ->where('monitoring_status', 'warning'),
-            'offline' => $query->heartbeatOffline($reference),
+                ->activeOperational()
+                ->whereNotNull('last_heartbeat_at')
+                ->where('last_heartbeat_at', '<', $onlineThreshold)
+                ->where('last_heartbeat_at', '>=', $dayStartThreshold),
+            'offline' => $query
+                ->activeOperational()
+                ->where(function (Builder $offlineQuery) use ($dayStartThreshold): void {
+                    $offlineQuery
+                        ->whereNull('last_heartbeat_at')
+                        ->orWhere('last_heartbeat_at', '<', $dayStartThreshold);
+                }),
             default => $query,
         };
     }
@@ -121,7 +132,7 @@ class Clock extends Model
 
     public function getIsOnlineAttribute(): bool
     {
-        if (! $this->last_heartbeat_at instanceof Carbon) {
+        if ((int) $this->status !== 1 || ! $this->last_heartbeat_at instanceof Carbon) {
             return false;
         }
 
@@ -130,6 +141,10 @@ class Clock extends Model
 
     public function getConnectionStatusAttribute(): string
     {
+        if ((int) $this->status !== 1) {
+            return 'inactive';
+        }
+
         if ($this->is_online) {
             return 'online';
         }
@@ -137,8 +152,8 @@ class Clock extends Model
         $lastHeartbeatAt = $this->last_heartbeat_at;
 
         if (
-            $lastHeartbeatAt !== null
-            && $this->monitoring_status === 'warning'
+            $lastHeartbeatAt instanceof Carbon
+            && $lastHeartbeatAt->greaterThanOrEqualTo(self::operationsDayStartThreshold())
         ) {
             return 'warning';
         }
@@ -169,9 +184,32 @@ class Clock extends Model
     {
         $base = $reference instanceof CarbonInterface
             ? Carbon::instance(\DateTime::createFromInterface($reference))
-            : now();
+            : now(self::storageTimezone());
 
         return $base->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES);
+    }
+
+    public static function operationsDayStartThreshold(?CarbonInterface $reference = null): Carbon
+    {
+        $base = $reference instanceof CarbonInterface
+            ? Carbon::instance(\DateTime::createFromInterface($reference))
+            : now(self::operationsTimezone());
+
+        return $base
+            ->copy()
+            ->setTimezone(self::operationsTimezone())
+            ->startOfDay()
+            ->setTimezone(self::storageTimezone());
+    }
+
+    public static function operationsTimezone(): string
+    {
+        return (string) config('operations.timezone', 'America/Mexico_City');
+    }
+
+    public static function storageTimezone(): string
+    {
+        return (string) config('operations.storage_timezone', 'UTC');
     }
 
     public function scopeMonitoringOnline(Builder $query, ?CarbonInterface $reference = null): Builder
@@ -181,29 +219,12 @@ class Clock extends Model
 
     public function scopeMonitoringWarning(Builder $query, ?CarbonInterface $reference = null): Builder
     {
-        $reference ??= now();
-
-        return $query
-            ->where('monitoring_status', 'warning')
-            ->whereNotNull('last_heartbeat_at')
-            ->where('last_heartbeat_at', '<', $reference->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES));
+        return $query->whereConnectionStatus('warning', $reference);
     }
 
     public function scopeMonitoringOffline(Builder $query, ?CarbonInterface $reference = null): Builder
     {
-        $reference ??= now();
-
-        return $query
-            ->where(function (Builder $offlineQuery) use ($reference): void {
-                $offlineQuery
-                    ->whereNull('last_heartbeat_at')
-                    ->orWhere('last_heartbeat_at', '<', $reference->copy()->subMinutes(self::ONLINE_HEARTBEAT_WINDOW_MINUTES));
-            })
-            ->where(function (Builder $notWarningQuery): void {
-                $notWarningQuery
-                    ->whereNull('monitoring_status')
-                    ->orWhere('monitoring_status', '!=', 'warning');
-            });
+        return $query->whereConnectionStatus('offline', $reference);
     }
 
     public function resolvedMonitoringStatus(): string

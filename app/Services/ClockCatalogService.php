@@ -31,7 +31,8 @@ class ClockCatalogService
     {
         $query = Clock::query();
 
-        $this->applyCatalogFilters($query, $filters, false);
+        $this->applyCatalogFilters($query, $filters, false, false);
+        $query->activeOperational();
 
         return [
             'online' => (int) (clone $query)->monitoringOnline()->count(),
@@ -44,7 +45,12 @@ class ClockCatalogService
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function applyCatalogFilters(Builder $query, array $filters, bool $includeMonitoringStatus = true): void
+    public function applyCatalogFilters(
+        Builder $query,
+        array $filters,
+        bool $includeMonitoringStatus = true,
+        bool $includeStatus = true
+    ): void
     {
         $search = trim((string) ($filters['q'] ?? ''));
 
@@ -74,12 +80,8 @@ class ClockCatalogService
             }
         }
 
-        if (isset($filters['status']) && $filters['status'] !== '') {
-            $status = (string) $filters['status'];
-
-            if (in_array($status, ['0', '1'], true)) {
-                $query->where('status', (int) $status);
-            }
+        if ($includeStatus) {
+            $this->applyStatusFilter($query, $filters);
         }
 
         if ($includeMonitoringStatus && isset($filters['monitoring_status']) && trim((string) $filters['monitoring_status']) !== '') {
@@ -99,5 +101,27 @@ class ClockCatalogService
             'offline' => $query->monitoringOffline(),
             default => null,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    protected function applyStatusFilter(Builder $query, array $filters): void
+    {
+        $status = isset($filters['status']) ? trim((string) $filters['status']) : '';
+
+        if ($status === '0') {
+            $query->where('status', 0);
+
+            return;
+        }
+
+        if ($status === '1') {
+            $query->where('status', 1);
+
+            return;
+        }
+
+        $query->activeOperational();
     }
 }
