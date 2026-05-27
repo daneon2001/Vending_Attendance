@@ -36,6 +36,48 @@ const rangeOptions = [
     { value: 'custom', label: 'Personalizado' },
 ];
 
+const dashboardTabDefinitions = [
+    {
+        key: 'resumen',
+        label: 'Resumen ejecutivo',
+        description: 'Como vamos hoy',
+    },
+    {
+        key: 'relojes',
+        label: 'Relojes y conectividad',
+        description: 'Estado de la infraestructura biometrica',
+    },
+    {
+        key: 'unidades',
+        label: 'Unidades / Sucursales',
+        description: 'Prioridades por unidad operativa',
+    },
+    {
+        key: 'actividad',
+        label: 'Actividad reciente',
+        description: 'Pulso operativo en tiempo real',
+    },
+    {
+        key: 'enrolamiento',
+        label: 'Enrolamiento biometrico',
+        description: 'Avance de captura biometrica',
+    },
+    {
+        key: 'alertas',
+        label: 'Alertas',
+        description: 'Eventos que requieren accion',
+    },
+];
+
+const DASHBOARD_ACTIVE_TAB_STORAGE_KEY = 'dashboard.activeTab';
+const DASHBOARD_TAB_QUERY_KEY = 'dashboard_tab';
+const DASHBOARD_AUTO_REFRESH_MS = 60000;
+const defaultTabKey = 'resumen';
+const dashboardTabKeys = new Set(dashboardTabDefinitions.map((tab) => tab.key));
+const createEmptyTabState = () => Object.fromEntries(
+    dashboardTabDefinitions.map((tab) => [tab.key, false]),
+);
+
 const filters = reactive({
     range: 'today',
     from_date: '',
@@ -50,6 +92,12 @@ const errorMessage = ref('');
 const validationError = ref('');
 const requestCounter = ref(0);
 const chartVersion = ref(0);
+const activeTab = ref(defaultTabKey);
+const refreshingTab = ref('');
+const isRefreshing = ref(false);
+const loadingTabs = reactive(createEmptyTabState());
+const loadedTabs = reactive(createEmptyTabState());
+let queuedRefreshTab = null;
 let refreshTimer = null;
 
 const toast = reactive({
@@ -113,6 +161,7 @@ const defaultSummary = {
         bullets: [],
     },
     alerts: [],
+    connectivity_alerts: [],
     locations: [],
     locations_meta: {
         total: 0,
@@ -189,6 +238,55 @@ const filteredLocations = computed(() => {
     return locationOptions.value.filter((location) => String(location.company_id ?? '') === String(filters.company_id));
 });
 
+const normalizeTabKey = (value) => {
+    const normalized = String(value ?? '')
+        .trim()
+        .toLowerCase();
+
+    return dashboardTabKeys.has(normalized) ? normalized : defaultTabKey;
+};
+
+const readPersistedActiveTab = () => {
+    if (typeof window === 'undefined') {
+        return defaultTabKey;
+    }
+
+    const url = new URL(window.location.href);
+    const urlTab = normalizeTabKey(url.searchParams.get(DASHBOARD_TAB_QUERY_KEY));
+    const storedTab = normalizeTabKey(window.localStorage.getItem(DASHBOARD_ACTIVE_TAB_STORAGE_KEY));
+
+    if (url.searchParams.has(DASHBOARD_TAB_QUERY_KEY)) {
+        return urlTab;
+    }
+
+    return storedTab;
+};
+
+const persistActiveTab = (tabKey) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const normalized = normalizeTabKey(tabKey);
+    const url = new URL(window.location.href);
+    url.searchParams.set(DASHBOARD_TAB_QUERY_KEY, normalized);
+    window.history.replaceState(window.history.state, '', url);
+    window.localStorage.setItem(DASHBOARD_ACTIVE_TAB_STORAGE_KEY, normalized);
+};
+
+const mergeSummaryPayload = (current, incoming) => {
+    const base = current ?? defaultSummary;
+
+    return {
+        ...base,
+        ...incoming,
+        charts: {
+            ...(base.charts ?? {}),
+            ...(incoming?.charts ?? {}),
+        },
+    };
+};
+
 const summaryData = computed(() => summary.value ?? defaultSummary);
 const dashboardTimezone = computed(() => summaryData.value.timezone?.name ?? DASHBOARD_TIMEZONE_FALLBACK);
 const dashboardTimezoneLabel = computed(() => summaryData.value.timezone?.label ?? 'Hora centro de Mexico');
@@ -201,10 +299,17 @@ const summaryBlock = computed(() => summaryData.value.summary ?? defaultSummary.
 const clockBlock = computed(() => summaryData.value.clocks ?? defaultSummary.clocks);
 const executiveStatus = computed(() => summaryData.value.executive_status ?? defaultSummary.executive_status);
 const alertsList = computed(() => summaryData.value.alerts ?? []);
+const connectivityAlerts = computed(() => summaryData.value.connectivity_alerts ?? []);
 const locationsRanking = computed(() => summaryData.value.locations ?? []);
 const locationsMeta = computed(() => summaryData.value.locations_meta ?? defaultSummary.locations_meta);
 const recentActivity = computed(() => summaryData.value.recent_activity ?? []);
 const enrollmentBlock = computed(() => summaryData.value.enrollment ?? defaultSummary.enrollment);
+const activeTabDefinition = computed(() => (
+    dashboardTabDefinitions.find((tab) => tab.key === activeTab.value)
+    ?? dashboardTabDefinitions[0]
+));
+const activeTabLoading = computed(() => Boolean(loadingTabs[activeTab.value]));
+const showActiveTabSkeleton = computed(() => !loadedTabs[activeTab.value] && (activeTabLoading.value || loading.value));
 const recentActivityHeadline = computed(() => {
     const total = recentActivity.value.length;
 
@@ -300,9 +405,12 @@ const applyRangeDefaults = (rangeValue) => {
     filters.to_date = formatInputValue(end);
 };
 
-const buildParams = () => {
+const buildParams = (tabKey = activeTab.value) => {
     validationError.value = '';
-    const params = { range: filters.range };
+    const params = {
+        range: filters.range,
+        tab: normalizeTabKey(tabKey),
+    };
 
     if (filters.company_id) {
         params.company_id = filters.company_id;
@@ -333,11 +441,18 @@ const buildParams = () => {
     return params;
 };
 
-const fetchSummary = async () => {
+const fetchSummary = async ({ tab = activeTab.value } = {}) => {
+    const targetTab = normalizeTabKey(tab);
+
+    if (isRefreshing.value) {
+        queuedRefreshTab = targetTab;
+        return;
+    }
+
     let params;
 
     try {
-        params = buildParams();
+        params = buildParams(targetTab);
     } catch (error) {
         showToast({
             type: 'error',
@@ -349,6 +464,9 @@ const fetchSummary = async () => {
 
     const requestId = ++requestCounter.value;
     loading.value = true;
+    isRefreshing.value = true;
+    refreshingTab.value = targetTab;
+    loadingTabs[targetTab] = true;
     errorMessage.value = '';
 
     try {
@@ -358,7 +476,8 @@ const fetchSummary = async () => {
             return;
         }
 
-        summary.value = data;
+        summary.value = mergeSummaryPayload(summary.value, data);
+        loadedTabs[targetTab] = true;
         chartVersion.value += 1;
     } catch (error) {
         if (requestId !== requestCounter.value) {
@@ -382,8 +501,35 @@ const fetchSummary = async () => {
     } finally {
         if (requestId === requestCounter.value) {
             loading.value = false;
+            isRefreshing.value = false;
+            loadingTabs[targetTab] = false;
+            refreshingTab.value = '';
+        }
+
+        if (requestId === requestCounter.value && queuedRefreshTab) {
+            const nextTab = queuedRefreshTab;
+            queuedRefreshTab = null;
+            await fetchSummary({ tab: nextTab });
         }
     }
+};
+
+const onTabChange = async (tabKey) => {
+    const normalized = normalizeTabKey(tabKey);
+
+    if (activeTab.value === normalized) {
+        persistActiveTab(normalized);
+
+        if (!loadingTabs[normalized]) {
+            await fetchSummary({ tab: normalized });
+        }
+
+        return;
+    }
+
+    activeTab.value = normalized;
+    persistActiveTab(normalized);
+    await fetchSummary({ tab: normalized });
 };
 
 const applyCustomRange = () => {
@@ -410,7 +556,7 @@ const applyCustomRange = () => {
         return;
     }
 
-    fetchSummary();
+    fetchSummary({ tab: activeTab.value });
 };
 
 const viewLocationDetail = async (locationId) => {
@@ -434,9 +580,11 @@ const viewLocationDetail = async (locationId) => {
 const setupAutoRefresh = () => {
     if (typeof window === 'undefined') return;
 
+    clearAutoRefresh();
+
     refreshTimer = window.setInterval(() => {
-        fetchSummary();
-    }, 60000);
+        fetchSummary({ tab: activeTab.value });
+    }, DASHBOARD_AUTO_REFRESH_MS);
 };
 
 const clearAutoRefresh = () => {
@@ -618,6 +766,56 @@ const lastRangeLabel = computed(() => {
     return `${format(from)} al ${format(to)}`;
 });
 
+const criticalAlertsCount = computed(() => alertsList.value.filter((item) => item.level === 'critical').length);
+const criticalLocationsCount = computed(() => locationsRanking.value.filter((item) => item.status === 'critical').length);
+
+const dashboardTabs = computed(() => dashboardTabDefinitions.map((tab) => {
+    switch (tab.key) {
+        case 'resumen':
+            return {
+                ...tab,
+                badge: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
+                badgeTone: 'bg-emerald-100 text-emerald-700',
+            };
+        case 'relojes':
+            return {
+                ...tab,
+                badge: `${formatNumber(clockBlock.value.offline ?? 0)} offline`,
+                badgeTone: 'bg-rose-100 text-rose-700',
+            };
+        case 'unidades':
+            return {
+                ...tab,
+                badge: `${formatNumber(criticalLocationsCount.value)} criticas`,
+                badgeTone: 'bg-amber-100 text-amber-700',
+            };
+        case 'actividad':
+            return {
+                ...tab,
+                badge: `${formatNumber(recentActivity.value.length)} eventos`,
+                badgeTone: 'bg-sky-100 text-sky-700',
+            };
+        case 'enrolamiento':
+            return {
+                ...tab,
+                badge: formatPercent(summaryData.value.charts?.enrollment?.percentage ?? 0),
+                badgeTone: 'bg-indigo-100 text-indigo-700',
+            };
+        case 'alertas':
+            return {
+                ...tab,
+                badge: `${formatNumber(criticalAlertsCount.value)} criticas`,
+                badgeTone: 'bg-rose-100 text-rose-700',
+            };
+        default:
+            return {
+                ...tab,
+                badge: '',
+                badgeTone: 'bg-slate-100 text-slate-600',
+            };
+    }
+}));
+
 const summaryCards = computed(() => [
     {
         id: 'employees-active',
@@ -641,17 +839,17 @@ const summaryCards = computed(() => [
         tone: 'from-amber-50 to-white',
     },
     {
-        id: 'entries-total',
-        title: 'Entradas',
-        value: formatNumber(summaryBlock.value.entries_total ?? 0),
-        hint: 'Eventos tipo entrada',
+        id: 'attendance-coverage',
+        title: 'Cobertura',
+        value: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
+        hint: `${formatNumber(summaryBlock.value.attendance_registered ?? 0)} con registro hoy`,
         tone: 'from-sky-50 to-white',
     },
     {
-        id: 'exits-total',
-        title: 'Salidas',
-        value: formatNumber(summaryBlock.value.exits_total ?? 0),
-        hint: 'Eventos tipo salida',
+        id: 'latest-log-at',
+        title: 'Ultima asistencia',
+        value: formatRelative(summaryBlock.value.latest_log_at),
+        hint: formatDateTime(summaryBlock.value.latest_log_at),
         tone: 'from-rose-50 to-white',
     },
     {
@@ -660,6 +858,30 @@ const summaryCards = computed(() => [
         value: formatRelative(summaryBlock.value.last_updated_at),
         hint: formatDateTime(summaryBlock.value.last_updated_at),
         tone: 'from-indigo-50 to-white',
+    },
+]);
+
+const activityKpiCards = computed(() => [
+    {
+        id: 'entries-total',
+        title: 'Entradas',
+        value: formatNumber(summaryBlock.value.entries_total ?? 0),
+        hint: 'Eventos tipo entrada en el periodo',
+        tone: 'border-sky-100 bg-sky-50 text-sky-700',
+    },
+    {
+        id: 'exits-total',
+        title: 'Salidas',
+        value: formatNumber(summaryBlock.value.exits_total ?? 0),
+        hint: 'Eventos tipo salida en el periodo',
+        tone: 'border-rose-100 bg-rose-50 text-rose-700',
+    },
+    {
+        id: 'latest-activity',
+        title: 'Ultimo evento',
+        value: formatRelative(summaryBlock.value.latest_log_at),
+        hint: formatDateTime(summaryBlock.value.latest_log_at),
+        tone: 'border-indigo-100 bg-indigo-50 text-indigo-700',
     },
 ]);
 
@@ -865,8 +1087,7 @@ const locationStatusClasses = (status) => {
     }
 };
 
-const alertGroups = computed(() => {
-    const alerts = alertsList.value;
+const buildAlertGroups = (alerts) => {
     const definitions = [
         {
             key: 'critical',
@@ -899,7 +1120,10 @@ const alertGroups = computed(() => {
         items: alerts.filter((alert) => alert.level === group.key),
         count: alerts.filter((alert) => alert.level === group.key).length,
     }));
-});
+};
+
+const alertGroups = computed(() => buildAlertGroups(alertsList.value));
+const connectivityAlertGroups = computed(() => buildAlertGroups(connectivityAlerts.value));
 
 const enrollmentRingStyle = computed(() => {
     const percentage = Math.max(0, Math.min(summaryData.value.charts?.enrollment?.percentage ?? 0, 100));
@@ -915,7 +1139,7 @@ watch(
         if (value !== 'custom') {
             validationError.value = '';
             applyRangeDefaults(value);
-            fetchSummary();
+            fetchSummary({ tab: activeTab.value });
         } else if (!filters.from_date || !filters.to_date) {
             applyRangeDefaults('today');
         }
@@ -932,20 +1156,22 @@ watch(
             return;
         }
 
-        fetchSummary();
+        fetchSummary({ tab: activeTab.value });
     },
 );
 
 watch(
     () => filters.unit_id,
     () => {
-        fetchSummary();
+        fetchSummary({ tab: activeTab.value });
     },
 );
 
 onMounted(() => {
+    activeTab.value = readPersistedActiveTab();
+    persistActiveTab(activeTab.value);
     applyRangeDefaults(filters.range);
-    fetchSummary();
+    fetchSummary({ tab: activeTab.value });
     setupAutoRefresh();
 });
 
@@ -1044,10 +1270,10 @@ onBeforeUnmount(() => {
                         type="button"
                         class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:w-auto"
                         :disabled="loading"
-                        @click="fetchSummary"
+                        @click="fetchSummary({ tab: activeTab })"
                     >
-                        <span v-if="loading">Actualizando...</span>
-                        <span v-else>Actualizar dashboard</span>
+                        <span v-if="activeTabLoading">Actualizando...</span>
+                        <span v-else>Actualizar seccion</span>
                     </button>
                 </div>
 
@@ -1070,7 +1296,49 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <article class="card overflow-hidden border px-5 py-5 sm:px-6" :class="executiveHeroClasses.panel">
+            <div class="card overflow-hidden p-2 sm:p-3">
+                <div class="flex gap-2 overflow-x-auto pb-1">
+                    <button
+                        v-for="tab in dashboardTabs"
+                        :key="tab.key"
+                        type="button"
+                        class="min-w-[14rem] flex-1 rounded-[1.75rem] border px-4 py-3 text-left transition sm:min-w-0"
+                        :class="activeTab === tab.key
+                            ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 shadow-sm'
+                            : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'"
+                        @click="onTabChange(tab.key)"
+                    >
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-sm font-semibold text-app">
+                                    {{ tab.label }}
+                                </p>
+                                <p class="mt-1 text-xs text-muted">
+                                    {{ tab.description }}
+                                </p>
+                            </div>
+                            <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="tab.badgeTone">
+                                {{ tab.badge }}
+                            </span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div
+                v-if="activeTabLoading"
+                class="rounded-3xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-700"
+            >
+                Actualizando {{ activeTabDefinition.label.toLowerCase() }} sin recargar toda la pagina.
+            </div>
+
+            <div v-if="showActiveTabSkeleton" class="grid gap-4 lg:grid-cols-3">
+                <div class="card h-40 animate-pulse bg-slate-100/80" />
+                <div class="card h-40 animate-pulse bg-slate-100/80" />
+                <div class="card h-40 animate-pulse bg-slate-100/80" />
+            </div>
+
+            <article v-if="activeTab === 'resumen' && !showActiveTabSkeleton" class="card overflow-hidden border px-5 py-5 sm:px-6" :class="executiveHeroClasses.panel">
                 <div class="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
                     <div>
                         <div class="flex flex-wrap items-center gap-3">
@@ -1139,7 +1407,7 @@ onBeforeUnmount(() => {
                 </div>
             </article>
 
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+            <div v-if="activeTab === 'resumen' && !showActiveTabSkeleton" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                 <article
                     v-for="item in summaryCards"
                     :key="item.id"
@@ -1158,15 +1426,56 @@ onBeforeUnmount(() => {
                 </article>
             </div>
 
-            <div class="grid gap-6 xl:grid-cols-3 xl:items-start">
+            <div v-if="activeTab === 'relojes' && !showActiveTabSkeleton" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <article class="card bg-gradient-to-br from-emerald-50 to-white px-4 py-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">Relojes en linea</p>
+                    <p class="mt-3 text-3xl font-semibold text-emerald-700">{{ formatNumber(clockBlock.online) }}</p>
+                    <p class="mt-2 text-sm text-muted">{{ formatNumber(clockBlock.total) }} equipos monitoreados</p>
+                </article>
+                <article class="card bg-gradient-to-br from-rose-50 to-white px-4 py-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-700">Relojes offline</p>
+                    <p class="mt-3 text-3xl font-semibold text-rose-700">{{ formatNumber(clockBlock.offline) }}</p>
+                    <p class="mt-2 text-sm text-muted">Sin conexion dentro del umbral operativo</p>
+                </article>
+                <article class="card bg-gradient-to-br from-amber-50 to-white px-4 py-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Heartbeat con rezago</p>
+                    <p class="mt-3 text-3xl font-semibold text-amber-700">{{ formatNumber(clockBlock.heartbeat_stale) }}</p>
+                    <p class="mt-2 text-sm text-muted">Mas de {{ formatNumber(clockBlock.online_threshold_minutes) }} minutos sin actividad</p>
+                </article>
+                <article class="card bg-gradient-to-br from-slate-50 to-white px-4 py-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Nunca conectados</p>
+                    <p class="mt-3 text-3xl font-semibold text-app">{{ formatNumber(clockBlock.never_connected) }}</p>
+                    <p class="mt-2 text-sm text-muted">Equipos registrados sin heartbeat previo</p>
+                </article>
+            </div>
+
+            <div v-if="activeTab === 'actividad' && !showActiveTabSkeleton" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <article
+                    v-for="item in activityKpiCards"
+                    :key="item.id"
+                    class="card border px-4 py-4"
+                    :class="item.tone"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em]">
+                        {{ item.title }}
+                    </p>
+                    <p class="mt-3 text-3xl font-semibold">
+                        {{ item.value }}
+                    </p>
+                    <p class="mt-2 text-sm text-muted">
+                        {{ item.hint }}
+                    </p>
+                </article>
+            </div>
+
+            <div v-if="!showActiveTabSkeleton && ['resumen', 'relojes', 'actividad'].includes(activeTab)" class="grid gap-6 xl:grid-cols-3 xl:items-start">
                 <ChartCard
+                    v-if="activeTab === 'resumen'"
                     title="Asistencia del dia"
                     description="Asistieron vs pendientes"
                     type="doughnut"
                     :options="attendanceChartOptions"
                     :dataset="attendanceDonutData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="attendanceHasData"
                     :chart-key="chartVersion"
                     height-class="h-52 sm:h-56 lg:h-60"
@@ -1188,13 +1497,12 @@ onBeforeUnmount(() => {
                 </ChartCard>
 
                 <ChartCard
+                    v-if="activeTab === 'relojes'"
                     title="Estado de relojes"
                     description="En linea, sin conexion y sin actividad"
                     type="doughnut"
                     :options="clocksChartOptions"
                     :dataset="clocksDonutData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="clocksHasData"
                     :chart-key="chartVersion + 1"
                     height-class="h-52 sm:h-56 lg:h-60"
@@ -1228,12 +1536,11 @@ onBeforeUnmount(() => {
                 </ChartCard>
 
                 <ChartCard
+                    v-if="activeTab === 'actividad'"
                     title="Linea de tiempo por hora"
                     description="Actividad real del dia"
                     :options="hourlyChartOptions"
                     :dataset="hourlyActivityData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="hourlyHasData"
                     :chart-key="chartVersion + 2"
                     height-class="h-60 sm:h-64 lg:h-[21rem]"
@@ -1252,25 +1559,25 @@ onBeforeUnmount(() => {
                 </ChartCard>
             </div>
 
-            <div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] xl:items-start">
+            <div v-if="!showActiveTabSkeleton && ['relojes', 'alertas'].includes(activeTab)" class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] xl:items-start">
                 <article class="card relative isolate overflow-hidden px-5 py-5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                                Alertas agrupadas
+                                {{ activeTab === 'relojes' ? 'Conectividad' : 'Alertas agrupadas' }}
                             </p>
                             <h2 class="mt-1 text-xl font-semibold text-app">
-                                Prioridades operativas
+                                {{ activeTab === 'relojes' ? 'Riesgos de infraestructura' : 'Prioridades operativas' }}
                             </h2>
                         </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                            {{ alertsList.length ? `${alertsList.length} alertas` : 'Sin alertas' }}
+                            {{ (activeTab === 'relojes' ? connectivityAlerts.length : alertsList.length) ? `${activeTab === 'relojes' ? connectivityAlerts.length : alertsList.length} alertas` : 'Sin alertas' }}
                         </span>
                     </div>
 
                     <div class="mt-5 grid gap-4">
                         <article
-                            v-for="group in alertGroups"
+                            v-for="group in activeTab === 'relojes' ? connectivityAlertGroups : alertGroups"
                             :key="group.key"
                             class="relative overflow-hidden rounded-3xl border px-4 py-4"
                             :class="group.wrap"
@@ -1313,13 +1620,13 @@ onBeforeUnmount(() => {
                                 </article>
                             </div>
                             <div v-else class="mt-4 rounded-2xl bg-white/70 px-3 py-3 text-sm text-muted">
-                                Sin alertas en este grupo.
+                                {{ activeTab === 'relojes' ? 'Sin alertas de conectividad en este grupo.' : 'Sin alertas en este grupo.' }}
                             </div>
                         </article>
                     </div>
                 </article>
 
-                <article class="card relative isolate overflow-hidden px-5 py-5">
+                <article v-if="activeTab === 'alertas'" class="card relative isolate overflow-hidden px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1358,9 +1665,53 @@ onBeforeUnmount(() => {
                         </article>
                     </div>
                 </article>
+
+                <article v-else class="card relative isolate overflow-hidden px-5 py-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Nota operativa
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Estado de monitoreo
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ clockBlock.status_label }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                        <p class="text-sm leading-7 text-slate-600">
+                            {{ clockBlock.status_reason }}
+                        </p>
+                        <p class="mt-2 text-xs text-muted">
+                            {{ dashboardTimezoneNote }} Umbral actual: {{ formatNumber(clockBlock.online_threshold_minutes) }} minutos.
+                        </p>
+                    </div>
+
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                        <article class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Heartbeat reciente
+                            </p>
+                            <p class="mt-2 text-3xl font-semibold text-app">
+                                {{ formatNumber(clockBlock.heartbeat_recent) }}
+                            </p>
+                        </article>
+                        <article class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Ultimo reloj reportando
+                            </p>
+                            <p class="mt-2 text-lg font-semibold text-app">
+                                {{ clockBlock.last_reporting_clock?.name ?? 'Sin registros recientes' }}
+                            </p>
+                        </article>
+                    </div>
+                </article>
             </div>
 
-            <article class="card px-5 py-5">
+            <article v-if="activeTab === 'unidades' && !showActiveTabSkeleton" class="card px-5 py-5">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1510,8 +1861,12 @@ onBeforeUnmount(() => {
                 </div>
             </article>
 
-            <div class="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
-                <article class="card px-5 py-5">
+            <div
+                v-if="!showActiveTabSkeleton && ['actividad', 'enrolamiento'].includes(activeTab)"
+                class="grid gap-6"
+                :class="activeTab === 'actividad' || activeTab === 'enrolamiento' ? 'xl:grid-cols-1' : 'xl:grid-cols-[1.25fr_0.95fr]'"
+            >
+                <article v-if="activeTab === 'actividad'" class="card px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1559,8 +1914,8 @@ onBeforeUnmount(() => {
                                         </span>
                                     </div>
 
-                                    <p class="mt-1 truncate text-xs text-muted sm:text-sm" :title="`${item.unit_name} · ${item.clock_name}`">
-                                        {{ item.unit_name }} · {{ item.clock_name }}
+                                    <p class="mt-1 truncate text-xs text-muted sm:text-sm" :title="`${item.unit_name} - ${item.clock_name}`">
+                                        {{ item.unit_name }} - {{ item.clock_name }}
                                     </p>
 
                                     <div class="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold">
@@ -1584,7 +1939,7 @@ onBeforeUnmount(() => {
                     </div>
                 </article>
 
-                <article class="card px-5 py-5">
+                <article v-if="activeTab === 'enrolamiento'" class="card px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1655,13 +2010,12 @@ onBeforeUnmount(() => {
                 </article>
             </div>
 
-            <div class="grid gap-6 lg:grid-cols-3">
+            <div v-if="!showActiveTabSkeleton && ['resumen', 'unidades'].includes(activeTab)" class="grid gap-6 lg:grid-cols-3">
                 <ChartCard
+                    v-if="activeTab === 'resumen'"
                     title="Personas presentes"
                     description="Colaboradores con al menos una checada"
                     :dataset="peopleChartData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="presenceHasData"
                     :chart-key="chartVersion + 3"
                     height-class="h-52 sm:h-56 lg:h-60"
@@ -1670,13 +2024,12 @@ onBeforeUnmount(() => {
                 />
 
                 <ChartCard
+                    v-if="activeTab === 'resumen'"
                     title="Estado de empleados"
                     description="Activos vs bajas"
                     type="doughnut"
                     :options="{ plugins: { legend: { position: 'bottom' } }, cutout: '68%' }"
                     :dataset="employeeStatusData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="employeeStatusHasData"
                     :chart-key="chartVersion + 4"
                     height-class="h-52 sm:h-56 lg:h-60"
@@ -1685,12 +2038,11 @@ onBeforeUnmount(() => {
                 />
 
                 <ChartCard
+                    v-if="activeTab === 'unidades'"
                     title="Volumen por unidad"
                     description="Top sucursales con registros"
                     type="bar"
                     :dataset="topBranchesData"
-                    :loading="loading && !summary"
-                    :error="errorMessage || null"
                     :has-data="topBranchesHasData"
                     :chart-key="chartVersion + 5"
                     height-class="h-52 sm:h-56 lg:h-60"
@@ -1700,7 +2052,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-                v-if="summaryEmpty && !errorMessage"
+                v-if="activeTab === 'resumen' && summaryEmpty && !errorMessage"
                 class="card border border-slate-100 bg-white px-5 py-4 text-sm text-muted"
             >
                 {{ summaryMessage }}
