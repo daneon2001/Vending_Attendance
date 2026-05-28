@@ -51,6 +51,10 @@ class UnitModuleTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Units/Index')
             ->where('initialUnits.meta.total', 1)
+            ->where('summary.total_units', 1)
+            ->where('summary.active_units', 1)
+            ->where('summary.inactive_units', 0)
+            ->where('filteredMeta.filtered_total', 1)
             ->where('initialUnits.data.0.name', 'Unidad Matriz')
             ->where('initialUnits.data.0.company.name', 'Medicallife')
             ->where('companies.0.name', 'Medicallife')
@@ -99,6 +103,10 @@ class UnitModuleTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('summary.total_units', 2)
+            ->assertJsonPath('summary.active_units', 1)
+            ->assertJsonPath('summary.inactive_units', 1)
+            ->assertJsonPath('filtered_meta.filtered_total', 1)
             ->assertJsonPath('data.0.name', 'Unidad Norte')
             ->assertJsonPath('data.0.company.name', 'Empresa Norte')
             ->assertJsonPath('data.0.status', 1);

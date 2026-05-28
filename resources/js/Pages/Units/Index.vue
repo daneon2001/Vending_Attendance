@@ -18,6 +18,21 @@ const props = defineProps({
             meta: null,
         }),
     },
+    summary: {
+        type: Object,
+        default: () => ({
+            total_units: 0,
+            active_units: 0,
+            inactive_units: 0,
+        }),
+    },
+    filteredMeta: {
+        type: Object,
+        default: () => ({
+            filtered_total: 0,
+            current_page_count: 0,
+        }),
+    },
     companies: {
         type: Array,
         default: () => [],
@@ -37,6 +52,15 @@ const canDisableUnits = computed(() => can('units', 'disable'));
 
 const units = ref(props.initialUnits?.data ?? []);
 const pagination = ref(props.initialUnits?.meta ?? null);
+const summary = ref(props.summary ?? {
+    total_units: 0,
+    active_units: 0,
+    inactive_units: 0,
+});
+const filteredMeta = ref(props.filteredMeta ?? {
+    filtered_total: pagination.value?.total ?? 0,
+    current_page_count: (props.initialUnits?.data ?? []).length,
+});
 const perPage = ref(pagination.value?.per_page ?? 12);
 const perPageOptions = [10, 12, 20, 50];
 const listLoading = ref(false);
@@ -69,11 +93,8 @@ const showToast = ({ type = 'success', title = '', message = '', duration }) => 
     });
 };
 
-const totalActive = computed(() => units.value.filter((unit) => unit.status === 1).length);
-const totalInactive = computed(() => units.value.filter((unit) => unit.status === 0).length);
-
 const pageSummary = computed(() => {
-    const total = pagination.value?.total ?? units.value.length;
+    const total = filteredMeta.value?.filtered_total ?? pagination.value?.total ?? units.value.length;
     if (!total) {
         return { start: 0, end: 0, total: 0 };
     }
@@ -211,6 +232,11 @@ const fetchUnits = async (page = currentPage.value) => {
         });
         units.value = data.data ?? [];
         pagination.value = data.meta ?? pagination.value;
+        summary.value = data.summary ?? summary.value;
+        filteredMeta.value = data.filtered_meta ?? {
+            filtered_total: data.meta?.total ?? units.value.length,
+            current_page_count: (data.data ?? []).length,
+        };
     } catch (error) {
         listError.value = error.response?.data?.message ?? 'No se pudo cargar el catálogo.';
         showToast({
@@ -414,7 +440,7 @@ const clearFilters = () => {
                         Total
                     </p>
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
-                        {{ pageSummary.total }}
+                        {{ summary.total_units }}
                     </p>
                     <p class="text-sm text-slate-500">Unidades registradas</p>
                 </article>
@@ -423,7 +449,7 @@ const clearFilters = () => {
                         Activas
                     </p>
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
-                        {{ totalActive }}
+                        {{ summary.active_units }}
                     </p>
                     <p class="text-sm text-slate-500">Operando actualmente</p>
                 </article>
@@ -432,9 +458,20 @@ const clearFilters = () => {
                         Inactivas
                     </p>
                     <p class="mt-2 text-3xl font-semibold text-slate-900">
-                        {{ totalInactive }}
+                        {{ summary.inactive_units }}
                     </p>
                     <p class="text-sm text-slate-500">Fuera de operacion</p>
+                </article>
+                <article class="rounded-3xl border border-slate-100 bg-white p-4 sm:col-span-3">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Resultado filtrado
+                    </p>
+                    <p class="mt-2 text-lg font-semibold text-slate-900">
+                        {{ filteredMeta.filtered_total ?? pageSummary.total }} unidades
+                    </p>
+                    <p class="text-sm text-slate-500">
+                        Mostrando {{ pageSummary.start }}-{{ pageSummary.end }} de {{ filteredMeta.filtered_total ?? pageSummary.total }} resultados filtrados.
+                    </p>
                 </article>
                 <div
                     v-if="pageSummary.total"

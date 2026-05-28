@@ -8,39 +8,33 @@ use App\Http\Resources\UnitDetailResource;
 use App\Http\Resources\UnitResource;
 use App\Models\Unit;
 use App\Services\Audit\AuditLogger;
+use App\Services\Units\UnitCatalogQueryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class UnitController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, UnitCatalogQueryService $unitCatalogQueryService): JsonResponse
     {
-        $query = Unit::query()
-            ->with('company:id,name')
-            ->withCount('clocks');
+        $filters = [
+            'company_id' => $request->input('company_id'),
+            'status' => $request->input('status'),
+            'search' => $request->input('search'),
+        ];
 
-        if ($request->filled('company_id')) {
-            $query->where('company_id', $request->integer('company_id'));
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->boolean('status') ? 1 : 0);
-        }
-
-        if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
-            });
-        }
-
-        $units = $query
+        $units = $unitCatalogQueryService->buildFilteredListQuery($filters)
             ->orderBy('name')
             ->paginate($request->integer('per_page', 12));
+        $summary = $unitCatalogQueryService->buildSummary();
 
         return response()->json([
             'data' => UnitResource::collection($units)->resolve(),
+            'summary' => $summary,
+            'filtered_meta' => [
+                'filtered_total' => $units->total(),
+                'current_page_count' => $units->count(),
+            ],
             'meta' => [
                 'current_page' => $units->currentPage(),
                 'last_page' => $units->lastPage(),
