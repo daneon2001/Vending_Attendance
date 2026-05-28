@@ -336,6 +336,19 @@ class Employee extends Model
         return $this->resolved_check_scope === self::CHECK_SCOPE_SELECTED_BRANCHES;
     }
 
+    public function visibleEmployeeKey(): ?string
+    {
+        foreach (['fortia_employee_id', 'employee_code', 'code', 'clave_empleado'] as $field) {
+            $value = $this->getAttribute($field);
+
+            if ($value !== null && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return null;
+    }
+
     public function syncCheckScope(array $allowedLocationIds = []): void
     {
         $scope = $this->resolved_check_scope;

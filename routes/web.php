@@ -8,6 +8,8 @@ use App\Http\Controllers\CompanyCatalogController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\AttendanceCardController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Employees\EmployeeCatalogExportController;
+use App\Http\Controllers\Employees\EmployeeCatalogPageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\UserController as ApiUserController;
@@ -57,9 +59,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/clocks/import', ClockImportController::class)->name('clocks.import');
     Route::get('/clocks/{clock}/logs', [ClockLogController::class, 'index'])->name('clocks.logs');
 
-    Route::get('/employees', function () {
-        return Inertia::render('Employees/EmployeesCatalog');
-    })->name('employees.index');
+    Route::get('/employees', EmployeeCatalogPageController::class)->name('employees.index');
+    Route::get('/employees/export', EmployeeCatalogExportController::class)
+        ->middleware([
+            'role:administrador,admin,superadmin',
+            'perm.strict:employees,view',
+        ])
+        ->name('employees.catalog.export');
 
     Route::get('/attendance-cards', [AttendanceCardController::class, 'index'])
         ->middleware('perm:asistencias,view')

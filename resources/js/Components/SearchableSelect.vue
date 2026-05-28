@@ -14,7 +14,27 @@ const props = defineProps({
         type: String,
         default: 'Selecciona una opcion',
     },
+    label: {
+        type: String,
+        default: '',
+    },
+    optionValue: {
+        type: String,
+        default: 'id',
+    },
+    optionLabel: {
+        type: String,
+        default: 'name',
+    },
+    searchPlaceholder: {
+        type: String,
+        default: 'Buscar...',
+    },
     disabled: {
+        type: Boolean,
+        default: false,
+    },
+    clearable: {
         type: Boolean,
         default: false,
     },
@@ -34,8 +54,19 @@ const highlightedIndex = ref(-1);
 
 const normalizedOptions = computed(() =>
     props.options.map((option) => ({
-        value: String(option.value ?? option.id ?? ''),
-        text: option.label ?? option.name ?? '',
+        raw: option,
+        value: String(option?.[props.optionValue] ?? option.value ?? option.id ?? ''),
+        text: option?.[props.optionLabel] ?? option.label ?? option.name ?? '',
+        searchText: [
+            option?.[props.optionLabel],
+            option?.label,
+            option?.name,
+            option?.code,
+            option?.searchText,
+        ]
+            .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+            .map((value) => String(value).trim().toLowerCase())
+            .join(' '),
         disabled: Boolean(option.disabled),
     })),
 );
@@ -52,7 +83,7 @@ const filteredOptions = computed(() => {
         return normalizedOptions.value;
     }
 
-    return normalizedOptions.value.filter((option) => option.text.toLowerCase().includes(query));
+    return normalizedOptions.value.filter((option) => option.searchText.includes(query));
 });
 
 const triggerLabel = computed(() => selectedOption.value?.text || props.placeholder);
@@ -92,6 +123,10 @@ const selectOption = (option) => {
 };
 
 const clearSelection = () => {
+    if (! props.clearable) {
+        return;
+    }
+
     emit('update:modelValue', '');
     emit('change', '');
     closeDropdown();
@@ -218,30 +253,54 @@ onBeforeUnmount(() => {
 
 <template>
     <div ref="rootRef" class="relative" data-select-search-root="ignore">
-        <button
-            type="button"
-            :disabled="disabled"
+        <div
             :class="[
                 inputClass,
-                'flex w-full items-center justify-between gap-3 text-left',
+                'flex w-full items-center gap-2 text-left',
                 disabled ? 'cursor-not-allowed opacity-60' : '',
             ]"
-            @click="open ? closeDropdown() : openDropdown()"
-            @keydown="handleTriggerKeydown"
         >
-            <span :class="hasSelection ? 'text-app' : 'text-slate-400'">
-                {{ triggerLabel }}
-            </span>
-            <span class="shrink-0 text-slate-400">
-                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                :disabled="disabled"
+                role="combobox"
+                :aria-label="label || placeholder"
+                :aria-expanded="open"
+                aria-haspopup="listbox"
+                @click="open ? closeDropdown() : openDropdown()"
+                @keydown="handleTriggerKeydown"
+            >
+                <span class="truncate" :class="hasSelection ? 'text-app' : 'text-slate-400'">
+                    {{ triggerLabel }}
+                </span>
+                <span class="shrink-0 text-slate-400">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                            fill-rule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z"
+                            clip-rule="evenodd"
+                        />
+                    </svg>
+                </span>
+            </button>
+
+            <button
+                v-if="clearable && hasSelection && !disabled"
+                type="button"
+                class="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Limpiar seleccion"
+                @click.stop="clearSelection"
+            >
+                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path
                         fill-rule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z"
+                        d="M4.22 4.22a.75.75 0 011.06 0L10 8.94l4.72-4.72a.75.75 0 111.06 1.06L11.06 10l4.72 4.72a.75.75 0 11-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 11-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 010-1.06z"
                         clip-rule="evenodd"
                     />
                 </svg>
-            </span>
-        </button>
+            </button>
+        </div>
 
         <div
             v-if="open"
@@ -253,13 +312,15 @@ onBeforeUnmount(() => {
                     v-model="searchQuery"
                     type="text"
                     class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400"
-                    placeholder="Buscar empleado..."
+                    :placeholder="searchPlaceholder"
+                    :aria-label="searchPlaceholder"
                     @keydown="handleSearchKeydown"
                 />
             </div>
 
-            <div class="max-h-64 overflow-y-auto py-1">
+            <div class="max-h-64 overflow-y-auto py-1" role="listbox">
                 <button
+                    v-if="clearable"
                     type="button"
                     class="flex w-full items-center px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
                     :class="highlightedIndex === 0 && !filteredOptions.length ? 'bg-slate-50' : ''"
@@ -272,6 +333,8 @@ onBeforeUnmount(() => {
                     v-for="(option, index) in filteredOptions"
                     :key="option.value"
                     type="button"
+                    role="option"
+                    :aria-selected="option.value === normalizedValue"
                     class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
                     :class="[
                         option.disabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-700',

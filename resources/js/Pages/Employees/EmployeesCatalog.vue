@@ -8,26 +8,41 @@ import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import ErrorState from '@/Components/ErrorState.vue';
+import SearchableSelect from '@/Components/SearchableSelect.vue';
 import ImportEmployeesModal from '@/Pages/Employees/Partials/ImportEmployeesModal.vue';
 import { apiUrl, appUrl } from '@/utils/url';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
+const props = defineProps({
+    locations: {
+        type: Array,
+        default: () => [],
+    },
+    initialFilters: {
+        type: Object,
+        default: () => ({}),
+    },
+});
+
+const createFilters = (value = {}) => ({
+    status: value?.status ?? '',
+    search: value?.search ?? value?.q ?? '',
+    fingerprint: value?.fingerprint ?? '',
+    face: value?.face ?? '',
+    syncReady: Boolean(value?.sync_ready ?? false),
+    locationId: value?.location_id ? String(value.location_id) : '',
+    page: Number(value?.page ?? 1),
+    perPage: Number(value?.per_page ?? 15),
+});
+
 const employees = ref([]);
 const loading = ref(false);
 const loadError = ref('');
 const syncing = ref(false);
 const statusChanges = ref([]);
-const filters = reactive({
-    status: '',
-    search: '',
-    fingerprint: '',
-    face: '',
-    syncReady: false,
-    page: 1,
-    perPage: 15,
-});
+const filters = reactive(createFilters(props.initialFilters));
 const isAttendanceOpen = ref(false);
 const selectedEmployee = ref(null);
 const attendancePanelKey = ref(0);
@@ -119,6 +134,7 @@ const normalizeCheckScope = (employee = {}) => {
 
 const normalizeEmployee = (employee = {}) => ({
     ...employee,
+    employee_key: employee.employee_key ?? employee.code ?? null,
     status: normalizeStatus(employee.status),
     has_fingerprint: Boolean(employee.has_fingerprint),
     fingerprint_status: normalizeFingerprintStatus(employee),
@@ -136,6 +152,7 @@ const normalizeEmployee = (employee = {}) => ({
     allowed_location_ids: Array.isArray(employee.allowed_location_ids)
         ? employee.allowed_location_ids.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
         : [],
+    allowed_location_labels: Array.isArray(employee.allowed_location_labels) ? employee.allowed_location_labels : [],
 });
 
 const fingerprintStatusLabel = (employee) => {
@@ -197,6 +214,10 @@ const allowedLocationsLabel = (employee) => {
         return '—';
     }
 
+    if (employee.allowed_location_labels.length) {
+        return employee.allowed_location_labels.join(', ');
+    }
+
     if (!employee.allowed_location_ids.length) {
         return 'Sin sucursales';
     }
@@ -224,6 +245,14 @@ const showToast = ({ type = 'success', title = '', message = '', duration }) => 
 };
 
 const page = usePage();
+const locationOptions = computed(() => props.locations ?? page.props.locations ?? []);
+const locationSelectOptions = computed(() =>
+    locationOptions.value.map((location) => ({
+        value: String(location.id),
+        label: location.code ? `${location.name} (${location.code})` : location.name,
+        code: location.code ?? '',
+    })),
+);
 const permissionMatrix = computed(() => page.props.auth.permissions ?? {});
 const can = (module, action = 'view') => {
     const actions = permissionMatrix.value?.[module] ?? [];
@@ -232,6 +261,9 @@ const can = (module, action = 'view') => {
 const canSyncEmployees = computed(() => can('employees', 'sync'));
 const canImportEmployees = computed(() => can('employees', 'import'));
 const canDisableEmployees = computed(() => can('employees', 'disable'));
+const canExportEmployees = computed(() =>
+    can('employees', 'view') || can('employees', 'export') || can('settings', 'manage'),
+);
 const canViewAttendance = computed(() => can('attendance', 'view'));
 const canDeleteFingerprints = computed(() => can('biometrics', 'fingerprints.delete'));
 const canManageFace = computed(() => can('biometrics', 'face.manage'));
@@ -283,6 +315,42 @@ const setMeta = (payload) => {
     meta.to = payload.to ?? (total > 0 ? Math.min(currentPage * perPage, total) : 0);
 };
 
+const buildFilterQuery = ({ pageNumber = filters.page, includePagination = true } = {}) => {
+    const query = {
+        status: filters.status || undefined,
+        q: filters.search || undefined,
+        fingerprint: filters.fingerprint || undefined,
+        face: filters.face || undefined,
+        sync_ready: filters.syncReady ? 1 : undefined,
+        location_id: filters.locationId || undefined,
+        page: includePagination && pageNumber > 1 ? pageNumber : undefined,
+        per_page: includePagination && filters.perPage !== 15 ? filters.perPage : undefined,
+    };
+
+    return Object.fromEntries(
+        Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    );
+};
+
+const exportUrl = computed(() => route('employees.catalog.export', buildFilterQuery({ includePagination: false })));
+
+const syncUrlState = (pageNumber = filters.page) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const params = new URLSearchParams();
+    Object.entries(buildFilterQuery({ pageNumber })).forEach(([key, value]) => {
+        params.set(key, String(value));
+    });
+
+    const nextUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+
+    window.history.replaceState({}, '', nextUrl);
+};
+
 const loadEmployees = async (pageNumber = filters.page) => {
     loading.value = true;
     loadError.value = '';
@@ -297,6 +365,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
                 fingerprint: filters.fingerprint || undefined,
                 face: filters.face || undefined,
                 sync_ready: filters.syncReady ? 1 : undefined,
+                location_id: filters.locationId || undefined,
                 page: filters.page,
                 per_page: filters.perPage,
             },
@@ -304,6 +373,7 @@ const loadEmployees = async (pageNumber = filters.page) => {
 
         employees.value = (data.data ?? []).map(normalizeEmployee);
         setMeta(data.meta);
+        syncUrlState(filters.page);
         if (data.sync && typeof data.sync === 'object') {
             Object.assign(syncConfig, {
                 mode: data.sync.mode ?? syncConfig.mode,
@@ -561,6 +631,11 @@ const handlePerPageChange = (perPage) => {
     loadEmployees(1);
 };
 
+const clearFilters = () => {
+    Object.assign(filters, createFilters({ per_page: filters.perPage }));
+    loadEmployees(1);
+};
+
 const closeActionMenu = () => {
     openActionMenuId.value = null;
 };
@@ -609,7 +684,7 @@ const handleImportCompleted = async (payload) => {
 };
 
 onMounted(() => {
-    loadEmployees();
+    loadEmployees(filters.page);
     document.addEventListener('click', handleOutsideActionMenuClick);
     document.addEventListener('keydown', handleActionMenuKeydown);
 });
@@ -649,6 +724,14 @@ onBeforeUnmount(() => {
                     >
                         Importar Excel
                     </button>
+                    <a
+                        v-if="canExportEmployees && meta.total > 0"
+                        :href="exportUrl"
+                        class="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-100 sm:w-auto"
+                        title="Exporta todos los empleados que cumplen los filtros actuales."
+                    >
+                        Exportar Excel
+                    </a>
                     <button
                         v-if="canSyncEmployees"
                         class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
@@ -670,6 +753,21 @@ onBeforeUnmount(() => {
                         placeholder="Nombre o codigo..."
                         class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
                         @keyup.enter="loadEmployees(1)"
+                    />
+                </label>
+                <label class="flex w-full flex-col sm:w-auto">
+                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Unidad</span>
+                    <SearchableSelect
+                        v-model="filters.locationId"
+                        label="Unidad"
+                        :options="locationSelectOptions"
+                        placeholder="Todas las unidades"
+                        option-value="value"
+                        option-label="label"
+                        search-placeholder="Buscar unidad..."
+                        :clearable="true"
+                        input-class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto sm:min-w-[14rem]"
+                        @change="loadEmployees(1)"
                     />
                 </label>
                 <label class="flex w-full flex-col sm:w-auto">
@@ -721,6 +819,12 @@ onBeforeUnmount(() => {
                 >
                     Aplicar
                 </button>
+                <button
+                    class="w-full self-end rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
+                    @click="clearFilters"
+                >
+                    Limpiar
+                </button>
             </div>
 
             <div v-if="statusChanges.length" class="rounded-2xl border border-app bg-white px-4 py-3 text-sm shadow-sm dark:bg-slate-900">
@@ -769,6 +873,7 @@ onBeforeUnmount(() => {
                         <p class="truncate text-sm font-semibold text-app" :title="employee.full_name ?? employee.name">
                             {{ employee.full_name ?? employee.name }}
                         </p>
+                        <p class="mt-1 text-xs text-muted">Clave: {{ employee.employee_key ?? 'Sin clave' }}</p>
                         <p class="mt-1 text-xs text-muted">{{ employee.unit_name ?? 'Sin unidad' }}</p>
 
                         <div class="mt-2 flex flex-wrap gap-2">
@@ -857,6 +962,7 @@ onBeforeUnmount(() => {
                         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft dark:bg-slate-900/40">
                             <tr>
                                 <th class="px-4 py-3">Nombre</th>
+                                <th class="px-4 py-3">Clave empleado</th>
                                 <th class="px-4 py-3">Unidad</th>
                                 <th class="px-4 py-3">Estado</th>
                                 <th class="px-4 py-3">Alcance</th>
@@ -879,6 +985,7 @@ onBeforeUnmount(() => {
                                         <template v-if="employee.face_template_version"> | {{ employee.face_template_version }}</template>
                                     </span>
                                 </td>
+                                <td class="px-4 py-3 text-muted">{{ employee.employee_key ?? 'Sin clave' }}</td>
                                 <td class="px-4 py-3 text-muted">{{ employee.unit_name ?? 'Sin unidad' }}</td>
                                 <td class="px-4 py-3">
                                     <button

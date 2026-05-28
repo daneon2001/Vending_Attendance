@@ -27,11 +27,30 @@ class EmployeeCompactResource extends JsonResource
         }
 
         $resolvedBaseLocation = $this->baseLocation;
+        $employeeKey = $this->visibleEmployeeKey();
+        $allowedLocationLabels = [];
+
+        if ($this->relationLoaded('allowedLocations')) {
+            $allowedLocationLabels = $this->allowedLocations
+                ->map(function ($location): string {
+                    $name = trim((string) ($location->name ?? ''));
+                    $code = trim((string) ($location->code ?? ''));
+
+                    if ($name !== '' && $code !== '') {
+                        return "{$name} ({$code})";
+                    }
+
+                    return $name !== '' ? $name : ($code !== '' ? $code : (string) $location->id);
+                })
+                ->values()
+                ->all();
+        }
 
         return [
             'id' => (int) $this->id,
             'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
-            'code' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : (string) $this->id,
+            'code' => $employeeKey ?? (string) $this->id,
+            'employee_key' => $employeeKey,
             'name' => $this->name,
             'last_name' => $this->last_name,
             'second_last_name' => $this->second_last_name,
@@ -51,6 +70,7 @@ class EmployeeCompactResource extends JsonResource
             'resolved_check_scope' => (string) ($this->resolved_check_scope ?? 'HOME_ONLY'),
             'can_check_all_branches' => (bool) ($this->can_check_all_branches ?? false),
             'allowed_location_ids' => $allowedLocationIds,
+            'allowed_location_labels' => $allowedLocationLabels,
 
             'fingerprint_status' => (string) $this->fingerprint_status,
             'has_fingerprint' => (bool) $this->has_fingerprint,

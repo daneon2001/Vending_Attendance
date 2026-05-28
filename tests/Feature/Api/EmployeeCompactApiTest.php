@@ -23,6 +23,7 @@ class EmployeeCompactApiTest extends TestCase
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeFingerprintsTable = false;
+    private bool $createdEmployeeAllowedLocationsTable = false;
 
     protected function setUp(): void
     {
@@ -37,6 +38,9 @@ class EmployeeCompactApiTest extends TestCase
     {
         if ($this->createdEmployeeFingerprintsTable && Schema::hasTable('employee_fingerprints')) {
             Schema::drop('employee_fingerprints');
+        }
+        if ($this->createdEmployeeAllowedLocationsTable && Schema::hasTable('employee_allowed_locations')) {
+            Schema::drop('employee_allowed_locations');
         }
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
             Schema::drop('employees');
@@ -427,6 +431,126 @@ class EmployeeCompactApiTest extends TestCase
             ->assertJsonPath('data.0.unit_name', 'Unidad Fortia A');
     }
 
+    public function test_compact_endpoint_exposes_employee_key(): void
+    {
+        $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
+        $this->authenticate();
+
+        DB::table('employees')->insert([
+            'fortia_employee_id' => 91501,
+            'name' => 'Laura',
+            'last_name' => 'Campos',
+            'full_name' => 'Laura Campos',
+            'status' => 'A',
+            'has_fingerprint' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson(self::URI.'?per_page=15')
+            ->assertOk()
+            ->assertJsonPath('data.0.employee_key', '91501')
+            ->assertJsonPath('data.0.code', '91501');
+    }
+
+    public function test_compact_endpoint_filters_by_location_scope_for_base_allowed_and_global_employees(): void
+    {
+        $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
+        $this->authenticate();
+
+        $locationA = DB::table('locations')->insertGetId([
+            'fortia_location_id' => 601,
+            'code' => '601',
+            'name' => 'Unidad Alcance A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locationB = DB::table('locations')->insertGetId([
+            'fortia_location_id' => 602,
+            'code' => '602',
+            'name' => 'Unidad Alcance B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $baseEmployeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 96001,
+            'name' => 'Base',
+            'last_name' => 'Empleado',
+            'full_name' => 'Base Empleado',
+            'base_location_id' => 601,
+            'base_location_name' => 'Unidad Alcance A',
+            'status' => 'A',
+            'can_check_all_branches' => false,
+            'check_scope' => 'HOME_ONLY',
+            'has_fingerprint' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $allowedEmployeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 96002,
+            'name' => 'Permitido',
+            'last_name' => 'Empleado',
+            'full_name' => 'Permitido Empleado',
+            'base_location_id' => 602,
+            'base_location_name' => 'Unidad Alcance B',
+            'status' => 'A',
+            'can_check_all_branches' => false,
+            'check_scope' => 'SELECTED_BRANCHES',
+            'has_fingerprint' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_allowed_locations')->insert([
+            'employee_id' => $allowedEmployeeId,
+            'location_id' => $locationA,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'fortia_employee_id' => 96003,
+            'name' => 'Global',
+            'last_name' => 'Empleado',
+            'full_name' => 'Global Empleado',
+            'base_location_id' => 602,
+            'base_location_name' => 'Unidad Alcance B',
+            'status' => 'A',
+            'can_check_all_branches' => true,
+            'check_scope' => 'ANY_BRANCH',
+            'has_fingerprint' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'fortia_employee_id' => 96004,
+            'name' => 'Fuera',
+            'last_name' => 'Empleado',
+            'full_name' => 'Fuera Empleado',
+            'base_location_id' => 602,
+            'base_location_name' => 'Unidad Alcance B',
+            'status' => 'A',
+            'can_check_all_branches' => false,
+            'check_scope' => 'HOME_ONLY',
+            'has_fingerprint' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson(self::URI.'?location_id='.$locationA.'&per_page=50');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('data.0.allowed_location_labels', [])
+            ->assertJsonFragment(['employee_key' => '96001'])
+            ->assertJsonFragment(['employee_key' => '96002'])
+            ->assertJsonFragment(['employee_key' => '96003'])
+            ->assertJsonMissing(['employee_key' => '96004']);
+    }
+
     private function authenticate(): void
     {
         $userId = DB::table('users')->insertGetId([
@@ -567,6 +691,12 @@ class EmployeeCompactApiTest extends TestCase
         }
 
         Schema::table('employees', function (Blueprint $table): void {
+            if (! Schema::hasColumn('employees', 'can_check_all_branches')) {
+                $table->boolean('can_check_all_branches')->default(false);
+            }
+            if (! Schema::hasColumn('employees', 'check_scope')) {
+                $table->string('check_scope', 40)->nullable();
+            }
             if (! Schema::hasColumn('employees', 'has_face_enrollment')) {
                 $table->boolean('has_face_enrollment')->default(false);
             }
@@ -593,6 +723,16 @@ class EmployeeCompactApiTest extends TestCase
             }
         });
 
+        if (! Schema::hasTable('employee_allowed_locations')) {
+            Schema::create('employee_allowed_locations', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->unsignedBigInteger('location_id');
+                $table->timestamps();
+            });
+            $this->createdEmployeeAllowedLocationsTable = true;
+        }
+
         if (! Schema::hasTable('employee_fingerprints')) {
             Schema::create('employee_fingerprints', function (Blueprint $table): void {
                 $table->id();
@@ -615,6 +755,10 @@ class EmployeeCompactApiTest extends TestCase
 
         if (Schema::hasTable('employees')) {
             DB::table('employees')->delete();
+        }
+
+        if (Schema::hasTable('employee_allowed_locations')) {
+            DB::table('employee_allowed_locations')->delete();
         }
 
         if (Schema::hasTable('locations')) {
