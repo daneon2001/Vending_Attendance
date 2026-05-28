@@ -1468,9 +1468,11 @@ onBeforeUnmount(() => {
                 </article>
             </div>
 
-            <div v-if="!showActiveTabSkeleton && ['resumen', 'relojes', 'actividad'].includes(activeTab)" class="grid gap-6 xl:grid-cols-3 xl:items-start">
+            <div
+                v-if="activeTab === 'resumen' && !showActiveTabSkeleton"
+                class="grid gap-6 lg:grid-cols-2 xl:grid-cols-3 xl:items-start"
+            >
                 <ChartCard
-                    v-if="activeTab === 'resumen'"
                     title="Asistencia del dia"
                     description="Asistieron vs pendientes"
                     type="doughnut"
@@ -1497,7 +1499,35 @@ onBeforeUnmount(() => {
                 </ChartCard>
 
                 <ChartCard
-                    v-if="activeTab === 'relojes'"
+                    title="Personas presentes"
+                    description="Colaboradores con al menos una checada"
+                    :dataset="peopleChartData"
+                    :has-data="presenceHasData"
+                    :chart-key="chartVersion + 3"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin personas registradas en el periodo"
+                />
+
+                <ChartCard
+                    title="Estado de empleados"
+                    description="Activos vs bajas"
+                    type="doughnut"
+                    :options="{ plugins: { legend: { position: 'bottom' } }, cutout: '68%' }"
+                    :dataset="employeeStatusData"
+                    :has-data="employeeStatusHasData"
+                    :chart-key="chartVersion + 4"
+                    height-class="h-52 sm:h-56 lg:h-60"
+                    content-class="p-5"
+                    empty-text="Sin empleados para el filtro actual"
+                />
+            </div>
+
+            <div
+                v-if="activeTab === 'relojes' && !showActiveTabSkeleton"
+                class="grid gap-6"
+            >
+                <ChartCard
                     title="Estado de relojes"
                     description="En linea, sin conexion y sin actividad"
                     type="doughnut"
@@ -1534,50 +1564,30 @@ onBeforeUnmount(() => {
                         </div>
                     </template>
                 </ChartCard>
-
-                <ChartCard
-                    v-if="activeTab === 'actividad'"
-                    title="Linea de tiempo por hora"
-                    description="Actividad real del dia"
-                    :options="hourlyChartOptions"
-                    :dataset="hourlyActivityData"
-                    :has-data="hourlyHasData"
-                    :chart-key="chartVersion + 2"
-                    height-class="h-60 sm:h-64 lg:h-[21rem]"
-                    content-class="p-5"
-                    empty-text="No hay actividad horaria para el periodo"
-                >
-                    <template #footer>
-                        <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-                            <span>Heartbeat reciente: {{ formatNumber(clockBlock.heartbeat_recent) }}</span>
-                            <span v-if="clockBlock.last_reporting_clock">
-                                Ultimo reloj: {{ clockBlock.last_reporting_clock.name }}
-                            </span>
-                            <span v-else>Sin registros recientes</span>
-                        </div>
-                    </template>
-                </ChartCard>
             </div>
 
-            <div v-if="!showActiveTabSkeleton && ['relojes', 'alertas'].includes(activeTab)" class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] xl:items-start">
+            <div
+                v-if="activeTab === 'relojes' && !showActiveTabSkeleton"
+                class="grid gap-6 lg:grid-cols-2 xl:grid-cols-[1.1fr_0.9fr] xl:items-start"
+            >
                 <article class="card relative isolate overflow-hidden px-5 py-5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                                {{ activeTab === 'relojes' ? 'Conectividad' : 'Alertas agrupadas' }}
+                                Conectividad
                             </p>
                             <h2 class="mt-1 text-xl font-semibold text-app">
-                                {{ activeTab === 'relojes' ? 'Riesgos de infraestructura' : 'Prioridades operativas' }}
+                                Riesgos de infraestructura
                             </h2>
                         </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                            {{ (activeTab === 'relojes' ? connectivityAlerts.length : alertsList.length) ? `${activeTab === 'relojes' ? connectivityAlerts.length : alertsList.length} alertas` : 'Sin alertas' }}
+                            {{ connectivityAlerts.length ? `${connectivityAlerts.length} alertas` : 'Sin alertas' }}
                         </span>
                     </div>
 
                     <div class="mt-5 grid gap-4">
                         <article
-                            v-for="group in activeTab === 'relojes' ? connectivityAlertGroups : alertGroups"
+                            v-for="group in connectivityAlertGroups"
                             :key="group.key"
                             class="relative overflow-hidden rounded-3xl border px-4 py-4"
                             :class="group.wrap"
@@ -1620,53 +1630,13 @@ onBeforeUnmount(() => {
                                 </article>
                             </div>
                             <div v-else class="mt-4 rounded-2xl bg-white/70 px-3 py-3 text-sm text-muted">
-                                {{ activeTab === 'relojes' ? 'Sin alertas de conectividad en este grupo.' : 'Sin alertas en este grupo.' }}
+                                Sin alertas de conectividad en este grupo.
                             </div>
                         </article>
                     </div>
                 </article>
 
-                <article v-if="activeTab === 'alertas'" class="card relative isolate overflow-hidden px-5 py-5">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                                Lectura ejecutiva
-                            </p>
-                            <h2 class="mt-1 text-xl font-semibold text-app">
-                                Resumen integrado
-                            </h2>
-                        </div>
-                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                            {{ executiveStatus.title }}
-                        </span>
-                    </div>
-
-                        <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
-                            <p class="text-sm leading-7 text-slate-600">
-                                {{ executiveStatus.message }}
-                            </p>
-                            <p class="mt-2 text-xs text-muted">
-                                {{ dashboardTimezoneNote }}
-                            </p>
-                        </div>
-
-                    <div class="mt-5 space-y-3">
-                        <article
-                            v-for="(bullet, index) in executiveStatus.bullets"
-                            :key="`${index}-${bullet}`"
-                            class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm"
-                        >
-                            <div class="flex gap-3">
-                                <span class="mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
-                                <p class="text-sm text-slate-700">
-                                    {{ bullet }}
-                                </p>
-                            </div>
-                        </article>
-                    </div>
-                </article>
-
-                <article v-else class="card relative isolate overflow-hidden px-5 py-5">
+                <article class="card relative isolate overflow-hidden px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1706,6 +1676,117 @@ onBeforeUnmount(() => {
                             <p class="mt-2 text-lg font-semibold text-app">
                                 {{ clockBlock.last_reporting_clock?.name ?? 'Sin registros recientes' }}
                             </p>
+                        </article>
+                    </div>
+                </article>
+            </div>
+
+            <div
+                v-if="activeTab === 'alertas' && !showActiveTabSkeleton"
+                class="grid gap-6 lg:grid-cols-2 xl:grid-cols-[1.05fr_0.95fr] xl:items-start"
+            >
+                <article class="card relative isolate overflow-hidden px-5 py-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Alertas agrupadas
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Prioridades operativas
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ alertsList.length ? `${alertsList.length} alertas` : 'Sin alertas' }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 grid gap-4">
+                        <article
+                            v-for="group in alertGroups"
+                            :key="group.key"
+                            class="relative overflow-hidden rounded-3xl border px-4 py-4"
+                            :class="group.wrap"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="text-lg font-semibold" :class="group.text">
+                                            {{ group.title }}
+                                        </h3>
+                                        <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="group.badge">
+                                            {{ formatNumber(group.count) }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-sm" :class="group.text">
+                                        {{ group.description }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-if="group.items.length" class="mt-4 space-y-3">
+                                <article
+                                    v-for="item in group.items"
+                                    :key="item.id"
+                                    class="rounded-2xl bg-white/80 px-3 py-3 text-sm text-slate-700"
+                                >
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="font-semibold text-app">
+                                                {{ item.title }}
+                                            </p>
+                                            <p class="mt-1 text-sm text-muted">
+                                                {{ item.message }}
+                                            </p>
+                                        </div>
+                                        <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+                                            {{ formatNumber(item.metric) }}
+                                        </span>
+                                    </div>
+                                </article>
+                            </div>
+                            <div v-else class="mt-4 rounded-2xl bg-white/70 px-3 py-3 text-sm text-muted">
+                                Sin alertas en este grupo.
+                            </div>
+                        </article>
+                    </div>
+                </article>
+
+                <article class="card relative isolate overflow-hidden px-5 py-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Lectura ejecutiva
+                            </p>
+                            <h2 class="mt-1 text-xl font-semibold text-app">
+                                Resumen integrado
+                            </h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ executiveStatus.title }}
+                        </span>
+                    </div>
+
+                        <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                            <p class="text-sm leading-7 text-slate-600">
+                                {{ executiveStatus.message }}
+                            </p>
+                            <p class="mt-2 text-xs text-muted">
+                                {{ dashboardTimezoneNote }}
+                            </p>
+                        </div>
+
+                    <div class="mt-5 space-y-3">
+                        <article
+                            v-for="(bullet, index) in executiveStatus.bullets"
+                            :key="`${index}-${bullet}`"
+                            class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm"
+                        >
+                            <div class="flex gap-3">
+                                <span class="mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                                <p class="text-sm text-slate-700">
+                                    {{ bullet }}
+                                </p>
+                            </div>
                         </article>
                     </div>
                 </article>
@@ -1862,11 +1943,32 @@ onBeforeUnmount(() => {
             </article>
 
             <div
-                v-if="!showActiveTabSkeleton && ['actividad', 'enrolamiento'].includes(activeTab)"
-                class="grid gap-6"
-                :class="activeTab === 'actividad' || activeTab === 'enrolamiento' ? 'xl:grid-cols-1' : 'xl:grid-cols-[1.25fr_0.95fr]'"
+                v-if="activeTab === 'actividad' && !showActiveTabSkeleton"
+                class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] xl:items-start"
             >
-                <article v-if="activeTab === 'actividad'" class="card px-5 py-5">
+                <ChartCard
+                    title="Linea de tiempo por hora"
+                    description="Actividad real del dia"
+                    :options="hourlyChartOptions"
+                    :dataset="hourlyActivityData"
+                    :has-data="hourlyHasData"
+                    :chart-key="chartVersion + 2"
+                    height-class="h-60 sm:h-64 lg:h-[21rem]"
+                    content-class="p-5"
+                    empty-text="No hay actividad horaria para el periodo"
+                >
+                    <template #footer>
+                        <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+                            <span>Heartbeat reciente: {{ formatNumber(clockBlock.heartbeat_recent) }}</span>
+                            <span v-if="clockBlock.last_reporting_clock">
+                                Ultimo reloj: {{ clockBlock.last_reporting_clock.name }}
+                            </span>
+                            <span v-else>Sin registros recientes</span>
+                        </div>
+                    </template>
+                </ChartCard>
+
+                <article class="card px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1938,8 +2040,9 @@ onBeforeUnmount(() => {
                         Sin registros recientes en el periodo seleccionado.
                     </div>
                 </article>
+            </div>
 
-                <article v-if="activeTab === 'enrolamiento'" class="card px-5 py-5">
+            <article v-if="activeTab === 'enrolamiento' && !showActiveTabSkeleton" class="card px-5 py-5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -2007,45 +2110,17 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
                     </div>
-                </article>
-            </div>
+            </article>
 
-            <div v-if="!showActiveTabSkeleton && ['resumen', 'unidades'].includes(activeTab)" class="grid gap-6 lg:grid-cols-3">
+            <div v-if="activeTab === 'unidades' && !showActiveTabSkeleton" class="grid gap-6">
                 <ChartCard
-                    v-if="activeTab === 'resumen'"
-                    title="Personas presentes"
-                    description="Colaboradores con al menos una checada"
-                    :dataset="peopleChartData"
-                    :has-data="presenceHasData"
-                    :chart-key="chartVersion + 3"
-                    height-class="h-52 sm:h-56 lg:h-60"
-                    content-class="p-5"
-                    empty-text="Sin personas registradas en el periodo"
-                />
-
-                <ChartCard
-                    v-if="activeTab === 'resumen'"
-                    title="Estado de empleados"
-                    description="Activos vs bajas"
-                    type="doughnut"
-                    :options="{ plugins: { legend: { position: 'bottom' } }, cutout: '68%' }"
-                    :dataset="employeeStatusData"
-                    :has-data="employeeStatusHasData"
-                    :chart-key="chartVersion + 4"
-                    height-class="h-52 sm:h-56 lg:h-60"
-                    content-class="p-5"
-                    empty-text="Sin empleados para el filtro actual"
-                />
-
-                <ChartCard
-                    v-if="activeTab === 'unidades'"
                     title="Volumen por unidad"
                     description="Top sucursales con registros"
                     type="bar"
                     :dataset="topBranchesData"
                     :has-data="topBranchesHasData"
                     :chart-key="chartVersion + 5"
-                    height-class="h-52 sm:h-56 lg:h-60"
+                    height-class="h-56 sm:h-60 lg:h-72"
                     content-class="p-5"
                     empty-text="Sin unidades con registros para el periodo"
                 />
