@@ -85,7 +85,7 @@ class EmployeeCatalogExportTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_export_downloads_filtered_employees_for_location_scope(): void
+    public function test_export_downloads_filtered_employees_for_assigned_base_location_only(): void
     {
         $this->authenticate();
 
@@ -143,8 +143,8 @@ class EmployeeCatalogExportTest extends TestCase
                 'name' => 'Global',
                 'last_name' => 'Empleado',
                 'company_name' => 'Medical Life',
-                'base_location_id' => 702,
-                'base_location_name' => 'Unidad Export B',
+                'base_location_id' => 701,
+                'base_location_name' => 'Unidad Export A',
                 'status' => 'A',
                 'has_fingerprint' => true,
                 'has_face_enrollment' => true,
@@ -199,7 +199,8 @@ class EmployeeCatalogExportTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertSame(['98001', '98003', '98002'], $employeeKeys);
+        $this->assertSame(['98001', '98003'], $employeeKeys);
+        $this->assertNotContains('98002', $employeeKeys);
         $this->assertNotContains('98004', $employeeKeys);
     }
 

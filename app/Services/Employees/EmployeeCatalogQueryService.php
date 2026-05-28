@@ -122,45 +122,19 @@ class EmployeeCatalogQueryService
 
         $baseLocationCandidates = $this->resolveEmployeeBaseLocationCandidates($location);
 
-        $query->where(function (Builder $locationQuery) use ($location, $baseLocationCandidates): void {
-            if ($baseLocationCandidates !== []) {
-                $locationQuery->whereIn('base_location_id', $baseLocationCandidates);
-            }
+        if ($baseLocationCandidates === []) {
+            $query->whereRaw('1 = 0');
 
-            if (Schema::hasTable('employee_allowed_locations')) {
-                $locationQuery->orWhereExists(function ($allowedQuery) use ($location): void {
-                    $allowedQuery
-                        ->selectRaw('1')
-                        ->from('employee_allowed_locations')
-                        ->whereColumn('employee_allowed_locations.employee_id', 'employees.id')
-                        ->where('employee_allowed_locations.location_id', $location->id);
-                });
-            }
+            return;
+        }
 
-            if (Schema::hasColumn('employees', 'can_check_all_branches')) {
-                $locationQuery->orWhere('can_check_all_branches', true);
-            }
-        });
+        // In employee catalog, "Unidad" means assigned/base unit only.
+        $query->whereIn('base_location_id', $baseLocationCandidates);
     }
 
     private function applyUnassignedLocationFilter(Builder $query): void
     {
-        $query->where(function (Builder $unassignedQuery): void {
-            $unassignedQuery->whereNull('base_location_id');
-
-            if (Schema::hasColumn('employees', 'can_check_all_branches')) {
-                $unassignedQuery->where('can_check_all_branches', false);
-            }
-
-            if (Schema::hasTable('employee_allowed_locations')) {
-                $unassignedQuery->whereNotExists(function ($allowedQuery): void {
-                    $allowedQuery
-                        ->selectRaw('1')
-                        ->from('employee_allowed_locations')
-                        ->whereColumn('employee_allowed_locations.employee_id', 'employees.id');
-                });
-            }
-        });
+        $query->whereNull('base_location_id');
     }
 
     private function applyEmployeeSearch(Builder $query, ?string $search): void

@@ -453,7 +453,7 @@ class EmployeeCompactApiTest extends TestCase
             ->assertJsonPath('data.0.code', '91501');
     }
 
-    public function test_compact_endpoint_filters_by_location_scope_for_base_allowed_and_global_employees(): void
+    public function test_compact_endpoint_filters_by_assigned_base_location_only(): void
     {
         $this->withoutMiddleware([EnsurePermission::class, CheckTokenExpiration::class]);
         $this->authenticate();
@@ -515,8 +515,8 @@ class EmployeeCompactApiTest extends TestCase
             'name' => 'Global',
             'last_name' => 'Empleado',
             'full_name' => 'Global Empleado',
-            'base_location_id' => 602,
-            'base_location_name' => 'Unidad Alcance B',
+            'base_location_id' => 601,
+            'base_location_name' => 'Unidad Alcance A',
             'status' => 'A',
             'can_check_all_branches' => true,
             'check_scope' => 'ANY_BRANCH',
@@ -543,11 +543,11 @@ class EmployeeCompactApiTest extends TestCase
         $response = $this->getJson(self::URI.'?location_id='.$locationA.'&per_page=50');
 
         $response->assertOk()
-            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('data.0.allowed_location_labels', [])
             ->assertJsonFragment(['employee_key' => '96001'])
-            ->assertJsonFragment(['employee_key' => '96002'])
             ->assertJsonFragment(['employee_key' => '96003'])
+            ->assertJsonMissing(['employee_key' => '96002'])
             ->assertJsonMissing(['employee_key' => '96004']);
     }
 
