@@ -24,8 +24,8 @@ const emit = defineEmits(['view', 'edit', 'toggle', 'collapse-toggle']);
 
 const statusStyles = computed(() =>
     props.unit.status
-        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-        : 'bg-rose-50 text-rose-700 border border-rose-100',
+        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+        : 'bg-rose-50 text-rose-700 border border-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800',
 );
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â€”');
@@ -33,7 +33,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
 
 <template>
     <article
-        class="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition hover:border-indigo-100 hover:ring-indigo-50 dark:bg-slate-900/60"
+        class="card-record p-5 hover:border-indigo-100 hover:ring-indigo-50 dark:hover:border-indigo-900/60 dark:hover:ring-indigo-950/40"
     >
         <div v-if="collapsed" class="flex flex-wrap items-center justify-between gap-3 text-sm">
             <div class="flex flex-wrap items-center gap-3">
@@ -50,7 +50,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                 <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]" :class="statusStyles">
                     {{ unit.status ? 'Activa' : 'Inactiva' }}
                 </span>
-                <span class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500">
+                <span class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-300">
                     {{ unit.clocks_count }} relojes
                 </span>
                 <button
@@ -75,7 +75,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                     <h3 class="text-xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ unit.name }}
                     </h3>
-                    <p class="text-sm text-slate-500">
+                    <p class="text-sm text-slate-500 dark:text-slate-400">
                         CÃ³digo {{ unit.code }}
                     </p>
                 </div>
@@ -83,7 +83,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                     <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]" :class="statusStyles">
                         {{ unit.status ? 'Activa' : 'Inactiva' }}
                     </span>
-                    <span class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500">
+                    <span class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-300">
                         {{ unit.clocks_count }} relojes
                     </span>
                     <button
@@ -100,7 +100,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
             </header>
 
             <div class="mt-4 grid gap-4 text-sm sm:grid-cols-3">
-                <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <dl class="card-subtle p-4">
                     <dt class="text-xs uppercase tracking-wide text-slate-400">
                         UbicaciÃ³n
                     </dt>
@@ -111,7 +111,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                         {{ unit.state ?? 'Sin estado' }} {{ unit.country ? `Â· ${unit.country}` : '' }}
                     </dd>
                 </dl>
-                <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <dl class="card-subtle p-4">
                     <dt class="text-xs uppercase tracking-wide text-slate-400">
                         DirecciÃ³n
                     </dt>
@@ -119,7 +119,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'â
                         {{ unit.address ?? 'Sin registrar' }}
                     </dd>
                 </dl>
-                <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <dl class="card-subtle p-4">
                     <dt class="text-xs uppercase tracking-wide text-slate-400">
                         Zona horaria
                     </dt>

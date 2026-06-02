@@ -201,11 +201,11 @@ const summaryCards = computed(() => [
 
     <AuthenticatedLayout content-overflow-visible>
         <template #header>
-            <div>
-                <h1 class="text-app text-xl font-semibold leading-tight">
+            <div class="min-w-0">
+                <h1 class="text-app truncate text-base font-semibold leading-tight sm:text-xl">
                     Tarjeta de asistencia
                 </h1>
-                <p class="text-sm text-slate-500">
+                <p class="hidden truncate text-xs text-slate-500 sm:block sm:text-sm">
                     Consulta operativa y RH por empleado, periodo y unidad.
                 </p>
             </div>
@@ -225,13 +225,13 @@ const summaryCards = computed(() => [
                 {{ flashWarning }}
             </div>
 
-            <section class="rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-4" @submit.prevent="applyFilters">
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+            <section class="card min-w-0 p-4">
+                <form class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" @submit.prevent="applyFilters">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empresa
                         <select
                             v-model="filterForm.company_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         >
                             <option value="">Todas</option>
                             <option v-for="company in companies" :key="company.id" :value="String(company.id)">
@@ -240,11 +240,11 @@ const summaryCards = computed(() => [
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Unidad / sucursal
                         <select
                             v-model="filterForm.location_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         >
                             <option value="">Todas</option>
                             <option v-for="location in filteredLocations" :key="location.id" :value="String(location.id)">
@@ -253,11 +253,11 @@ const summaryCards = computed(() => [
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Departamento
                         <select
                             v-model="filterForm.department_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         >
                             <option value="">Todos</option>
                             <option v-for="department in departments" :key="department.id" :value="String(department.id)">
@@ -266,22 +266,22 @@ const summaryCards = computed(() => [
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empleado
                         <SearchableSelect
                             v-model="filterForm.employee_id"
                             :options="employeeSelectOptions"
                             placeholder="Selecciona empleado"
                             :disabled="loading"
-                            input-class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Periodo
                         <select
                             v-model="filterForm.period"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         >
                             <option v-for="option in periodOptions" :key="option.key" :value="option.key">
                                 {{ option.label }}
@@ -289,30 +289,30 @@ const summaryCards = computed(() => [
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Fecha inicio
                         <input
                             v-model="filterForm.from_date"
                             type="date"
                             :disabled="!isCustomPeriod"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Fecha fin
                         <input
                             v-model="filterForm.to_date"
                             type="date"
                             :disabled="!isCustomPeriod"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
                         />
                     </label>
 
-                    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end xl:col-span-1">
+                    <div class="flex min-w-0 flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end xl:col-span-1 xl:self-end">
                         <button
                             type="submit"
-                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white sm:w-auto"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-white sm:w-auto sm:tracking-[0.3em]"
                             :disabled="loading"
                         >
                             <span v-if="loading">Consultando...</span>
@@ -320,7 +320,7 @@ const summaryCards = computed(() => [
                         </button>
                         <button
                             type="button"
-                            class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
+                            class="w-full rounded-2xl border border-app px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
                             @click="clearFilters"
                         >
                             Limpiar
@@ -328,30 +328,30 @@ const summaryCards = computed(() => [
                     </div>
                 </form>
 
-                <div class="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                    <p>
+                <div class="mt-4 flex min-w-0 flex-col gap-2 border-t border-slate-100 pt-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="break-words">
                         Periodo operativo: <span class="font-semibold text-slate-700">{{ period.display }}</span>
                     </p>
-                    <p>
+                    <p class="break-words">
                         Horarios mostrados en {{ timezone.label?.toLowerCase?.() ?? 'hora centro de Mexico' }}.
                     </p>
                 </div>
             </section>
 
             <section class="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-indigo-50 via-white to-white p-5">
+                <article class="card-record bg-gradient-to-br from-indigo-50 via-white to-white p-5 dark:from-indigo-950/40 dark:via-slate-900 dark:to-slate-900">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-indigo-500">
                                 Tarjeta activa
                             </p>
-                            <h2 class="mt-2 text-2xl font-semibold text-slate-900">
+                            <h2 class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                                 {{ selectedEmployee?.name ?? 'Selecciona un empleado' }}
                             </h2>
-                            <p class="mt-1 text-sm text-slate-500">
+                            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
                                 {{ selectedEmployee?.company ?? 'Filtra por empresa, unidad o departamento para ubicar al colaborador.' }}
                             </p>
-                            <p class="text-sm text-slate-500">
+                            <p class="text-sm text-slate-500 dark:text-slate-400">
                                 {{ selectedEmployee?.location ?? 'La tarjeta se calcula con horario operativo de la zona centro.' }}
                             </p>
                         </div>
@@ -360,13 +360,13 @@ const summaryCards = computed(() => [
                             <a
                                 v-if="canExport && selectedEmployee"
                                 :href="exportUrl"
-                                class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700"
+                                class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
                             >
                                 Exportar Excel
                             </a>
                             <div
                                 v-else-if="canExport"
-                                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+                                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                             >
                                 Selecciona empleado para exportar
                             </div>
@@ -384,51 +384,51 @@ const summaryCards = computed(() => [
                         <article
                             v-for="cardItem in summaryCards"
                             :key="cardItem.label"
-                            class="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm"
+                            class="card-subtle px-4 py-3"
                         >
-                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-slate-400">
                                 {{ cardItem.label }}
                             </p>
-                            <p class="mt-2 text-2xl font-semibold text-slate-900">
+                            <p class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                                 {{ cardItem.value }}
                             </p>
                         </article>
                     </div>
                 </article>
 
-                <article class="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                <article class="card-record p-5">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-slate-400">
                         Resumen del periodo
                     </p>
                     <dl class="mt-4 space-y-4 text-sm">
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-slate-500">Ultima asistencia</dt>
-                            <dd class="text-right font-semibold text-slate-800">
+                            <dt class="text-slate-500 dark:text-slate-400">Ultima asistencia</dt>
+                            <dd class="text-right font-semibold text-slate-800 dark:text-slate-100">
                                 {{ summary.last_attendance_display ?? 'Sin registros' }}
                             </dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-slate-500">Cobertura real</dt>
-                            <dd class="text-right font-semibold text-slate-800">
+                            <dt class="text-slate-500 dark:text-slate-400">Cobertura real</dt>
+                            <dd class="text-right font-semibold text-slate-800 dark:text-slate-100">
                                 {{ summary.coverage_label ?? '0.0%' }}
                             </dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-slate-500">Dias de descanso</dt>
-                            <dd class="text-right font-semibold text-slate-800">
+                            <dt class="text-slate-500 dark:text-slate-400">Dias de descanso</dt>
+                            <dd class="text-right font-semibold text-slate-800 dark:text-slate-100">
                                 {{ summary.rest_days ?? 0 }}
                             </dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-slate-500">Empleados en alcance</dt>
-                            <dd class="text-right font-semibold text-slate-800">
+                            <dt class="text-slate-500 dark:text-slate-400">Empleados en alcance</dt>
+                            <dd class="text-right font-semibold text-slate-800 dark:text-slate-100">
                                 {{ employeeScope.matching_count ?? 0 }}
                             </dd>
                         </div>
                     </dl>
 
-                    <div class="mt-5 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                        <p class="font-semibold text-slate-700">Lectura operativa</p>
+                    <div class="card-subtle mt-5 px-4 py-3 text-sm text-slate-500 dark:text-slate-300">
+                        <p class="font-semibold text-slate-700 dark:text-slate-100">Lectura operativa</p>
                         <p class="mt-1">
                             {{
                                 selectedEmployee
@@ -460,7 +460,7 @@ const summaryCards = computed(() => [
                     <article
                         v-for="row in rows"
                         :key="`mobile-${row.date}`"
-                        class="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
+                        class="card-record p-4"
                     >
                         <div class="flex items-start justify-between gap-3">
                             <div>
@@ -501,7 +501,7 @@ const summaryCards = computed(() => [
                     </article>
                 </div>
 
-                <div class="hidden overflow-x-auto rounded-3xl border border-slate-100 bg-white shadow-sm lg:block">
+                <div class="card hidden overflow-x-auto lg:block">
                     <table class="w-full min-w-[72rem] divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-left text-xs uppercase tracking-[0.3em] text-slate-400">
                             <tr>

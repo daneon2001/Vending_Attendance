@@ -275,32 +275,32 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'S
 
         <section class="space-y-6">
             <div class="grid gap-4 sm:grid-cols-3">
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-cyan-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-cyan-50 to-white dark:from-cyan-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-600">
                         Total
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ pageSummary.total }}
                     </p>
-                    <p class="text-sm text-slate-500">Empresas registradas</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Empresas registradas</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
                         Activas
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalActive }}
                     </p>
-                    <p class="text-sm text-slate-500">Operando en el sistema</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Operando en el sistema</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">
                         Inactivas
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalInactive }}
                     </p>
-                    <p class="text-sm text-slate-500">Sin operacion activa</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Sin operacion activa</p>
                 </article>
 
                 <div
@@ -318,7 +318,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'S
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-stretch justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm sm:items-center">
+            <div class="card flex flex-wrap items-stretch justify-between gap-4 p-4 sm:items-center">
                 <div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <div class="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 px-3 py-1.5 sm:w-auto sm:justify-start">
                         <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Estado</span>
@@ -370,7 +370,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'S
                 {{ listError }}
             </div>
 
-            <div v-if="listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-sm text-slate-500">
+            <div v-if="listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-400">
                 Cargando catalogo...
             </div>
 
@@ -378,62 +378,62 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'S
                 <article
                     v-for="company in companies"
                     :key="company.id"
-                    class="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition hover:border-cyan-100 hover:ring-cyan-50"
+                    class="card-record p-5 hover:border-cyan-100 hover:ring-cyan-50 dark:hover:border-cyan-900/60 dark:hover:ring-cyan-950/40"
                 >
                     <header class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                                 Empresa
                             </p>
-                            <h3 class="text-xl font-semibold text-slate-900">
+                            <h3 class="text-xl font-semibold text-slate-900 dark:text-slate-100">
                                 {{ company.name }}
                             </h3>
-                            <p class="text-sm text-slate-500">
+                            <p class="text-sm text-slate-500 dark:text-slate-400">
                                 Clave {{ company.code || 'Sin clave' }}
                             </p>
                         </div>
 
                         <span
                             class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]"
-                            :class="company.status ? 'border border-emerald-100 bg-emerald-50 text-emerald-700' : 'border border-rose-100 bg-rose-50 text-rose-700'"
+                            :class="company.status ? 'border border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300' : 'border border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300'"
                         >
                             {{ company.status_label }}
                         </span>
                     </header>
 
                     <div class="mt-4 grid gap-4 sm:grid-cols-3">
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                        <dl class="card-subtle p-4">
                             <dt class="text-xs uppercase tracking-wide text-slate-400">
                                 Sucursales
                             </dt>
-                            <dd class="mt-1 text-2xl font-semibold text-slate-900">
+                            <dd class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                                 {{ company.units_count }}
                             </dd>
-                            <dd class="text-xs text-slate-500">
+                            <dd class="text-xs text-slate-500 dark:text-slate-400">
                                 Asociadas a la empresa
                             </dd>
                         </dl>
 
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                        <dl class="card-subtle p-4">
                             <dt class="text-xs uppercase tracking-wide text-slate-400">
                                 Relojes
                             </dt>
-                            <dd class="mt-1 text-2xl font-semibold text-slate-900">
+                            <dd class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                                 {{ company.clocks_count }}
                             </dd>
-                            <dd class="text-xs text-slate-500">
+                            <dd class="text-xs text-slate-500 dark:text-slate-400">
                                 Equipos vinculados
                             </dd>
                         </dl>
 
-                        <dl class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                        <dl class="card-subtle p-4">
                             <dt class="text-xs uppercase tracking-wide text-slate-400">
                                 Alta
                             </dt>
-                            <dd class="mt-1 font-semibold text-slate-900">
+                            <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
                                 {{ formatDate(company.created_at) }}
                             </dd>
-                            <dd class="text-xs text-slate-500">
+                            <dd class="text-xs text-slate-500 dark:text-slate-400">
                                 Ultima actualizacion {{ formatDate(company.updated_at) }}
                             </dd>
                         </dl>
@@ -462,7 +462,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'S
                     </div>
                 </article>
 
-                <p v-if="!companies.length" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500">
+                <p v-if="!companies.length" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-400">
                     No se encontraron empresas con los filtros seleccionados.
                 </p>
             </div>

@@ -239,11 +239,11 @@ watch(
 
     <AuthenticatedLayout>
         <template #header>
-            <div>
-                <h1 class="text-app text-xl font-semibold leading-tight">
+            <div class="min-w-0">
+                <h1 class="text-app truncate text-base font-semibold leading-tight sm:text-xl">
                     Central de Asistencias
                 </h1>
-                <p class="text-sm text-slate-500">
+                <p class="hidden truncate text-xs text-slate-500 sm:block sm:text-sm">
                     Registros crudos centralizados, filtros operativos y ajustes auditados.
                 </p>
             </div>
@@ -263,42 +263,42 @@ watch(
                 {{ flashWarning }}
             </div>
 
-            <section class="rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                <form class="grid gap-3 md:grid-cols-2 lg:grid-cols-4" @submit.prevent="applyFilters(1)">
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+            <section class="card min-w-0 overflow-hidden p-4">
+                <form class="grid min-w-0 grid-cols-1 gap-3 overflow-hidden sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="applyFilters(1)">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Desde
                         <input
                             v-model="filterForm.from"
                             type="date"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Hasta
                         <input
                             v-model="filterForm.to"
                             type="date"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empleado (nombre/codigo)
                         <input
                             v-model="filterForm.employee"
                             type="text"
                             placeholder="Nombre o codigo"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empleado exacto
                         <select
                             v-model="filterForm.employee_id"
                             data-select-search="on"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todos</option>
                             <option
@@ -311,11 +311,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Unidad / sucursal
                         <select
                             v-model="filterForm.location_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todas</option>
                             <option
@@ -328,11 +328,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Reloj / dispositivo
                         <select
                             v-model="filterForm.device_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todos</option>
                             <option
@@ -345,11 +345,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Tipo
                         <select
                             v-model="filterForm.type"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todos</option>
                             <option value="in">IN (Entrada)</option>
@@ -362,11 +362,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Fuente
                         <select
                             v-model="filterForm.source"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todas</option>
                             <option
@@ -379,11 +379,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Estatus
                         <select
                             v-model="filterForm.status"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option value="">Todos</option>
                             <option
@@ -396,11 +396,11 @@ watch(
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Registros por pagina
                         <select
                             v-model.number="filterForm.per_page"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         >
                             <option :value="25">25</option>
                             <option :value="50">50</option>
@@ -409,16 +409,16 @@ watch(
                         </select>
                     </label>
 
-                    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:col-span-2">
+                    <div class="flex min-w-0 flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end lg:col-span-4">
                         <button
                             type="submit"
-                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white sm:w-auto"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-white sm:w-auto sm:tracking-[0.3em]"
                         >
                             Aplicar filtros
                         </button>
                         <button
                             type="button"
-                            class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
+                            class="w-full rounded-2xl border border-app px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
                             @click="clearFilters"
                         >
                             Limpiar
@@ -426,7 +426,7 @@ watch(
                         <button
                             v-if="canEdit"
                             type="button"
-                            class="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 sm:w-auto"
+                            class="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700 sm:w-auto sm:tracking-[0.3em]"
                             @click="openAdjustmentModal"
                         >
                             Ajuste manual
@@ -443,16 +443,16 @@ watch(
                     @update:page="handlePageChange"
                     @update:perPage="handlePerPageChange"
                 />
-                <div v-if="canExport" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div v-if="canExport" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
                     <a
                         :href="exportCsvUrl"
-                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
+                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
                     >
                         Exportar CSV
                     </a>
                     <a
                         :href="exportExcelUrl"
-                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.3em] text-muted sm:w-auto"
+                        class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
                     >
                         Exportar Excel
                     </a>
@@ -468,7 +468,7 @@ watch(
                     <article
                         v-for="record in records"
                         :key="`mobile-${record.id}`"
-                        class="rounded-2xl border border-app bg-white p-3 shadow-sm"
+                        class="card-subtle p-3"
                     >
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0">

@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
         <div :class="['flex-1', contentClass]">
             <header class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-slate-400">
                         {{ description }}
                     </p>
                     <h3 class="text-lg font-semibold text-app">
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
                 />
             </div>
         </div>
-        <div v-if="$slots.footer" class="border-t border-slate-100 px-5 py-4">
+        <div v-if="$slots.footer" class="border-t border-slate-100 px-5 py-4 dark:border-slate-800">
             <slot name="footer" />
         </div>
     </article>

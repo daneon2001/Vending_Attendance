@@ -435,41 +435,41 @@ const clearFilters = () => {
 
         <section class="space-y-6">
             <div class="grid gap-4 sm:grid-cols-3">
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-indigo-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-indigo-500">
                         Total
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ summary.total_units }}
                     </p>
-                    <p class="text-sm text-slate-500">Unidades registradas</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Unidades registradas</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
                         Activas
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ summary.active_units }}
                     </p>
-                    <p class="text-sm text-slate-500">Operando actualmente</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Operando actualmente</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">
                         Inactivas
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ summary.inactive_units }}
                     </p>
-                    <p class="text-sm text-slate-500">Fuera de operacion</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Fuera de operacion</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-white p-4 sm:col-span-3">
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                <article class="card p-4 sm:col-span-3">
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-slate-400">
                         Resultado filtrado
                     </p>
-                    <p class="mt-2 text-lg font-semibold text-slate-900">
+                    <p class="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
                         {{ filteredMeta.filtered_total ?? pageSummary.total }} unidades
                     </p>
-                    <p class="text-sm text-slate-500">
+                    <p class="text-sm text-slate-500 dark:text-slate-400">
                         Mostrando {{ pageSummary.start }}-{{ pageSummary.end }} de {{ filteredMeta.filtered_total ?? pageSummary.total }} resultados filtrados.
                     </p>
                 </article>
@@ -498,7 +498,7 @@ const clearFilters = () => {
                 </div>
                 </div>
 
-            <div class="flex flex-wrap items-stretch justify-between gap-4 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm sm:items-center">
+            <div class="card flex flex-wrap items-stretch justify-between gap-4 p-4 sm:items-center">
                 <div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <div class="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 px-3 py-1.5 sm:w-auto sm:justify-start">
                         <span class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Empresa</span>
@@ -563,7 +563,7 @@ const clearFilters = () => {
                 {{ listError }}
             </div>
 
-            <div v-if="listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-sm text-slate-500">
+            <div v-if="listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-400">
                 Cargando catálogo...
             </div>
 
@@ -581,7 +581,7 @@ const clearFilters = () => {
                     @toggle="requestToggle"
                 />
 
-                <p v-if="!units.length && !listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500">
+                <p v-if="!units.length && !listLoading" class="rounded-3xl border border-slate-100 bg-white/80 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-400">
                     No se encontraron unidades con los filtros seleccionados.
                 </p>
             </div>

@@ -117,22 +117,22 @@ const companyOptions = computed(() => props.companies ?? []);
 const monitoringStyles = {
     online: {
         label: 'En linea',
-        badge: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100',
+        badge: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-800',
         dot: 'bg-emerald-500',
     },
     inactive: {
         label: 'Inactivo',
-        badge: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+        badge: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700',
         dot: 'bg-slate-400',
     },
     warning: {
         label: 'Con alerta',
-        badge: 'bg-amber-50 text-amber-700 ring-1 ring-amber-100',
+        badge: 'bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800',
         dot: 'bg-amber-400',
     },
     offline: {
         label: 'Sin conexion',
-        badge: 'bg-rose-50 text-rose-700 ring-1 ring-rose-100',
+        badge: 'bg-rose-50 text-rose-700 ring-1 ring-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-800',
         dot: 'bg-rose-400',
     },
 };
@@ -787,11 +787,11 @@ const resetLogsFilters = () => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div>
-                <h1 class="text-app text-xl font-semibold leading-tight">
+            <div class="min-w-0">
+                <h1 class="text-app truncate text-base font-semibold leading-tight sm:text-xl">
                     Relojes biométricos
                 </h1>
-                <p class="text-sm text-slate-500">
+                <p class="hidden truncate text-xs text-slate-500 sm:block sm:text-sm">
                     Controla estado, asignaciones y monitoreo de cada checador.
                 </p>
             </div>
@@ -799,32 +799,32 @@ const resetLogsFilters = () => {
 
         <section class="space-y-6">
             <div class="grid gap-4 sm:grid-cols-3">
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
                         En línea
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalOnline }}
                     </p>
-                    <p class="text-sm text-slate-500">Activos con heartbeat en los ultimos 5 minutos</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Activos con heartbeat en los ultimos 5 minutos</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-amber-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-500">
                         Con alerta
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalWarning }}
                     </p>
-                    <p class="text-sm text-slate-500">Heartbeat con rezago durante el dia actual</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Heartbeat con rezago durante el dia actual</p>
                 </article>
-                <article class="rounded-3xl border border-slate-100 bg-gradient-to-br from-rose-50 to-white p-4">
+                <article class="card-kpi bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">
                         Sin conexión
                     </p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-900">
+                    <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalOffline }}
                     </p>
-                    <p class="text-sm text-slate-500">Activos sin heartbeat en el dia actual</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Activos sin heartbeat en el dia actual</p>
                 </article>
 
                 <p
@@ -839,7 +839,7 @@ const resetLogsFilters = () => {
                     class="sm:col-span-3"
                 >
                     <div
-                        class="flex flex-col gap-4 rounded-3xl border border-slate-100 bg-white/80 p-4 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:bg-slate-900/60"
+                        class="card flex flex-col gap-4 p-4"
                     >
                         <div class="flex flex-wrap items-stretch justify-between gap-3 sm:items-center lg:flex-nowrap">
                             <div class="min-w-0 w-full sm:w-auto">
@@ -900,20 +900,20 @@ const resetLogsFilters = () => {
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-stretch justify-between gap-3 sm:items-center">
-                <div>
-                    <h2 class="text-app text-xl font-semibold leading-tight">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                    <h2 class="text-app truncate text-xl font-semibold leading-tight">
                         Catálogo
                         <span class="text-sm font-medium text-slate-400">({{ totalClocks }} checadores)</span>
                     </h2>
-                    <p class="text-sm text-slate-500">
+                    <p class="truncate text-sm text-slate-500 sm:whitespace-normal">
                         Asigna cada equipo a unidades y mantén visibilidad.
                     </p>
                     <p class="text-xs uppercase tracking-[0.3em] text-slate-400">
                         {{ totalLocations }} unidades monitoreadas
                     </p>
                 </div>
-                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
                     <button
                         type="button"
                         class="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:text-slate-900 sm:w-auto"
@@ -938,23 +938,23 @@ const resetLogsFilters = () => {
                 </div>
             </div>
 
-            <section class="rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                <form class="grid gap-3 md:grid-cols-2 lg:grid-cols-3" @submit.prevent="applyFilters(1)">
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 lg:col-span-3">
+            <section class="card overflow-hidden p-4">
+                <form class="grid min-w-0 grid-cols-1 gap-3 overflow-hidden sm:grid-cols-2 lg:grid-cols-3" @submit.prevent="applyFilters(1)">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em] lg:col-span-3">
                         Buscar
                         <input
                             v-model="filterForm.q"
                             type="search"
                             placeholder="Nombre, serial, IP, empresa o unidad"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none"
                         />
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Empresa
                         <select
                             v-model="filterForm.company_id"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
                             <option value="">Todas</option>
@@ -964,11 +964,11 @@ const resetLogsFilters = () => {
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Unidad
                         <select
                             v-model="filterForm.location_id"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
                             <option value="">Todas</option>
@@ -979,11 +979,11 @@ const resetLogsFilters = () => {
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Estatus
                         <select
                             v-model="filterForm.status"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
                             <option value="">Operativo (activos)</option>
@@ -992,11 +992,11 @@ const resetLogsFilters = () => {
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Monitoreo
                         <select
                             v-model="filterForm.monitoring_status"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
                             <option value="">Todos</option>
@@ -1006,11 +1006,11 @@ const resetLogsFilters = () => {
                         </select>
                     </label>
 
-                    <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Programa
                         <select
                             v-model="filterForm.program_status"
-                            class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
                         >
                             <option value="">Todos</option>
@@ -1020,16 +1020,16 @@ const resetLogsFilters = () => {
                         </select>
                     </label>
 
-                    <div class="flex flex-col gap-2 md:col-span-2 lg:col-span-3 sm:flex-row sm:justify-end">
+                    <div class="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end lg:col-span-3">
                         <button
                             type="submit"
-                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white sm:w-auto"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-white sm:w-auto sm:tracking-[0.3em]"
                         >
                             Aplicar filtros
                         </button>
                         <button
                             type="button"
-                            class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 hover:text-slate-900 sm:w-auto"
+                            class="w-full rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 hover:text-slate-900 sm:w-auto sm:tracking-[0.3em]"
                             @click="clearFilters"
                         >
                             Limpiar
@@ -1048,19 +1048,19 @@ const resetLogsFilters = () => {
                 <article
                     v-for="clock in clocks"
                     :key="clock.id"
-                    class="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition hover:border-indigo-100 hover:ring-indigo-50"
+                    class="card-record p-5 hover:border-indigo-100 hover:ring-indigo-50"
                 >
                     <header class="flex flex-wrap items-center justify-between gap-3">
                         <div class="min-w-0 flex-1">
-                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                            <p class="truncate text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                                 {{ clock.company?.name ?? 'Compañía' }}
                             </p>
-                            <h3 class="text-xl font-semibold text-slate-900">
+                            <h3 class="truncate text-xl font-semibold text-slate-900">
                                 {{ clock.clock_name }}
                             </h3>
                             <p
                                 v-if="!isCollapsed(clock.id)"
-                                class="text-sm text-slate-500"
+                                class="break-words text-sm text-slate-500"
                             >
                                 Serie {{ clock.serial_number ?? 'sin registrar' }} • Firmware {{ clock.firmware_version ?? 'pendiente' }}
                             </p>
@@ -1539,8 +1539,8 @@ const resetLogsFilters = () => {
                     </button>
                 </div>
 
-                <form class="mt-4 grid gap-3 text-sm sm:grid-cols-2" @submit.prevent="fetchLogs()">
-                    <label class="font-medium text-slate-600">
+                <form class="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2" @submit.prevent="fetchLogs()">
+                    <label class="min-w-0 font-medium text-slate-600">
                         Nivel
                         <select
                             v-model="logsDrawer.filters.level"
@@ -1552,7 +1552,7 @@ const resetLogsFilters = () => {
                             <option value="error">Error</option>
                         </select>
                     </label>
-                    <label class="font-medium text-slate-600">
+                    <label class="min-w-0 font-medium text-slate-600">
                         Tipo
                         <input
                             v-model="logsDrawer.filters.event_type"
@@ -1560,7 +1560,7 @@ const resetLogsFilters = () => {
                             class="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2"
                         />
                     </label>
-                    <label class="font-medium text-slate-600">
+                    <label class="min-w-0 font-medium text-slate-600">
                         Desde
                         <input
                             v-model="logsDrawer.filters.date_from"
@@ -1568,7 +1568,7 @@ const resetLogsFilters = () => {
                             class="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2"
                         />
                     </label>
-                    <label class="font-medium text-slate-600">
+                    <label class="min-w-0 font-medium text-slate-600">
                         Hasta
                         <input
                             v-model="logsDrawer.filters.date_to"
@@ -1576,7 +1576,7 @@ const resetLogsFilters = () => {
                             class="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2"
                         />
                     </label>
-                    <div class="flex flex-col gap-2 sm:col-span-2 sm:flex-row">
+                    <div class="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end">
                         <button
                             type="submit"
                             class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white sm:w-auto"

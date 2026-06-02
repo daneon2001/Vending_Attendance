@@ -445,8 +445,8 @@ watch(
 
             <div class="flex min-w-0 flex-1 flex-col">
                 <header class="sticky top-0 z-20 border-b border-app bg-white/90 backdrop-blur  dark:bg-slate-900/80">
-                    <div class="flex h-16 items-center justify-between gap-2 px-3 sm:px-6 lg:px-10">
-                        <div class="flex min-w-0 items-center gap-2 sm:gap-4">
+                    <div class="flex h-16 min-w-0 items-center justify-between gap-2 px-3 sm:px-6 lg:px-10">
+                        <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
                             <button
                                 type="button"
                                 class="rounded-2xl border border-app p-2 text-soft lg:hidden"
@@ -471,8 +471,8 @@ watch(
                                 </svg>
                             </button>
 
-                            <div class="min-w-0">
-                                <div class="text-base font-semibold text-app">
+                            <div class="min-w-0 flex-1 overflow-hidden">
+                                <div class="page-header-slot min-w-0 text-base font-semibold text-app sm:text-xl">
                                     <slot name="header">
                                         Panel de control
                                     </slot>
@@ -480,7 +480,7 @@ watch(
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-2 sm:gap-4">
+                        <div class="shrink-0 flex items-center gap-2 sm:gap-4">
                             <button
                                 type="button"
                                 class="flex h-10 w-10 items-center justify-center rounded-full border border-app text-soft transition-colors hover:text-app dark:hover:text-white"

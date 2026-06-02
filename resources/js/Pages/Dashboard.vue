@@ -775,43 +775,43 @@ const dashboardTabs = computed(() => dashboardTabDefinitions.map((tab) => {
             return {
                 ...tab,
                 badge: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
-                badgeTone: 'bg-emerald-100 text-emerald-700',
+                badgeTone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
             };
         case 'relojes':
             return {
                 ...tab,
                 badge: `${formatNumber(clockBlock.value.offline ?? 0)} offline`,
-                badgeTone: 'bg-rose-100 text-rose-700',
+                badgeTone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
             };
         case 'unidades':
             return {
                 ...tab,
                 badge: `${formatNumber(criticalLocationsCount.value)} criticas`,
-                badgeTone: 'bg-amber-100 text-amber-700',
+                badgeTone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
             };
         case 'actividad':
             return {
                 ...tab,
                 badge: `${formatNumber(recentActivity.value.length)} eventos`,
-                badgeTone: 'bg-sky-100 text-sky-700',
+                badgeTone: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
             };
         case 'enrolamiento':
             return {
                 ...tab,
                 badge: formatPercent(summaryData.value.charts?.enrollment?.percentage ?? 0),
-                badgeTone: 'bg-indigo-100 text-indigo-700',
+                badgeTone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300',
             };
         case 'alertas':
             return {
                 ...tab,
                 badge: `${formatNumber(criticalAlertsCount.value)} criticas`,
-                badgeTone: 'bg-rose-100 text-rose-700',
+                badgeTone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
             };
         default:
             return {
                 ...tab,
                 badge: '',
-                badgeTone: 'bg-slate-100 text-slate-600',
+                badgeTone: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
             };
     }
 }));
@@ -822,42 +822,42 @@ const summaryCards = computed(() => [
         title: 'Empleados activos',
         value: formatNumber(summaryBlock.value.employees_active ?? 0),
         hint: 'Base operativa actual',
-        tone: 'from-slate-50 to-white',
+        tone: 'from-slate-50 to-white dark:from-slate-800 dark:to-slate-900',
     },
     {
         id: 'attendance-registered',
         title: 'Asistencias',
         value: formatNumber(summaryBlock.value.attendance_registered ?? 0),
         hint: 'Personal con al menos una marca',
-        tone: 'from-emerald-50 to-white',
+        tone: 'from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-900',
     },
     {
         id: 'attendance-pending',
         title: 'Pendientes',
         value: formatNumber(summaryBlock.value.attendance_pending ?? 0),
         hint: 'Empleados activos sin registro',
-        tone: 'from-amber-50 to-white',
+        tone: 'from-amber-50 to-white dark:from-amber-950/40 dark:to-slate-900',
     },
     {
         id: 'attendance-coverage',
         title: 'Cobertura',
         value: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
         hint: `${formatNumber(summaryBlock.value.attendance_registered ?? 0)} con registro hoy`,
-        tone: 'from-sky-50 to-white',
+        tone: 'from-sky-50 to-white dark:from-sky-950/40 dark:to-slate-900',
     },
     {
         id: 'latest-log-at',
         title: 'Ultima asistencia',
         value: formatRelative(summaryBlock.value.latest_log_at),
         hint: formatDateTime(summaryBlock.value.latest_log_at),
-        tone: 'from-rose-50 to-white',
+        tone: 'from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-900',
     },
     {
         id: 'last-updated',
         title: 'Ultima actualizacion',
         value: formatRelative(summaryBlock.value.last_updated_at),
         hint: formatDateTime(summaryBlock.value.last_updated_at),
-        tone: 'from-indigo-50 to-white',
+        tone: 'from-indigo-50 to-white dark:from-indigo-950/40 dark:to-slate-900',
     },
 ]);
 
@@ -867,21 +867,21 @@ const activityKpiCards = computed(() => [
         title: 'Entradas',
         value: formatNumber(summaryBlock.value.entries_total ?? 0),
         hint: 'Eventos tipo entrada en el periodo',
-        tone: 'border-sky-100 bg-sky-50 text-sky-700',
+        tone: 'border-sky-100 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-300',
     },
     {
         id: 'exits-total',
         title: 'Salidas',
         value: formatNumber(summaryBlock.value.exits_total ?? 0),
         hint: 'Eventos tipo salida en el periodo',
-        tone: 'border-rose-100 bg-rose-50 text-rose-700',
+        tone: 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300',
     },
     {
         id: 'latest-activity',
         title: 'Ultimo evento',
         value: formatRelative(summaryBlock.value.latest_log_at),
         hint: formatDateTime(summaryBlock.value.latest_log_at),
-        tone: 'border-indigo-100 bg-indigo-50 text-indigo-700',
+        tone: 'border-indigo-100 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300',
     },
 ]);
 
@@ -889,30 +889,30 @@ const executiveHeroClasses = computed(() => {
     switch (executiveStatus.value.level) {
         case 'critical':
             return {
-                panel: 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-amber-50',
+                panel: 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-amber-50 dark:border-rose-800 dark:from-rose-950/40 dark:via-slate-900 dark:to-amber-950/30',
                 badge: 'bg-rose-600 text-white',
-                accent: 'text-rose-700',
+                accent: 'text-rose-700 dark:text-rose-300',
                 dot: 'bg-rose-500',
             };
         case 'warning':
             return {
-                panel: 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50',
+                panel: 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 dark:border-amber-800 dark:from-amber-950/40 dark:via-slate-900 dark:to-yellow-950/20',
                 badge: 'bg-amber-500 text-white',
-                accent: 'text-amber-700',
+                accent: 'text-amber-700 dark:text-amber-300',
                 dot: 'bg-amber-500',
             };
         case 'normal':
             return {
-                panel: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50',
+                panel: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:border-emerald-800 dark:from-emerald-950/40 dark:via-slate-900 dark:to-cyan-950/30',
                 badge: 'bg-emerald-600 text-white',
-                accent: 'text-emerald-700',
+                accent: 'text-emerald-700 dark:text-emerald-300',
                 dot: 'bg-emerald-500',
             };
         default:
             return {
-                panel: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100',
+                panel: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:border-slate-700 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950',
                 badge: 'bg-slate-500 text-white',
-                accent: 'text-slate-700',
+                accent: 'text-slate-700 dark:text-slate-300',
                 dot: 'bg-slate-400',
             };
     }
@@ -1077,13 +1077,13 @@ const hourlyChartOptions = {
 const locationStatusClasses = (status) => {
     switch (status) {
         case 'normal':
-            return 'bg-emerald-100 text-emerald-700';
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300';
         case 'warning':
-            return 'bg-amber-100 text-amber-700';
+            return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300';
         case 'critical':
-            return 'bg-rose-100 text-rose-700';
+            return 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300';
         default:
-            return 'bg-slate-100 text-slate-600';
+            return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
     }
 };
 
@@ -1093,25 +1093,25 @@ const buildAlertGroups = (alerts) => {
             key: 'critical',
             title: 'Criticas',
             description: 'Requieren accion inmediata.',
-            wrap: 'border-rose-200 bg-rose-50',
+            wrap: 'border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40',
             badge: 'bg-rose-600 text-white',
-            text: 'text-rose-700',
+            text: 'text-rose-700 dark:text-rose-300',
         },
         {
             key: 'warning',
             title: 'Atencion',
             description: 'Seguimiento preventivo durante el dia.',
-            wrap: 'border-amber-200 bg-amber-50',
+            wrap: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40',
             badge: 'bg-amber-500 text-white',
-            text: 'text-amber-700',
+            text: 'text-amber-700 dark:text-amber-300',
         },
         {
             key: 'info',
             title: 'Informativas',
             description: 'Contexto operativo complementario.',
-            wrap: 'border-sky-200 bg-sky-50',
+            wrap: 'border-sky-200 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40',
             badge: 'bg-sky-600 text-white',
-            text: 'text-sky-700',
+            text: 'text-sky-700 dark:text-sky-300',
         },
     ];
 
@@ -1185,24 +1185,24 @@ onBeforeUnmount(() => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div>
-                <h1 class="text-app text-2xl font-semibold leading-tight">
+            <div class="min-w-0">
+                <h1 class="text-app truncate text-base font-semibold leading-tight sm:text-2xl">
                     Dashboard general
                 </h1>
-                <p class="text-sm text-muted">
+                <p class="hidden truncate text-xs text-muted sm:block sm:text-sm">
                     Centro de mando ejecutivo para asistencia, biometria y conectividad.
                 </p>
             </div>
         </template>
 
         <section class="space-y-6">
-            <div class="card px-4 py-4 sm:px-6">
-                <div class="flex flex-wrap items-end gap-4">
-                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
+            <div class="card overflow-hidden px-4 py-4 sm:px-6">
+                <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
                         Rango
                         <select
                             v-model="filters.range"
-                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
                         >
                             <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
@@ -1212,27 +1212,27 @@ onBeforeUnmount(() => {
 
                     <div
                         v-if="hasCustomRange"
-                        class="grid w-full gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:grid-cols-2 xl:w-auto xl:grid-cols-[1fr_1fr_auto]"
+                        class="grid w-full min-w-0 gap-3 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:grid-cols-2 sm:tracking-[0.3em] xl:w-auto xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                     >
-                        <label class="flex flex-col gap-2">
+                        <label class="flex min-w-0 flex-col gap-2">
                             Desde
                             <input
                                 v-model="filters.from_date"
                                 type="date"
-                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
+                                class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
                             />
                         </label>
-                        <label class="flex flex-col gap-2">
+                        <label class="flex min-w-0 flex-col gap-2">
                             Hasta
                             <input
                                 v-model="filters.to_date"
                                 type="date"
-                                class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
+                                class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
                             />
                         </label>
                         <button
                             type="button"
-                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow hover:bg-indigo-500 xl:w-auto"
+                            class="w-full rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-white shadow hover:bg-indigo-500 sm:tracking-[0.3em] xl:w-auto"
                             :disabled="loading"
                             @click="applyCustomRange"
                         >
@@ -1240,11 +1240,11 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
 
-                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
                         Empresa
                         <select
                             v-model="filters.company_id"
-                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
                         >
                             <option value="">Todas</option>
                             <option v-for="company in companyOptions" :key="company.id" :value="company.id">
@@ -1253,11 +1253,11 @@ onBeforeUnmount(() => {
                         </select>
                     </label>
 
-                    <label class="flex w-full flex-col gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:w-auto">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
                         Sucursal
                         <select
                             v-model="filters.unit_id"
-                            class="w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
                         >
                             <option value="">Todas</option>
                             <option v-for="location in filteredLocations" :key="location.id" :value="location.id">
@@ -1268,7 +1268,7 @@ onBeforeUnmount(() => {
 
                     <button
                         type="button"
-                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:w-auto"
+                        class="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:w-auto"
                         :disabled="loading"
                         @click="fetchSummary({ tab: activeTab })"
                     >
@@ -1277,47 +1277,47 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
 
-                <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                <div class="mt-4 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
+                    <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         {{ resolveCompanyName(filters.company_id) }}
                     </span>
-                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                    <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         {{ currentLocationLabel }}
                     </span>
-                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                    <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         {{ lastRangeLabel }}
                     </span>
-                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                    <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         Auto refresh cada 60 s
                     </span>
-                    <span class="rounded-full bg-slate-100 px-3 py-1">
+                    <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         {{ dashboardTimezoneLabel }} {{ dashboardTimezoneOffset }}
                     </span>
                 </div>
             </div>
 
             <div class="card overflow-hidden p-2 sm:p-3">
-                <div class="flex gap-2 overflow-x-auto pb-1">
+                <div class="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
                     <button
                         v-for="tab in dashboardTabs"
                         :key="tab.key"
                         type="button"
-                        class="min-w-[14rem] flex-1 rounded-[1.75rem] border px-4 py-3 text-left transition sm:min-w-0"
+                        class="min-w-[13rem] flex-none rounded-[1.75rem] border px-4 py-3 text-left transition sm:min-w-0 sm:flex-1"
                         :class="activeTab === tab.key
-                            ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 shadow-sm'
-                            : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'"
+                            ? 'border-indigo-300 bg-white/90 shadow-sm ring-1 ring-indigo-200/80 dark:border-indigo-500/50 dark:bg-slate-900/80 dark:ring-indigo-500/30'
+                            : 'border-slate-100 bg-white/90 hover:border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-slate-700 dark:hover:bg-slate-900/80'"
                         @click="onTabChange(tab.key)"
                     >
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="text-sm font-semibold text-app">
+                        <div class="flex min-w-0 items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="whitespace-normal text-sm font-semibold text-app">
                                     {{ tab.label }}
                                 </p>
-                                <p class="mt-1 text-xs text-muted">
+                                <p class="mt-1 whitespace-normal text-xs text-muted">
                                     {{ tab.description }}
                                 </p>
                             </div>
-                            <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="tab.badgeTone">
+                            <span class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="tab.badgeTone">
                                 {{ tab.badge }}
                             </span>
                         </div>
@@ -1365,7 +1365,7 @@ onBeforeUnmount(() => {
                             <article
                                 v-for="indicator in heroIndicators"
                                 :key="indicator.id"
-                                class="rounded-3xl border border-white/70 bg-white/80 px-4 py-4 shadow-sm backdrop-blur"
+                                class="card-subtle bg-white/80 px-4 py-4 shadow-sm backdrop-blur"
                             >
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                     {{ indicator.label }}
@@ -1380,7 +1380,7 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="rounded-[2rem] border border-white/80 bg-white/80 p-5 shadow-sm backdrop-blur">
+                    <div class="card bg-white/80 p-5 backdrop-blur">
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1397,7 +1397,7 @@ onBeforeUnmount(() => {
                             <li
                                 v-for="(bullet, index) in executiveStatus.bullets"
                                 :key="`${index}-${bullet}`"
-                                class="flex gap-3 rounded-2xl bg-slate-50 px-3 py-3"
+                                class="card-subtle flex gap-3 px-3 py-3"
                             >
                                 <span class="mt-1 h-2 w-2 rounded-full bg-slate-400" />
                                 <span>{{ bullet }}</span>
@@ -1427,22 +1427,22 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="activeTab === 'relojes' && !showActiveTabSkeleton" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <article class="card bg-gradient-to-br from-emerald-50 to-white px-4 py-4">
+                <article class="card-kpi bg-gradient-to-br from-emerald-50 to-white px-4 py-4 dark:from-emerald-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">Relojes en linea</p>
-                    <p class="mt-3 text-3xl font-semibold text-emerald-700">{{ formatNumber(clockBlock.online) }}</p>
+                    <p class="mt-3 text-3xl font-semibold text-emerald-700 dark:text-emerald-300">{{ formatNumber(clockBlock.online) }}</p>
                     <p class="mt-2 text-sm text-muted">{{ formatNumber(clockBlock.total) }} equipos monitoreados</p>
                 </article>
-                <article class="card bg-gradient-to-br from-rose-50 to-white px-4 py-4">
+                <article class="card-kpi bg-gradient-to-br from-rose-50 to-white px-4 py-4 dark:from-rose-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-700">Relojes offline</p>
-                    <p class="mt-3 text-3xl font-semibold text-rose-700">{{ formatNumber(clockBlock.offline) }}</p>
+                    <p class="mt-3 text-3xl font-semibold text-rose-700 dark:text-rose-300">{{ formatNumber(clockBlock.offline) }}</p>
                     <p class="mt-2 text-sm text-muted">Sin conexion dentro del umbral operativo</p>
                 </article>
-                <article class="card bg-gradient-to-br from-amber-50 to-white px-4 py-4">
+                <article class="card-kpi bg-gradient-to-br from-amber-50 to-white px-4 py-4 dark:from-amber-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Heartbeat con rezago</p>
-                    <p class="mt-3 text-3xl font-semibold text-amber-700">{{ formatNumber(clockBlock.heartbeat_stale) }}</p>
+                    <p class="mt-3 text-3xl font-semibold text-amber-700 dark:text-amber-300">{{ formatNumber(clockBlock.heartbeat_stale) }}</p>
                     <p class="mt-2 text-sm text-muted">Mas de {{ formatNumber(clockBlock.online_threshold_minutes) }} minutos sin actividad</p>
                 </article>
-                <article class="card bg-gradient-to-br from-slate-50 to-white px-4 py-4">
+                <article class="card-kpi bg-gradient-to-br from-slate-50 to-white px-4 py-4 dark:from-slate-800 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Nunca conectados</p>
                     <p class="mt-3 text-3xl font-semibold text-app">{{ formatNumber(clockBlock.never_connected) }}</p>
                     <p class="mt-2 text-sm text-muted">Equipos registrados sin heartbeat previo</p>
@@ -1651,7 +1651,7 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
 
-                    <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                    <div class="card-subtle mt-5 px-4 py-4">
                         <p class="text-sm leading-7 text-slate-600">
                             {{ clockBlock.status_reason }}
                         </p>
@@ -1661,7 +1661,7 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="mt-5 grid gap-3 sm:grid-cols-2">
-                        <article class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm">
+                        <article class="card-subtle px-4 py-4 shadow-sm">
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                 Heartbeat reciente
                             </p>
@@ -1669,7 +1669,7 @@ onBeforeUnmount(() => {
                                 {{ formatNumber(clockBlock.heartbeat_recent) }}
                             </p>
                         </article>
-                        <article class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm">
+                        <article class="card-subtle px-4 py-4 shadow-sm">
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                 Ultimo reloj reportando
                             </p>
@@ -1744,7 +1744,7 @@ onBeforeUnmount(() => {
                                     </div>
                                 </article>
                             </div>
-                            <div v-else class="mt-4 rounded-2xl bg-white/70 px-3 py-3 text-sm text-muted">
+                        <div v-else class="card-subtle mt-4 bg-white/70 px-3 py-3 text-sm text-muted">
                                 Sin alertas en este grupo.
                             </div>
                         </article>
@@ -1766,7 +1766,7 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
 
-                        <div class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+                        <div class="card-subtle mt-5 px-4 py-4">
                             <p class="text-sm leading-7 text-slate-600">
                                 {{ executiveStatus.message }}
                             </p>
@@ -1779,7 +1779,7 @@ onBeforeUnmount(() => {
                         <article
                             v-for="(bullet, index) in executiveStatus.bullets"
                             :key="`${index}-${bullet}`"
-                            class="rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-sm"
+                            class="card-subtle px-4 py-4 shadow-sm"
                         >
                             <div class="flex gap-3">
                                 <span class="mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
@@ -1823,7 +1823,7 @@ onBeforeUnmount(() => {
                     <article
                         v-for="location in locationsRanking"
                         :key="location.id"
-                        class="rounded-[2rem] border border-slate-100 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-4 py-4 shadow-sm"
+                        class="card-record bg-gradient-to-br from-white via-slate-50 to-slate-100 px-4 py-4"
                     >
                         <div class="flex items-start justify-between gap-3">
                             <div>
@@ -1840,19 +1840,19 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                            <div class="card-subtle bg-white/80 px-3 py-3">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Asistencia</p>
                                 <p class="mt-1 text-2xl font-semibold text-app">
                                     {{ formatPercent(location.attendance_coverage) }}
                                 </p>
                             </div>
-                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                            <div class="card-subtle bg-white/80 px-3 py-3">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Online</p>
                                 <p class="mt-1 text-2xl font-semibold text-emerald-700">
                                     {{ formatNumber(location.clocks_online) }}
                                 </p>
                             </div>
-                            <div class="rounded-2xl bg-white/80 px-3 py-3">
+                            <div class="card-subtle bg-white/80 px-3 py-3">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Offline</p>
                                 <p class="mt-1 text-2xl font-semibold text-rose-700">
                                     {{ formatNumber(location.clocks_offline) }}
@@ -1889,11 +1889,11 @@ onBeforeUnmount(() => {
                     </article>
                 </div>
 
-                <div v-else class="mt-5 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-muted">
+                <div v-else class="card mt-5 px-4 py-5 text-sm text-muted">
                     No hay unidades configuradas para los filtros seleccionados.
                 </div>
 
-                <div v-if="locationsRanking.length" class="mt-6 overflow-x-auto rounded-3xl border border-slate-100">
+                <div v-if="locationsRanking.length" class="card mt-6 overflow-x-auto">
                     <table class="min-w-full divide-y divide-slate-100 text-sm">
                         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                             <tr>
@@ -1988,7 +1988,7 @@ onBeforeUnmount(() => {
                         <article
                             v-for="item in recentActivity"
                             :key="item.id"
-                            class="rounded-[1.75rem] border border-slate-100 bg-slate-50/80 px-4 py-3"
+                            class="card-subtle px-4 py-3"
                         >
                             <div class="flex items-start gap-4">
                                 <div class="w-20 shrink-0 rounded-2xl bg-white px-3 py-3 text-center shadow-sm">
@@ -2036,7 +2036,7 @@ onBeforeUnmount(() => {
                         </article>
                     </div>
 
-                    <div v-else class="mt-4 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-muted">
+                    <div v-else class="card-subtle mt-4 px-4 py-4 text-sm text-muted">
                         Sin registros recientes en el periodo seleccionado.
                     </div>
                 </article>
@@ -2058,7 +2058,7 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="mt-5 grid gap-5 lg:grid-cols-[13rem_1fr]">
-                        <div class="flex flex-col items-center justify-center rounded-[2rem] border border-slate-100 bg-slate-50 px-4 py-5">
+                        <div class="card-subtle flex flex-col items-center justify-center px-4 py-5">
                             <div class="flex h-36 w-36 items-center justify-center rounded-full p-3" :style="enrollmentRingStyle">
                                 <div class="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
                                     <p class="text-3xl font-semibold text-app">
@@ -2075,7 +2075,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="space-y-3">
-                            <div class="rounded-3xl border border-slate-100 bg-white px-4 py-4">
+                            <div class="card-subtle px-4 py-4">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                     Con al menos una biometria
                                 </p>

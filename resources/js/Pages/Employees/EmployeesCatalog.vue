@@ -696,27 +696,27 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <AuthenticatedLayout>
+    <AuthenticatedLayout content-overflow-visible>
         <Head title="Catalogo de empleados" />
 
         <template #header>
-            <div>
-                <h1 class="text-app text-xl font-semibold leading-tight">
+            <div class="min-w-0">
+                <h1 class="text-app truncate text-base font-semibold leading-tight sm:text-xl">
                     Catalogo de trabajadores
                 </h1>
-                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Recursos humanos</p>
+                <p class="hidden text-xs font-semibold uppercase tracking-[0.3em] text-soft sm:block">Recursos humanos</p>
             </div>
         </template>
 
         <section class="space-y-4">
-            <div class="flex flex-wrap items-stretch justify-between gap-4 sm:items-center">
-                <div>
-                    <p class="text-sm text-muted">Control de estados, huellas y Face ID biometricos.</p>
-                    <p class="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                    <p class="truncate text-sm text-muted sm:whitespace-normal">Control de estados, huellas y Face ID biometricos.</p>
+                    <p class="mt-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         {{ syncModeCaption }}
                     </p>
                 </div>
-                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
                     <button
                         v-if="canImportEmployees"
                         class="w-full rounded-2xl border border-app px-4 py-2 text-sm font-semibold text-app hover:bg-slate-50 sm:w-auto"
@@ -744,90 +744,94 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <div class="card flex flex-wrap gap-3 px-4 py-3 text-sm">
-                <label class="flex w-full flex-col sm:w-auto sm:min-w-[16rem]">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Buscar</span>
-                    <input
-                        v-model="filters.search"
-                        type="text"
-                        placeholder="Nombre o codigo..."
-                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
-                        @keyup.enter="loadEmployees(1)"
-                    />
-                </label>
-                <label class="flex w-full flex-col sm:w-auto">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Unidad</span>
-                    <SearchableSelect
-                        v-model="filters.locationId"
-                        label="Unidad"
-                        :options="locationSelectOptions"
-                        placeholder="Todas las unidades"
-                        option-value="value"
-                        option-label="label"
-                        search-placeholder="Buscar unidad..."
-                        :clearable="true"
-                        input-class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto sm:min-w-[14rem]"
-                        @change="loadEmployees(1)"
-                    />
-                </label>
-                <label class="flex w-full flex-col sm:w-auto">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Estado</span>
-                    <select
-                        v-model="filters.status"
-                        data-select-search="off"
-                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
-                        @change="loadEmployees(1)"
-                    >
-                        <option value="">Todos</option>
-                        <option value="active">Activos</option>
-                        <option value="inactive">Baja</option>
-                    </select>
-                </label>
-                <label class="flex w-full flex-col sm:w-auto">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Huella</span>
-                    <select
-                        v-model="filters.fingerprint"
-                        data-select-search="off"
-                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
-                        @change="loadEmployees(1)"
-                    >
-                        <option value="">Todas</option>
-                        <option value="with">Con huella</option>
-                        <option value="without">Sin huella</option>
-                    </select>
-                </label>
-                <label class="flex w-full flex-col sm:w-auto">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Face ID</span>
-                    <select
-                        v-model="filters.face"
-                        data-select-search="off"
-                        class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
-                        @change="loadEmployees(1)"
-                    >
-                        <option value="">Todos</option>
-                        <option value="with">Con Face ID</option>
-                        <option value="without">Sin Face ID</option>
-                    </select>
-                </label>
-                <label class="flex items-end gap-2 rounded-2xl border border-app px-4 py-2 text-sm">
-                    <input v-model="filters.syncReady" type="checkbox" class="rounded border-app text-indigo-600 focus:ring-indigo-500" @change="loadEmployees(1)" />
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Listo para sync</span>
-                </label>
-                <button
-                    class="w-full self-end rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
-                    @click="loadEmployees(1)"
-                >
-                    Aplicar
-                </button>
-                <button
-                    class="w-full self-end rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
-                    @click="clearFilters"
-                >
-                    Limpiar
-                </button>
+            <div class="card min-w-0 overflow-visible px-4 py-3 text-sm">
+                <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap">
+                    <label class="flex w-full min-w-0 flex-col sm:w-auto sm:min-w-[16rem]">
+                        <span class="text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Buscar</span>
+                        <input
+                            v-model="filters.search"
+                            type="text"
+                            placeholder="Nombre o codigo..."
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                            @keyup.enter="loadEmployees(1)"
+                        />
+                    </label>
+                    <label class="flex w-full min-w-0 flex-col sm:w-auto sm:min-w-[14rem]">
+                        <span class="text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Unidad</span>
+                        <SearchableSelect
+                            v-model="filters.locationId"
+                            label="Unidad"
+                            :options="locationSelectOptions"
+                            placeholder="Todas las unidades"
+                            option-value="value"
+                            option-label="label"
+                            search-placeholder="Buscar unidad..."
+                            :clearable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:min-w-[14rem]"
+                            @change="loadEmployees(1)"
+                        />
+                    </label>
+                    <label class="flex w-full min-w-0 flex-col sm:w-auto">
+                        <span class="text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Estado</span>
+                        <select
+                            v-model="filters.status"
+                            data-select-search="off"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                            @change="loadEmployees(1)"
+                        >
+                            <option value="">Todos</option>
+                            <option value="active">Activos</option>
+                            <option value="inactive">Baja</option>
+                        </select>
+                    </label>
+                    <label class="flex w-full min-w-0 flex-col sm:w-auto">
+                        <span class="text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Huella</span>
+                        <select
+                            v-model="filters.fingerprint"
+                            data-select-search="off"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                            @change="loadEmployees(1)"
+                        >
+                            <option value="">Todas</option>
+                            <option value="with">Con huella</option>
+                            <option value="without">Sin huella</option>
+                        </select>
+                    </label>
+                    <label class="flex w-full min-w-0 flex-col sm:w-auto">
+                        <span class="text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Face ID</span>
+                        <select
+                            v-model="filters.face"
+                            data-select-search="off"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
+                            @change="loadEmployees(1)"
+                        >
+                            <option value="">Todos</option>
+                            <option value="with">Con Face ID</option>
+                            <option value="without">Sin Face ID</option>
+                        </select>
+                    </label>
+                    <label class="flex w-full min-w-0 items-end gap-2 rounded-2xl border border-app px-4 py-2 text-sm sm:w-auto">
+                        <input v-model="filters.syncReady" type="checkbox" class="rounded border-app text-indigo-600 focus:ring-indigo-500" @change="loadEmployees(1)" />
+                        <span class="min-w-0 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">Listo para sync</span>
+                    </label>
+                    <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end sm:justify-end">
+                        <button
+                            class="w-full self-end rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted hover:text-app sm:w-auto sm:tracking-[0.3em]"
+                            @click="loadEmployees(1)"
+                        >
+                            Aplicar
+                        </button>
+                        <button
+                            class="w-full self-end rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted hover:text-app sm:w-auto sm:tracking-[0.3em]"
+                            @click="clearFilters"
+                        >
+                            Limpiar
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div v-if="statusChanges.length" class="rounded-2xl border border-app bg-white px-4 py-3 text-sm shadow-sm dark:bg-slate-900">
+            <div v-if="statusChanges.length" class="card px-4 py-3 text-sm">
                 <p class="font-semibold text-muted">Cambios de estatus recientes:</p>
                 <ul class="mt-2 space-y-1 text-sm text-app">
                     <li v-for="item in statusChanges.slice(0, 5)" :key="`${item.company_id}-${item.fortia_employee_id}-${item.changed_at}`">
@@ -868,7 +872,7 @@ onBeforeUnmount(() => {
                     <article
                         v-for="employee in employees"
                         :key="`mobile-${employee.id}`"
-                        class="rounded-2xl border border-app bg-white p-3 shadow-sm"
+                        class="card-subtle p-3"
                     >
                         <p class="truncate text-sm font-semibold text-app" :title="employee.full_name ?? employee.name">
                             {{ employee.full_name ?? employee.name }}

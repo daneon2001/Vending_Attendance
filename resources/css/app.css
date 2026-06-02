@@ -38,6 +38,22 @@
         outline: 2px solid rgb(79 70 229 / 0.75);
         outline-offset: 2px;
     }
+
+    .dark input:not([type='checkbox']):not([type='radio']),
+    .dark select,
+    .dark textarea {
+        @apply border-slate-700 bg-slate-900 text-slate-100;
+        color-scheme: dark;
+    }
+
+    .dark input::placeholder,
+    .dark textarea::placeholder {
+        @apply text-slate-500;
+    }
+
+    .dark option {
+        @apply bg-slate-900 text-slate-100;
+    }
 }
 
 @layer components {
@@ -66,7 +82,19 @@
     }
 
     .card {
-        @apply rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-transparent dark:border-slate-700 dark:bg-slate-900;
+        @apply rounded-3xl border border-slate-100 bg-white/90 shadow-sm ring-1 ring-transparent dark:border-slate-800 dark:bg-slate-900/60;
+    }
+
+    .card-kpi {
+        @apply rounded-3xl border border-slate-100 p-4 shadow-sm dark:border-slate-700;
+    }
+
+    .card-record {
+        @apply rounded-3xl border border-slate-100 bg-white/90 shadow-sm ring-1 ring-transparent transition dark:border-slate-700 dark:bg-slate-900/80;
+    }
+
+    .card-subtle {
+        @apply rounded-2xl border border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60;
     }
 
     .chip-muted {
@@ -230,4 +258,88 @@
     .fortia-select-search__dropdown .active {
         @apply bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100;
     }
+
+    .page-header-slot {
+        @apply min-w-0;
+    }
+
+    .page-header-slot :is(h1, h2, h3) {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 639px) {
+    .page-header-slot :is(h1, h2, h3) {
+        font-size: 1rem !important;
+        line-height: 1.25 !important;
+    }
+
+    .page-header-slot p {
+        display: none;
+    }
+}
+
+.dark [class*="bg-white/95"]:not([class*="dark:bg-"]) {
+    background-color: rgb(15 23 42 / 0.95);
+}
+
+.dark [class*="bg-white/90"]:not([class*="dark:bg-"]) {
+    background-color: rgb(15 23 42 / 0.9);
+}
+
+.dark [class*="bg-white/80"]:not([class*="dark:bg-"]) {
+    background-color: rgb(15 23 42 / 0.8);
+}
+
+.dark [class*="bg-white/70"]:not([class*="dark:bg-"]) {
+    background-color: rgb(15 23 42 / 0.7);
+}
+
+.dark [class~="bg-white"]:not([class*="dark:bg-"]) {
+    @apply bg-slate-900;
+}
+
+.dark [class~="bg-slate-50"]:not([class*="dark:bg-"]),
+.dark [class~="bg-slate-100"]:not([class*="dark:bg-"]),
+.dark [class*="bg-slate-50/"]:not([class*="dark:bg-"]),
+.dark [class*="bg-slate-100/"]:not([class*="dark:bg-"]) {
+    @apply bg-slate-800;
+}
+
+.dark [class~="border-slate-100"]:not([class*="dark:border-"]),
+.dark [class~="border-slate-200"]:not([class*="dark:border-"]),
+.dark [class*="border-slate-100/"]:not([class*="dark:border-"]),
+.dark [class*="border-slate-200/"]:not([class*="dark:border-"]) {
+    @apply border-slate-700;
+}
+
+.dark [class~="text-slate-900"]:not([class*="dark:text-"]),
+.dark [class~="text-slate-800"]:not([class*="dark:text-"]),
+.dark [class~="text-slate-700"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-900"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-800"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-700"]:not([class*="dark:text-"]) {
+    @apply text-slate-100;
+}
+
+.dark [class~="text-slate-600"]:not([class*="dark:text-"]),
+.dark [class~="text-slate-500"]:not([class*="dark:text-"]),
+.dark [class~="text-slate-400"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-600"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-500"]:not([class*="dark:text-"]),
+.dark [class~="text-gray-400"]:not([class*="dark:text-"]) {
+    @apply text-slate-300;
+}
+
+.dark [class~="hover:bg-slate-50"]:hover:not([class*="dark:hover:bg-"]),
+.dark [class~="focus:bg-slate-50"]:focus:not([class*="dark:focus:bg-"]),
+.dark [class~="hover:bg-gray-50"]:hover:not([class*="dark:hover:bg-"]),
+.dark [class~="focus:bg-gray-50"]:focus:not([class*="dark:focus:bg-"]),
+.dark [class~="hover:bg-gray-100"]:hover:not([class*="dark:hover:bg-"]),
+.dark [class~="focus:bg-gray-100"]:focus:not([class*="dark:focus:bg-"]) {
+    background-color: rgb(30 41 59 / 0.72);
 }

@@ -252,7 +252,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div ref="rootRef" class="relative" data-select-search-root="ignore">
+    <div ref="rootRef" class="relative w-full min-w-0" data-select-search-root="ignore">
         <div
             :class="[
                 inputClass,
@@ -271,10 +271,10 @@ onBeforeUnmount(() => {
                 @click="open ? closeDropdown() : openDropdown()"
                 @keydown="handleTriggerKeydown"
             >
-                <span class="truncate" :class="hasSelection ? 'text-app' : 'text-slate-400'">
+                <span class="truncate" :class="hasSelection ? 'text-app' : 'text-slate-400 dark:text-slate-500'">
                     {{ triggerLabel }}
                 </span>
-                <span class="shrink-0 text-slate-400">
+                <span class="shrink-0 text-slate-400 dark:text-slate-500">
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                         <path
                             fill-rule="evenodd"
@@ -288,7 +288,7 @@ onBeforeUnmount(() => {
             <button
                 v-if="clearable && hasSelection && !disabled"
                 type="button"
-                class="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                class="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="Limpiar seleccion"
                 @click.stop="clearSelection"
             >
@@ -304,14 +304,14 @@ onBeforeUnmount(() => {
 
         <div
             v-if="open"
-            class="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            class="absolute left-0 right-0 top-full z-50 mt-2 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
         >
-            <div class="border-b border-slate-100 p-2">
+            <div class="border-b border-slate-100 p-2 dark:border-slate-800">
                 <input
                     ref="searchInputRef"
                     v-model="searchQuery"
                     type="text"
-                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                     :placeholder="searchPlaceholder"
                     :aria-label="searchPlaceholder"
                     @keydown="handleSearchKeydown"
@@ -322,8 +322,8 @@ onBeforeUnmount(() => {
                 <button
                     v-if="clearable"
                     type="button"
-                    class="flex w-full items-center px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
-                    :class="highlightedIndex === 0 && !filteredOptions.length ? 'bg-slate-50' : ''"
+                    class="flex w-full items-center px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                    :class="highlightedIndex === 0 && !filteredOptions.length ? 'bg-slate-50 dark:bg-slate-800' : ''"
                     @click="clearSelection"
                 >
                     {{ placeholder }}
@@ -335,10 +335,10 @@ onBeforeUnmount(() => {
                     type="button"
                     role="option"
                     :aria-selected="option.value === normalizedValue"
-                    class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                     :class="[
                         option.disabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-700',
-                        highlightedIndex === index ? 'bg-slate-50' : '',
+                        highlightedIndex === index ? 'bg-slate-50 dark:bg-slate-800' : '',
                     ]"
                     :disabled="option.disabled"
                     @mouseenter="highlightedIndex = index"
@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
 
                 <div
                     v-if="!filteredOptions.length"
-                    class="px-3 py-3 text-sm text-slate-400"
+                    class="px-3 py-3 text-sm text-slate-400 dark:text-slate-500"
                 >
                     Sin coincidencias
                 </div>
