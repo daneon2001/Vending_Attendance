@@ -40,6 +40,11 @@ class EmployeeCatalogQueryService
         return $query;
     }
 
+    public function applySearchFilter(Builder $query, ?string $search): void
+    {
+        $this->applyEmployeeSearch($query, $search);
+    }
+
     /**
      * @return \Illuminate\Support\Collection<int, \App\Models\Location>
      */

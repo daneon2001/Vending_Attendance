@@ -22,6 +22,8 @@ class AttendanceCardModuleTest extends TestCase
 
     private bool $createdAttendanceLogsTable = false;
 
+    private bool $createdEmployeeAllowedLocationsTable = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -45,6 +47,9 @@ class AttendanceCardModuleTest extends TestCase
     {
         if ($this->createdAttendanceLogsTable && Schema::hasTable('attendance_logs')) {
             Schema::drop('attendance_logs');
+        }
+        if ($this->createdEmployeeAllowedLocationsTable && Schema::hasTable('employee_allowed_locations')) {
+            Schema::drop('employee_allowed_locations');
         }
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
             Schema::drop('employees');
@@ -184,23 +189,54 @@ class AttendanceCardModuleTest extends TestCase
         $response->assertDownload('Tarjeta_Asistencia_Empleado_Demo_Rango_personalizado.xlsx');
     }
 
-    private function createBaseReferences(): array
+    public function test_employee_search_finds_employee_by_allowed_location_and_employee_code(): void
     {
-        $companyId = DB::table('companies')->insertGetId([
-            'name' => 'Medical Life',
-            'code' => 'ML',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        [$companyId, $locationId] = $this->createBaseReferencesWithoutEmployee();
 
-        $locationId = DB::table('locations')->insertGetId([
+        $secondaryLocationId = DB::table('locations')->insertGetId([
             'company_id' => $companyId,
-            'name' => 'Corporativo Lago Xochimilco',
-            'code' => 'LAGO',
+            'name' => 'Sucursal Norte',
+            'code' => 'NORTE',
             'timezone' => 'America/Mexico_City',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $employeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 99123,
+            'employee_code' => 'EMP-99123',
+            'company_id' => $companyId,
+            'company_name' => 'Medical Life',
+            'base_location_id' => $secondaryLocationId,
+            'base_location_name' => 'Sucursal Norte',
+            'department_id' => 10,
+            'department_name' => 'Operaciones',
+            'full_name' => 'Maria Lopez',
+            'name' => 'Maria',
+            'last_name' => 'Lopez',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_allowed_locations')->insert([
+            'employee_id' => $employeeId,
+            'location_id' => $locationId,
+        ]);
+
+        $response = $this->getJson(route('attendance-cards.employees.search', [
+            'location_id' => $locationId,
+            'q' => 'EMP-99123',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', $employeeId)
+            ->assertJsonPath('data.0.fortia_employee_id', '99123');
+    }
+
+    private function createBaseReferences(): array
+    {
+        [$companyId, $locationId] = $this->createBaseReferencesWithoutEmployee();
 
         $employeeId = DB::table('employees')->insertGetId([
             'fortia_employee_id' => 88001,
@@ -218,6 +254,27 @@ class AttendanceCardModuleTest extends TestCase
         ]);
 
         return [$companyId, $locationId, $employeeId];
+    }
+
+    private function createBaseReferencesWithoutEmployee(): array
+    {
+        $companyId = DB::table('companies')->insertGetId([
+            'name' => 'Medical Life',
+            'code' => 'ML',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $locationId = DB::table('locations')->insertGetId([
+            'company_id' => $companyId,
+            'name' => 'Corporativo Lago Xochimilco',
+            'code' => 'LAGO',
+            'timezone' => 'America/Mexico_City',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [$companyId, $locationId];
     }
 
     private function ensureSchema(): void
@@ -259,18 +316,48 @@ class AttendanceCardModuleTest extends TestCase
             Schema::create('employees', function (Blueprint $table): void {
                 $table->id();
                 $table->unsignedBigInteger('fortia_employee_id')->unique();
+                $table->string('employee_code')->nullable();
                 $table->unsignedBigInteger('company_id')->nullable();
                 $table->string('company_name')->nullable();
                 $table->unsignedBigInteger('base_location_id')->nullable();
                 $table->string('base_location_name')->nullable();
+                $table->boolean('can_check_all_branches')->default(false);
+                $table->string('check_scope', 40)->nullable();
                 $table->unsignedBigInteger('department_id')->nullable();
                 $table->string('department_name')->nullable();
                 $table->string('full_name')->nullable();
                 $table->string('name')->nullable();
+                $table->string('last_name')->nullable();
+                $table->string('second_last_name')->nullable();
+                $table->string('rfc')->nullable();
+                $table->string('curp')->nullable();
                 $table->string('status', 20)->default('A');
                 $table->timestamps();
             });
             $this->createdEmployeesTable = true;
+        }
+
+        foreach ([
+            'employee_code' => fn (Blueprint $table) => $table->string('employee_code')->nullable()->after('fortia_employee_id'),
+            'can_check_all_branches' => fn (Blueprint $table) => $table->boolean('can_check_all_branches')->default(false)->after('base_location_name'),
+            'check_scope' => fn (Blueprint $table) => $table->string('check_scope', 40)->nullable()->after('can_check_all_branches'),
+            'last_name' => fn (Blueprint $table) => $table->string('last_name')->nullable()->after('name'),
+            'second_last_name' => fn (Blueprint $table) => $table->string('second_last_name')->nullable()->after('last_name'),
+            'rfc' => fn (Blueprint $table) => $table->string('rfc')->nullable()->after('status'),
+            'curp' => fn (Blueprint $table) => $table->string('curp')->nullable()->after('rfc'),
+        ] as $column => $definition) {
+            if (! Schema::hasColumn('employees', $column)) {
+                Schema::table('employees', $definition);
+            }
+        }
+
+        if (! Schema::hasTable('employee_allowed_locations')) {
+            Schema::create('employee_allowed_locations', function (Blueprint $table): void {
+                $table->unsignedBigInteger('employee_id');
+                $table->unsignedBigInteger('location_id');
+                $table->unique(['employee_id', 'location_id']);
+            });
+            $this->createdEmployeeAllowedLocationsTable = true;
         }
 
         if (! Schema::hasTable('attendance_logs')) {
@@ -296,6 +383,9 @@ class AttendanceCardModuleTest extends TestCase
     private function cleanData(): void
     {
         DB::table('attendance_logs')->delete();
+        if (Schema::hasTable('employee_allowed_locations')) {
+            DB::table('employee_allowed_locations')->delete();
+        }
         DB::table('employees')->delete();
         DB::table('locations')->delete();
         DB::table('companies')->delete();

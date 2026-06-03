@@ -7,6 +7,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Company;
 use App\Models\Employee;
 use App\Models\Location;
+use App\Services\Employees\EmployeeCatalogQueryService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Carbon\CarbonPeriod;
@@ -20,6 +21,11 @@ class AttendanceCardService
     public const DEFAULT_PERIOD = 'today';
 
     public const EMPLOYEE_OPTIONS_LIMIT = 300;
+
+    public function __construct(
+        private readonly EmployeeCatalogQueryService $employeeCatalogQueryService
+    ) {
+    }
 
     private const PERIOD_OPTIONS = [
         'today' => 'Hoy',
@@ -37,7 +43,7 @@ class AttendanceCardService
         $normalized = $this->normalizeFilters($filters);
         $employeeQuery = $this->buildEmployeeQuery($normalized);
         $matchingEmployees = (clone $employeeQuery)->count();
-        $selectedEmployee = $this->resolveSelectedEmployee($employeeQuery, $normalized['employee_id']);
+        $selectedEmployee = $this->resolveSelectedEmployee($normalized, $normalized['employee_id']);
 
         $card = $selectedEmployee
             ? $this->buildEmployeeCard($selectedEmployee, $normalized)
@@ -55,7 +61,7 @@ class AttendanceCardService
             'companies' => $this->companyOptions(),
             'locations' => $this->locationOptions(),
             'departments' => $this->departmentOptions($normalized),
-            'employees' => $this->employeeOptions($employeeQuery),
+            'employees' => $this->employeeOptions($employeeQuery, $selectedEmployee),
             'employeeScope' => [
                 'matching_count' => $matchingEmployees,
                 'selected' => $selectedEmployee ? [
@@ -74,6 +80,20 @@ class AttendanceCardService
     public function buildExportPayload(array $filters): array
     {
         return $this->buildPagePayload($filters, true);
+    }
+
+    public function searchEmployeeOptions(array $filters, ?string $search = null, int $limit = 25): array
+    {
+        $normalized = $this->normalizeFilters($filters);
+        $query = $this->buildEmployeeQuery($normalized, $search);
+
+        return $this->mapEmployeeOptions(
+            $query
+                ->select($this->employeeOptionColumns())
+                ->orderByRaw('COALESCE(full_name, name)')
+                ->limit(max(1, min($limit, 50)))
+                ->get()
+        );
     }
 
     public function buildExportFilename(array $payload): string
@@ -370,26 +390,33 @@ class AttendanceCardService
         return $deduped->values();
     }
 
-    private function buildEmployeeQuery(array $normalized): Builder
+    private function buildEmployeeQuery(array $normalized, ?string $search = null): Builder
     {
-        return Employee::query()
+        $query = Employee::query()
             ->with([
                 'company:id,name,code',
                 'baseLocation:id,name,code',
             ])
             ->where('status', 'A')
             ->when($normalized['company_id'], fn (Builder $query) => $query->where('company_id', $normalized['company_id']))
-            ->when($normalized['location_id'], fn (Builder $query) => $query->where('base_location_id', $normalized['location_id']))
             ->when($normalized['department_id'], fn (Builder $query) => $query->where('department_id', $normalized['department_id']));
+
+        $this->applyAttendanceLocationFilter($query, $normalized['location_id']);
+        $this->employeeCatalogQueryService->applySearchFilter($query, $search);
+
+        return $query;
     }
 
-    private function resolveSelectedEmployee(Builder $employeeQuery, ?int $employeeId): ?Employee
+    private function resolveSelectedEmployee(array $normalized, ?int $employeeId): ?Employee
     {
         if (! $employeeId) {
             return null;
         }
 
-        return (clone $employeeQuery)->find($employeeId);
+        return $this->buildEmployeeQuery([
+            ...$normalized,
+            'employee_id' => null,
+        ])->find($employeeId);
     }
 
     private function companyOptions(): array
@@ -453,31 +480,19 @@ class AttendanceCardService
             ->all();
     }
 
-    private function employeeOptions(Builder $employeeQuery): array
+    private function employeeOptions(Builder $employeeQuery, ?Employee $selectedEmployee = null): array
     {
-        return (clone $employeeQuery)
-            ->select([
-                'id',
-                'fortia_employee_id',
-                'full_name',
-                'name',
-                'company_name',
-                'base_location_name',
-                'department_name',
-            ])
+        $employees = (clone $employeeQuery)
+            ->select($this->employeeOptionColumns())
             ->orderByRaw('COALESCE(full_name, name)')
-            ->limit(self::EMPLOYEE_OPTIONS_LIMIT)
-            ->get()
-            ->map(fn (Employee $employee) => [
-                'id' => $employee->id,
-                'name' => $this->employeeName($employee),
-                'code' => (string) ($employee->fortia_employee_id ?? $employee->id),
-                'company' => $employee->company_name,
-                'location' => $employee->base_location_name,
-                'department' => $employee->department_name,
-            ])
-            ->values()
-            ->all();
+            ->limit(min(self::EMPLOYEE_OPTIONS_LIMIT, 25))
+            ->get();
+
+        if ($selectedEmployee && ! $employees->contains(fn (Employee $employee) => (int) $employee->id === (int) $selectedEmployee->id)) {
+            $employees->prepend($selectedEmployee);
+        }
+
+        return $this->mapEmployeeOptions($employees->unique('id')->values());
     }
 
     private function normalizeFilters(array $filters): array
@@ -809,6 +824,139 @@ class AttendanceCardService
     private function employeeName(Employee $employee): string
     {
         return $employee->full_name ?: $employee->name ?: ('Empleado #'.$employee->id);
+    }
+
+    private function mapEmployeeOptions(Collection $employees): array
+    {
+        return $employees
+            ->map(fn (Employee $employee) => [
+                'id' => (int) $employee->id,
+                'value' => (string) $employee->id,
+                'label' => sprintf(
+                    '%s (%s)%s',
+                    $this->employeeName($employee),
+                    $employee->visibleEmployeeKey() ?? (string) ($employee->fortia_employee_id ?? $employee->id),
+                    $employee->base_location_name ? ' · '.$employee->base_location_name : ''
+                ),
+                'name' => $this->employeeName($employee),
+                'code' => $employee->visibleEmployeeKey() ?? (string) ($employee->fortia_employee_id ?? $employee->id),
+                'fortia_employee_id' => $employee->fortia_employee_id !== null ? (string) $employee->fortia_employee_id : null,
+                'location_name' => $employee->base_location_name,
+                'department' => $employee->department_name,
+                'company' => $employee->company_name,
+                'searchText' => implode(' ', array_filter([
+                    $this->employeeName($employee),
+                    $employee->name,
+                    $employee->last_name,
+                    $employee->second_last_name,
+                    $employee->visibleEmployeeKey(),
+                    $employee->fortia_employee_id,
+                    $employee->employee_code ?? null,
+                    $employee->rfc ?? null,
+                    $employee->curp ?? null,
+                    $employee->base_location_name,
+                ])),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function applyAttendanceLocationFilter(Builder $query, ?int $locationId): void
+    {
+        if (! $locationId) {
+            return;
+        }
+
+        $location = $this->resolveLocation($locationId);
+
+        if (! $location) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $baseLocationCandidates = $this->resolveEmployeeBaseLocationCandidates($location);
+        $localLocationId = (int) $location->id;
+
+        $query->where(function (Builder $locationScope) use ($baseLocationCandidates, $localLocationId): void {
+            if ($baseLocationCandidates !== []) {
+                $locationScope->whereIn('base_location_id', $baseLocationCandidates);
+            }
+
+            if (Schema::hasColumn('employees', 'can_check_all_branches')) {
+                $locationScope->orWhere('can_check_all_branches', true);
+            }
+
+            if (Schema::hasTable('employee_allowed_locations')) {
+                $locationScope->orWhereHas('allowedLocations', function (Builder $allowedLocations) use ($localLocationId): void {
+                    $allowedLocations->where('locations.id', $localLocationId);
+                });
+            }
+        });
+    }
+
+    private function resolveLocation(int $locationId): ?Location
+    {
+        $columns = ['id', 'name'];
+
+        if (Schema::hasColumn('locations', 'fortia_location_id')) {
+            $columns[] = 'fortia_location_id';
+        }
+
+        if (Schema::hasColumn('locations', 'code')) {
+            $columns[] = 'code';
+        }
+
+        return Location::query()
+            ->select($columns)
+            ->where(function (Builder $locationQuery) use ($locationId): void {
+                $locationQuery->whereKey($locationId);
+
+                if (Schema::hasColumn('locations', 'fortia_location_id')) {
+                    $locationQuery->orWhere('fortia_location_id', $locationId);
+                }
+
+                if (Schema::hasColumn('locations', 'code')) {
+                    $locationQuery->orWhere('code', (string) $locationId);
+                }
+            })
+            ->first();
+    }
+
+    private function resolveEmployeeBaseLocationCandidates(Location $location): array
+    {
+        return collect([
+            $location->id,
+            is_numeric($location->fortia_location_id ?? null) ? (int) $location->fortia_location_id : null,
+            is_numeric($location->code ?? null) ? (int) $location->code : null,
+        ])
+            ->filter(static fn ($value): bool => is_int($value) && $value > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function employeeOptionColumns(): array
+    {
+        $columns = [
+            'id',
+            'fortia_employee_id',
+            'full_name',
+            'name',
+            'last_name',
+            'second_last_name',
+            'company_name',
+            'base_location_name',
+            'department_name',
+        ];
+
+        foreach (['employee_code', 'rfc', 'curp'] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
     }
 
     private function entryLogTypes(): array

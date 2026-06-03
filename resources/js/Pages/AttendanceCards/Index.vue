@@ -3,7 +3,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed, reactive, ref, watch } from 'vue';
+import axios from 'axios';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     filters: {
@@ -68,12 +69,30 @@ const createFilters = (value = {}) => ({
 
 const filterForm = reactive(createFilters(props.filters));
 const loading = ref(false);
+const employeeSearchLoading = ref(false);
+const employeeOptions = ref(props.employees ?? []);
+let employeeSearchDebounceTimer = null;
+
+onBeforeUnmount(() => {
+    if (employeeSearchDebounceTimer) {
+        clearTimeout(employeeSearchDebounceTimer);
+    }
+});
 
 watch(
     () => props.filters,
     (value) => {
         Object.assign(filterForm, createFilters(value ?? {}));
         loading.value = false;
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.employees,
+    (value) => {
+        employeeOptions.value = value ?? [];
+        employeeSearchLoading.value = false;
     },
     { deep: true },
 );
@@ -100,12 +119,7 @@ const filteredLocations = computed(() => {
     return props.locations.filter((location) => String(location.company_id ?? '') === String(filterForm.company_id));
 });
 
-const employeeSelectOptions = computed(() =>
-    props.employees.map((employee) => ({
-        value: String(employee.id),
-        label: `${employee.name} (${employee.code})`,
-    })),
-);
+const employeeSelectOptions = computed(() => employeeOptions.value ?? []);
 
 const selectedEmployee = computed(() => props.card?.employee ?? null);
 const rows = computed(() => props.card?.rows ?? []);
@@ -161,6 +175,56 @@ const clearFilters = () => {
     applyFilters();
 };
 
+const mergeEmployeeOptions = (items = []) => {
+    const merged = [...items];
+    const selectedId = String(filterForm.employee_id || '');
+
+    if (selectedId !== '') {
+        const selectedFromPayload = (props.employees ?? []).find((option) => String(option?.value ?? option?.id ?? '') === selectedId);
+
+        if (selectedFromPayload && !merged.some((option) => String(option?.value ?? option?.id ?? '') === selectedId)) {
+            merged.unshift(selectedFromPayload);
+        }
+    }
+
+    employeeOptions.value = merged.filter((option, index, all) =>
+        all.findIndex((candidate) => String(candidate?.value ?? candidate?.id ?? '') === String(option?.value ?? option?.id ?? '')) === index,
+    );
+};
+
+const fetchEmployeeOptions = async (query = '') => {
+    employeeSearchLoading.value = true;
+
+    try {
+        const { data } = await axios.get(route('attendance-cards.employees.search'), {
+            params: {
+                q: query || undefined,
+                company_id: filterForm.company_id || undefined,
+                location_id: filterForm.location_id || undefined,
+                department_id: filterForm.department_id || undefined,
+                employee_id: filterForm.employee_id || undefined,
+                limit: 25,
+            },
+        });
+
+        mergeEmployeeOptions(data?.data ?? []);
+    } catch (error) {
+        mergeEmployeeOptions(props.employees ?? []);
+    } finally {
+        employeeSearchLoading.value = false;
+    }
+};
+
+const queueEmployeeSearch = (query = '') => {
+    if (employeeSearchDebounceTimer) {
+        clearTimeout(employeeSearchDebounceTimer);
+    }
+
+    employeeSearchDebounceTimer = setTimeout(() => {
+        fetchEmployeeOptions(query);
+    }, 250);
+};
+
 watch(
     () => filterForm.company_id,
     () => {
@@ -171,6 +235,15 @@ watch(
         if (!locationExists) {
             filterForm.location_id = '';
         }
+
+        mergeEmployeeOptions(props.employees ?? []);
+    },
+);
+
+watch(
+    () => [filterForm.location_id, filterForm.department_id],
+    () => {
+        mergeEmployeeOptions(props.employees ?? []);
     },
 );
 
@@ -272,8 +345,11 @@ const summaryCards = computed(() => [
                             v-model="filterForm.employee_id"
                             :options="employeeSelectOptions"
                             placeholder="Selecciona empleado"
+                            search-placeholder="Busca por nombre, apellido, clave o Fortia ID"
                             :disabled="loading"
+                            :loading="employeeSearchLoading"
                             input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                            @search-change="queueEmployeeSearch"
                         />
                     </label>
 

@@ -34,6 +34,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    loading: {
+        type: Boolean,
+        default: false,
+    },
     clearable: {
         type: Boolean,
         default: false,
@@ -44,7 +48,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['update:modelValue', 'change']);
+const emit = defineEmits(['update:modelValue', 'change', 'search-change', 'open', 'close']);
 
 const rootRef = ref(null);
 const searchInputRef = ref(null);
@@ -103,6 +107,8 @@ const openDropdown = async () => {
     open.value = true;
     searchQuery.value = '';
     highlightedIndex.value = filteredOptions.value.findIndex((option) => option.value === normalizedValue.value);
+    emit('open');
+    emit('search-change', '');
     await focusSearchInput();
 };
 
@@ -110,6 +116,7 @@ const closeDropdown = () => {
     open.value = false;
     searchQuery.value = '';
     highlightedIndex.value = -1;
+    emit('close');
 };
 
 const selectOption = (option) => {
@@ -231,6 +238,14 @@ watch(filteredOptions, (options) => {
     if (highlightedIndex.value >= options.length) {
         highlightedIndex.value = 0;
     }
+});
+
+watch(searchQuery, (value) => {
+    if (!open.value) {
+        return;
+    }
+
+    emit('search-change', value);
 });
 
 watch(
@@ -357,7 +372,14 @@ onBeforeUnmount(() => {
                 </button>
 
                 <div
-                    v-if="!filteredOptions.length"
+                    v-if="loading"
+                    class="px-3 py-3 text-sm text-slate-400 dark:text-slate-500"
+                >
+                    Buscando...
+                </div>
+
+                <div
+                    v-else-if="!filteredOptions.length"
                     class="px-3 py-3 text-sm text-slate-400 dark:text-slate-500"
                 >
                     Sin coincidencias

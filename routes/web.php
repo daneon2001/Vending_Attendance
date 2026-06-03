@@ -70,6 +70,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/attendance-cards', [AttendanceCardController::class, 'index'])
         ->middleware('perm:asistencias,view')
         ->name('attendance-cards.index');
+    Route::get('/attendance-cards/employees/search', [AttendanceCardController::class, 'searchEmployees'])
+        ->middleware('perm:asistencias,view')
+        ->name('attendance-cards.employees.search');
     Route::get('/attendance-cards/export', [AttendanceCardController::class, 'export'])
         ->middleware('perm:asistencias,export')
         ->name('attendance-cards.export');

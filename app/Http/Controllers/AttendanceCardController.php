@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\AttendanceCardExport;
 use App\Services\Attendance\AttendanceCardService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,6 +25,26 @@ class AttendanceCardController extends Controller
         $filters = $this->validateFilters($request, false);
 
         return Inertia::render('AttendanceCards/Index', $this->attendanceCardService->buildPagePayload($filters));
+    }
+
+    public function searchEmployees(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
+            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'department_id' => ['nullable', 'integer'],
+            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        return response()->json([
+            'data' => $this->attendanceCardService->searchEmployeeOptions(
+                filters: $validated,
+                search: $validated['q'] ?? null,
+                limit: (int) ($validated['limit'] ?? 25),
+            ),
+        ]);
     }
 
     public function export(Request $request): BinaryFileResponse|RedirectResponse
