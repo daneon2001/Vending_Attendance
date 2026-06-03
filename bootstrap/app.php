@@ -16,6 +16,7 @@ use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\CheckTokenExpiration;
 use App\Http\Middleware\DevOnlyApi;
 use App\Http\Middleware\DeviceTokenMiddleware;
+use App\Http\Middleware\ExternalEmployeeTokenMiddleware;
 use App\Http\Middleware\VerifyDeviceHmac;
 
 // Middleware de Laravel
@@ -102,6 +103,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'dev.only.api'     => DevOnlyApi::class,
             'device.token'     => DeviceTokenMiddleware::class,
             'device.hmac'      => VerifyDeviceHmac::class,
+            'external.employee.token' => ExternalEmployeeTokenMiddleware::class,
             'perm'             => EnsurePermission::class,
             'perm.strict'      => EnsureStrictPermission::class,
             'role'             => EnsureRole::class,

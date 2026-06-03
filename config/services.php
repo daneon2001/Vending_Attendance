@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'employee_lookup_api' => [
+        'token' => env('EMPLOYEE_LOOKUP_API_TOKEN'),
+    ],
+
 ];

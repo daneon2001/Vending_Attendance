@@ -55,6 +55,20 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(30)->by('biometrics-face:'.$identifier);
         });
 
+        RateLimiter::for('employee-lookup', function (Request $request) {
+            $providedToken = $request->bearerToken();
+
+            if (! is_string($providedToken) || trim($providedToken) === '') {
+                $providedToken = (string) $request->header('X-Employee-Api-Token', '');
+            }
+
+            $tokenFingerprint = $providedToken !== ''
+                ? substr(hash('sha256', $providedToken), 0, 16)
+                : 'missing-token';
+
+            return Limit::perMinute(120)->by('employee-lookup:'.$request->ip().':'.$tokenFingerprint);
+        });
+
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
         Employee::observe(EmployeeObserver::class);

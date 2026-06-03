@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\EmployeeFaceProfileController;
 use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
 use App\Http\Controllers\Api\EmployeeFingerprintDeleteController;
+use App\Http\Controllers\Api\ExternalEmployeeController;
 use App\Http\Controllers\Api\FaceIdTemplateSyncController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
@@ -98,6 +99,10 @@ Route::prefix('admin')->group(function (): void {
             'perm.strict:employees,view',
         ]);
 });
+
+Route::middleware(['external.employee.token', 'throttle:employee-lookup'])
+    ->get('/external/employees/{id}', [ExternalEmployeeController::class, 'show'])
+    ->name('api.external.employees.show');
 
 Route::prefix('admin')
     ->middleware([
