@@ -6,26 +6,42 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\Rule;
 
 class ExternalEmployeeController extends Controller
 {
-    public function show(Request $request, string $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $validated = $request->validate([
-            'lookup_by' => ['nullable', 'string', Rule::in(['id', 'internal_id', 'fortia', 'fortia_employee_id'])],
-        ]);
+        if (! ctype_digit($id)) {
+            return $this->notFoundResponse();
+        }
 
-        $lookupBy = $this->resolveLookupBy($validated['lookup_by'] ?? null);
-        $employee = $this->findEmployee($id, $lookupBy);
+        $employee = Employee::query()
+            ->select($this->selectColumns())
+            ->whereKey((int) $id)
+            ->first();
 
+        return $this->buildEmployeeResponse($employee);
+    }
+
+    public function showByFortia(string $fortiaEmployeeId): JsonResponse
+    {
+        if (! ctype_digit($fortiaEmployeeId)) {
+            return $this->notFoundResponse();
+        }
+
+        $employee = Employee::query()
+            ->select($this->selectColumns())
+            ->where('fortia_employee_id', $fortiaEmployeeId)
+            ->first();
+
+        return $this->buildEmployeeResponse($employee);
+    }
+
+    private function buildEmployeeResponse(?Employee $employee): JsonResponse
+    {
         if (! $employee) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Empleado no encontrado.',
-            ], 404);
+            return $this->notFoundResponse();
         }
 
         return response()->json([
@@ -34,19 +50,12 @@ class ExternalEmployeeController extends Controller
         ]);
     }
 
-    private function findEmployee(string $id, string $lookupBy): ?Employee
+    private function notFoundResponse(): JsonResponse
     {
-        $query = Employee::query()->select($this->selectColumns());
-
-        if ($lookupBy === 'fortia_employee_id') {
-            return $query->where('fortia_employee_id', $id)->first();
-        }
-
-        if (! ctype_digit($id)) {
-            return null;
-        }
-
-        return $query->whereKey((int) $id)->first();
+        return response()->json([
+            'success' => false,
+            'message' => 'Empleado no encontrado.',
+        ], 404);
     }
 
     private function selectColumns(): array
@@ -129,10 +138,4 @@ class ExternalEmployeeController extends Controller
             ->toIso8601String();
     }
 
-    private function resolveLookupBy(?string $lookupBy): string
-    {
-        return in_array($lookupBy, ['fortia', 'fortia_employee_id'], true)
-            ? 'fortia_employee_id'
-            : 'id';
-    }
 }

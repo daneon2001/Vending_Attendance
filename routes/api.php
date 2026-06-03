@@ -101,8 +101,12 @@ Route::prefix('admin')->group(function (): void {
 });
 
 Route::middleware(['external.employee.token', 'throttle:employee-lookup'])
-    ->get('/external/employees/{id}', [ExternalEmployeeController::class, 'show'])
-    ->name('api.external.employees.show');
+    ->group(function (): void {
+        Route::get('/external/employees/fortia/{fortiaEmployeeId}', [ExternalEmployeeController::class, 'showByFortia'])
+            ->name('api.external.employees.show-by-fortia');
+        Route::get('/external/employees/{id}', [ExternalEmployeeController::class, 'show'])
+            ->name('api.external.employees.show');
+    });
 
 Route::prefix('admin')
     ->middleware([

@@ -57,7 +57,7 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ]);
     }
 
-    public function test_returns_existing_employee(): void
+    public function test_returns_existing_employee_by_internal_id(): void
     {
         $employeeId = $this->createEmployee();
 
@@ -68,9 +68,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.id', $employeeId)
-            ->assertJsonPath('data.fortia_employee_id', '12345')
+            ->assertJsonPath('data.fortia_employee_id', '12015')
             ->assertJsonPath('data.employee_code', '000123')
-            ->assertJsonPath('data.full_name', 'NOMBRE EMPLEADO')
+            ->assertJsonPath('data.full_name', 'ANDRADE CRUZ DANIEL')
             ->assertJsonPath('data.status', 'A')
             ->assertJsonPath('data.company_id', 1)
             ->assertJsonPath('data.base_location_id', 10)
@@ -84,11 +84,40 @@ class ExternalEmployeeLookupApiTest extends TestCase
         $this->assertStringContainsString('application/json', (string) $response->headers->get('content-type'));
     }
 
+    public function test_returns_existing_employee_by_fortia_employee_id(): void
+    {
+        $employeeId = $this->createEmployee();
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer external-secret-token',
+        ])->getJson(self::URI.'/fortia/12015');
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.id', $employeeId)
+            ->assertJsonPath('data.fortia_employee_id', '12015')
+            ->assertJsonPath('data.full_name', 'ANDRADE CRUZ DANIEL')
+            ->assertJsonPath('data.status', 'A');
+    }
+
     public function test_returns_404_when_employee_does_not_exist(): void
     {
         $response = $this->withHeaders([
             'Authorization' => 'Bearer external-secret-token',
         ])->getJson(self::URI.'/999999');
+
+        $response->assertStatus(404)
+            ->assertExactJson([
+                'success' => false,
+                'message' => 'Empleado no encontrado.',
+            ]);
+    }
+
+    public function test_returns_404_when_fortia_employee_id_does_not_exist(): void
+    {
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer external-secret-token',
+        ])->getJson(self::URI.'/fortia/999999');
 
         $response->assertStatus(404)
             ->assertExactJson([
@@ -117,13 +146,13 @@ class ExternalEmployeeLookupApiTest extends TestCase
         $this->assertArrayNotHasKey('fingerprints', $payload);
     }
 
-    public function test_supports_lookup_by_fortia_employee_id_with_consistent_json_shape(): void
+    public function test_fortia_lookup_uses_consistent_json_shape(): void
     {
         $this->createEmployee();
 
         $response = $this->withHeaders([
             'X-Employee-Api-Token' => 'external-secret-token',
-        ])->getJson(self::URI.'/12345?lookup_by=fortia');
+        ])->getJson(self::URI.'/fortia/12015');
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -151,18 +180,18 @@ class ExternalEmployeeLookupApiTest extends TestCase
                     'updated_at',
                 ],
             ])
-            ->assertJsonPath('data.fortia_employee_id', '12345');
+            ->assertJsonPath('data.fortia_employee_id', '12015');
     }
 
     private function createEmployee(): int
     {
         return DB::table('employees')->insertGetId([
-            'fortia_employee_id' => 12345,
+            'fortia_employee_id' => 12015,
             'employee_code' => '000123',
-            'full_name' => 'NOMBRE EMPLEADO',
-            'name' => 'NOMBRE',
-            'last_name' => 'EMPLEADO',
-            'second_last_name' => 'PRUEBA',
+            'full_name' => 'ANDRADE CRUZ DANIEL',
+            'name' => 'DANIEL',
+            'last_name' => 'ANDRADE',
+            'second_last_name' => 'CRUZ',
             'status' => 'A',
             'company_id' => 1,
             'company_name' => 'Medical Life',
@@ -175,8 +204,8 @@ class ExternalEmployeeLookupApiTest extends TestCase
             'has_fingerprint' => true,
             'has_face_enrollment' => false,
             'face_enabled' => false,
-            'rfc' => 'NOEX123456ABC',
-            'curp' => 'NOEX123456HDFABC01',
+            'rfc' => 'AACD120315ABC',
+            'curp' => 'AACD120315HDFNRL09',
             'imss_number' => '9876543210',
             'updated_at' => '2026-05-25 18:00:00',
             'created_at' => '2026-05-25 18:00:00',

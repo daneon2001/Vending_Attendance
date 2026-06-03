@@ -1,13 +1,14 @@
 # Employee Lookup API
 
 ## Objetivo
-Exponer un endpoint seguro y acotado para que una aplicación externa consulte información básica de un empleado por identificador, sin reutilizar la autenticación interna del sistema.
+Exponer endpoints seguros y acotados para que una aplicacion externa consulte informacion basica de un empleado sin reutilizar la autenticacion interna del sistema.
 
-## Endpoint
-- Método: `GET`
-- URL principal: `/api/external/employees/{id}`
+## Endpoints
+- Metodo: `GET`
+- Consulta por ID interno: `/api/external/employees/{id}`
+- Consulta por ID Fortia: `/api/external/employees/fortia/{fortiaEmployeeId}`
 
-## Autenticación
+## Autenticacion
 Configurar en `.env`:
 
 ```env
@@ -17,7 +18,6 @@ EMPLOYEE_LOOKUP_API_TOKEN=tu_token_largo_y_unico
 Laravel lee el token desde:
 
 ```php
-// config/services.php
 'employee_lookup_api' => [
     'token' => env('EMPLOYEE_LOOKUP_API_TOKEN'),
 ],
@@ -36,38 +36,35 @@ Alternativo:
 X-Employee-Api-Token: TOKEN
 ```
 
-## Query params opcionales
-- `lookup_by=id`
-- `lookup_by=fortia`
-- `lookup_by=fortia_employee_id`
+## Comportamiento de busqueda
+- `/api/external/employees/{id}` busca por `employees.id`.
+- `/api/external/employees/fortia/{fortiaEmployeeId}` busca por `employees.fortia_employee_id`.
 
-Por defecto busca por `id` interno.
+## Ejemplos cURL
 
-## Ejemplo cURL
+### Consulta por ID interno
 
 ```bash
-curl -X GET "https://biometrico.sybiml.com/api/external/employees/123" \
+curl -X GET "https://biometrico.sybiml.com/api/external/employees/504" \
   -H "Accept: application/json" \
   -H "Authorization: Bearer TOKEN"
 ```
 
-### Búsqueda por Fortia ID
+### Consulta por ID Fortia
 
 ```bash
-curl -X GET "https://biometrico.sybiml.com/api/external/employees/12345?lookup_by=fortia" \
+curl -X GET "https://biometrico.sybiml.com/api/external/employees/fortia/12015" \
   -H "Accept: application/json" \
   -H "Authorization: Bearer TOKEN"
 ```
 
 ## Ejemplo Postman
 - Method: `GET`
-- URL: `{{base_url}}/api/external/employees/123`
+- URL por ID interno: `{{base_url}}/api/external/employees/504`
+- URL por ID Fortia: `{{base_url}}/api/external/employees/fortia/12015`
 - Headers:
   - `Accept: application/json`
   - `Authorization: Bearer {{employee_lookup_api_token}}`
-
-Para Fortia ID:
-- URL: `{{base_url}}/api/external/employees/12345?lookup_by=fortia`
 
 ## Respuesta 200
 
@@ -75,13 +72,13 @@ Para Fortia ID:
 {
   "success": true,
   "data": {
-    "id": 123,
-    "fortia_employee_id": "12345",
+    "id": 504,
+    "fortia_employee_id": "12015",
     "employee_code": "000123",
-    "full_name": "NOMBRE EMPLEADO",
-    "name": "NOMBRE",
-    "last_name": "APELLIDO",
-    "second_last_name": "SEGUNDO APELLIDO",
+    "full_name": "ANDRADE CRUZ DANIEL",
+    "name": "DANIEL",
+    "last_name": "ANDRADE",
+    "second_last_name": "CRUZ",
     "status": "A",
     "company_id": 1,
     "company_name": "Medical Life",
@@ -136,23 +133,23 @@ Para Fortia ID:
 
 ## Rate limit
 - Limiter: `employee-lookup`
-- Política: `120 requests/minuto`
-- Segmentación: por `IP + fingerprint del token`
+- Politica: `120 requests/minuto`
+- Segmentacion: por `IP + fingerprint del token`
 
 ## Campos expuestos
-La API devuelve sólo información operativa mínima del empleado.
+La API devuelve solo informacion operativa minima del empleado.
 
 No expone:
 - `CURP`
 - `RFC`
 - `IMSS`
-- plantillas biométricas
+- plantillas biometricas
 - huellas o Face templates
-- metadata biométrica sensible
+- metadata biometrica sensible
 
 ## Notas de seguridad
-- El token no está hardcodeado.
-- Si el token no está configurado, el endpoint rechaza solicitudes.
-- La comparación del token usa `hash_equals`.
+- El token no esta hardcodeado.
+- Si el token no esta configurado, el endpoint rechaza solicitudes.
+- La comparacion del token usa `hash_equals`.
 - Los logs no incluyen el token recibido.
 - La respuesta siempre es JSON.
