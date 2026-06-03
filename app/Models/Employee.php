@@ -76,6 +76,11 @@ class Employee extends Model
         return $this->hasOne(EmployeeDetail::class);
     }
 
+    public function details()
+    {
+        return $this->hasOne(EmployeeDetail::class);
+    }
+
     public function company()
     {
         foreach (['fortia_company_id', 'external_id', 'legacy_code', 'code'] as $ownerKey) {

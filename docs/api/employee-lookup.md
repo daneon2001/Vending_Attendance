@@ -1,7 +1,7 @@
 # Employee Lookup API
 
 ## Objetivo
-Exponer endpoints seguros y acotados para que una aplicacion externa consulte informacion basica de un empleado sin reutilizar la autenticacion interna del sistema.
+Exponer endpoints seguros y acotados para que una aplicacion externa consulte informacion basica de un empleado, incluyendo su puesto, sin reutilizar la autenticacion interna del sistema.
 
 ## Endpoints
 - Metodo: `GET`
@@ -83,9 +83,17 @@ curl -X GET "https://biometrico.sybiml.com/api/external/employees/fortia/12015" 
     "company_id": 1,
     "company_name": "Medical Life",
     "base_location_id": 10,
-    "base_location_name": "Unidad Centro",
+    "base_location_name": "Corporativo Lago Xochimilco",
     "department_id": 5,
     "department_name": "Operaciones",
+    "position_id": 123,
+    "position_code": "2001",
+    "position_name": "ABOGADO",
+    "position": {
+      "id": 123,
+      "code": "2001",
+      "name": "ABOGADO"
+    },
     "can_check_all_branches": true,
     "check_scope": "ANY_BRANCH",
     "has_fingerprint": true,
@@ -95,6 +103,28 @@ curl -X GET "https://biometrico.sybiml.com/api/external/employees/fortia/12015" 
   }
 }
 ```
+
+## Respuesta 200 sin puesto
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 505,
+    "fortia_employee_id": "12016",
+    "position_id": null,
+    "position_code": null,
+    "position_name": null,
+    "position": null
+  }
+}
+```
+
+## Campo `position`
+- `position_id`: id del puesto en la tabla `puestos`
+- `position_code`: valor de `puestos.cla_puesto`
+- `position_name`: valor de `puestos.nom_puesto`
+- `position`: objeto anidado con los mismos tres valores para consumo estructurado
 
 ## Respuesta 401
 

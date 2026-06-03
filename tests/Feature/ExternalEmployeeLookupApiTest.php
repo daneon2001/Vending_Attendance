@@ -12,6 +12,8 @@ class ExternalEmployeeLookupApiTest extends TestCase
     private const URI = '/api/external/employees';
 
     private bool $createdEmployeesTable = false;
+    private bool $createdEmployeeDetailsTable = false;
+    private bool $createdPuestosTable = false;
 
     protected function setUp(): void
     {
@@ -26,6 +28,14 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->createdEmployeeDetailsTable && Schema::hasTable('employee_details')) {
+            Schema::drop('employee_details');
+        }
+
+        if ($this->createdPuestosTable && Schema::hasTable('puestos')) {
+            Schema::drop('puestos');
+        }
+
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
             Schema::drop('employees');
         }
@@ -57,9 +67,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ]);
     }
 
-    public function test_returns_existing_employee_by_internal_id(): void
+    public function test_returns_existing_employee_by_internal_id_including_position(): void
     {
-        $employeeId = $this->createEmployee();
+        $employeeId = $this->createEmployeeWithPosition();
 
         $response = $this->withHeaders([
             'Authorization' => 'Bearer external-secret-token',
@@ -75,6 +85,12 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.company_id', 1)
             ->assertJsonPath('data.base_location_id', 10)
             ->assertJsonPath('data.department_id', 5)
+            ->assertJsonPath('data.position_id', 123)
+            ->assertJsonPath('data.position_code', '2001')
+            ->assertJsonPath('data.position_name', 'ABOGADO')
+            ->assertJsonPath('data.position.id', 123)
+            ->assertJsonPath('data.position.code', '2001')
+            ->assertJsonPath('data.position.name', 'ABOGADO')
             ->assertJsonPath('data.can_check_all_branches', true)
             ->assertJsonPath('data.check_scope', 'ANY_BRANCH')
             ->assertJsonPath('data.has_fingerprint', true)
@@ -84,9 +100,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
         $this->assertStringContainsString('application/json', (string) $response->headers->get('content-type'));
     }
 
-    public function test_returns_existing_employee_by_fortia_employee_id(): void
+    public function test_returns_existing_employee_by_fortia_employee_id_including_position(): void
     {
-        $employeeId = $this->createEmployee();
+        $employeeId = $this->createEmployeeWithPosition();
 
         $response = $this->withHeaders([
             'Authorization' => 'Bearer external-secret-token',
@@ -97,7 +113,24 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.id', $employeeId)
             ->assertJsonPath('data.fortia_employee_id', '12015')
             ->assertJsonPath('data.full_name', 'ANDRADE CRUZ DANIEL')
-            ->assertJsonPath('data.status', 'A');
+            ->assertJsonPath('data.position_id', 123)
+            ->assertJsonPath('data.position_code', '2001')
+            ->assertJsonPath('data.position_name', 'ABOGADO');
+    }
+
+    public function test_employee_without_position_returns_null_position_fields(): void
+    {
+        $employeeId = $this->createEmployeeWithoutPosition();
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer external-secret-token',
+        ])->getJson(self::URI.'/'.$employeeId);
+
+        $response->assertOk()
+            ->assertJsonPath('data.position_id', null)
+            ->assertJsonPath('data.position_code', null)
+            ->assertJsonPath('data.position_name', null)
+            ->assertJsonPath('data.position', null);
     }
 
     public function test_returns_404_when_employee_does_not_exist(): void
@@ -128,7 +161,7 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
     public function test_does_not_expose_sensitive_fields(): void
     {
-        $employeeId = $this->createEmployee();
+        $employeeId = $this->createEmployeeWithPosition();
 
         $response = $this->withHeaders([
             'Authorization' => 'Bearer external-secret-token',
@@ -148,7 +181,7 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
     public function test_fortia_lookup_uses_consistent_json_shape(): void
     {
-        $this->createEmployee();
+        $this->createEmployeeWithPosition();
 
         $response = $this->withHeaders([
             'X-Employee-Api-Token' => 'external-secret-token',
@@ -172,6 +205,10 @@ class ExternalEmployeeLookupApiTest extends TestCase
                     'base_location_name',
                     'department_id',
                     'department_name',
+                    'position_id',
+                    'position_code',
+                    'position_name',
+                    'position',
                     'can_check_all_branches',
                     'check_scope',
                     'has_fingerprint',
@@ -183,20 +220,58 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.fortia_employee_id', '12015');
     }
 
-    private function createEmployee(): int
+    private function createEmployeeWithPosition(): int
+    {
+        $employeeId = $this->createEmployee(12015, 'ANDRADE CRUZ DANIEL');
+
+        DB::table('puestos')->insert([
+            'id' => 123,
+            'cla_puesto' => '2001',
+            'nom_puesto' => 'ABOGADO',
+            'created_at' => '2026-05-25 18:00:00',
+            'updated_at' => '2026-05-25 18:00:00',
+        ]);
+
+        DB::table('employee_details')->insert([
+            'employee_id' => $employeeId,
+            'cla_trab' => '000123',
+            'puesto_id' => 123,
+            'created_at' => '2026-05-25 18:00:00',
+            'updated_at' => '2026-05-25 18:00:00',
+        ]);
+
+        return $employeeId;
+    }
+
+    private function createEmployeeWithoutPosition(): int
+    {
+        $employeeId = $this->createEmployee(12016, 'EMPLEADO SIN PUESTO');
+
+        DB::table('employee_details')->insert([
+            'employee_id' => $employeeId,
+            'cla_trab' => '000124',
+            'puesto_id' => null,
+            'created_at' => '2026-05-25 18:00:00',
+            'updated_at' => '2026-05-25 18:00:00',
+        ]);
+
+        return $employeeId;
+    }
+
+    private function createEmployee(int $fortiaEmployeeId, string $fullName): int
     {
         return DB::table('employees')->insertGetId([
-            'fortia_employee_id' => 12015,
+            'fortia_employee_id' => $fortiaEmployeeId,
             'employee_code' => '000123',
-            'full_name' => 'ANDRADE CRUZ DANIEL',
-            'name' => 'DANIEL',
-            'last_name' => 'ANDRADE',
-            'second_last_name' => 'CRUZ',
+            'full_name' => $fullName,
+            'name' => explode(' ', $fullName)[2] ?? 'DANIEL',
+            'last_name' => explode(' ', $fullName)[0] ?? 'ANDRADE',
+            'second_last_name' => explode(' ', $fullName)[1] ?? 'CRUZ',
             'status' => 'A',
             'company_id' => 1,
             'company_name' => 'Medical Life',
             'base_location_id' => 10,
-            'base_location_name' => 'Unidad Centro',
+            'base_location_name' => 'Corporativo Lago Xochimilco',
             'department_id' => 5,
             'department_name' => 'Operaciones',
             'can_check_all_branches' => true,
@@ -243,33 +318,38 @@ class ExternalEmployeeLookupApiTest extends TestCase
             $this->createdEmployeesTable = true;
         }
 
-        foreach ([
-            'employee_code' => fn (Blueprint $table) => $table->string('employee_code')->nullable()->after('fortia_employee_id'),
-            'last_name' => fn (Blueprint $table) => $table->string('last_name')->nullable()->after('name'),
-            'second_last_name' => fn (Blueprint $table) => $table->string('second_last_name')->nullable()->after('last_name'),
-            'company_id' => fn (Blueprint $table) => $table->unsignedBigInteger('company_id')->nullable()->after('status'),
-            'company_name' => fn (Blueprint $table) => $table->string('company_name')->nullable()->after('company_id'),
-            'base_location_id' => fn (Blueprint $table) => $table->unsignedBigInteger('base_location_id')->nullable()->after('company_name'),
-            'base_location_name' => fn (Blueprint $table) => $table->string('base_location_name')->nullable()->after('base_location_id'),
-            'department_id' => fn (Blueprint $table) => $table->unsignedBigInteger('department_id')->nullable()->after('base_location_name'),
-            'department_name' => fn (Blueprint $table) => $table->string('department_name')->nullable()->after('department_id'),
-            'can_check_all_branches' => fn (Blueprint $table) => $table->boolean('can_check_all_branches')->default(false)->after('department_name'),
-            'check_scope' => fn (Blueprint $table) => $table->string('check_scope', 40)->nullable()->after('can_check_all_branches'),
-            'has_fingerprint' => fn (Blueprint $table) => $table->boolean('has_fingerprint')->default(false)->after('check_scope'),
-            'has_face_enrollment' => fn (Blueprint $table) => $table->boolean('has_face_enrollment')->default(false)->after('has_fingerprint'),
-            'face_enabled' => fn (Blueprint $table) => $table->boolean('face_enabled')->default(false)->after('has_face_enrollment'),
-            'rfc' => fn (Blueprint $table) => $table->string('rfc')->nullable()->after('face_enabled'),
-            'curp' => fn (Blueprint $table) => $table->string('curp')->nullable()->after('rfc'),
-            'imss_number' => fn (Blueprint $table) => $table->string('imss_number')->nullable()->after('curp'),
-        ] as $column => $definition) {
-            if (! Schema::hasColumn('employees', $column)) {
-                Schema::table('employees', $definition);
-            }
+        if (! Schema::hasTable('puestos')) {
+            Schema::create('puestos', function (Blueprint $table): void {
+                $table->id();
+                $table->string('cla_puesto', 50)->unique();
+                $table->string('nom_puesto', 255);
+                $table->timestamps();
+            });
+            $this->createdPuestosTable = true;
+        }
+
+        if (! Schema::hasTable('employee_details')) {
+            Schema::create('employee_details', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('employee_id')->unique();
+                $table->string('cla_trab', 50)->nullable();
+                $table->unsignedBigInteger('puesto_id')->nullable();
+                $table->timestamps();
+            });
+            $this->createdEmployeeDetailsTable = true;
         }
     }
 
     private function cleanData(): void
     {
+        if (Schema::hasTable('employee_details')) {
+            DB::table('employee_details')->delete();
+        }
+
+        if (Schema::hasTable('puestos')) {
+            DB::table('puestos')->delete();
+        }
+
         DB::table('employees')->delete();
     }
 }
