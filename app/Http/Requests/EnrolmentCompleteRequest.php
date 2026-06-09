@@ -29,12 +29,18 @@ class EnrolmentCompleteRequest extends FormRequest
             ]);
         }
 
-        foreach (['template_b64', 'template_format', 'template_vendor_id', 'fortia_employee_id', 'employee_code', 'device_serial'] as $field) {
+        foreach (['template_b64', 'template_format', 'template_vendor_id', 'fortia_employee_id', 'employee_code', 'device_serial', 'serial_number'] as $field) {
             if ($this->has($field) && is_string($this->input($field))) {
                 $this->merge([
                     $field => trim((string) $this->input($field)),
                 ]);
             }
+        }
+
+        if (! $this->filled('device_serial') && $this->has('serial_number') && is_scalar($this->input('serial_number'))) {
+            $this->merge([
+                'device_serial' => trim((string) $this->input('serial_number')),
+            ]);
         }
 
         if (! $this->filled('fortia_employee_id') && $this->has('employee_code') && is_scalar($this->input('employee_code'))) {
@@ -67,8 +73,8 @@ class EnrolmentCompleteRequest extends FormRequest
         return [
             'employee_id' => ['nullable', 'integer', 'exists:employees,id', 'required_without:fortia_employee_id'],
             'fortia_employee_id' => ['nullable', 'string', 'max:191', 'required_without:employee_id'],
-            'clock_id' => ['nullable', 'integer', 'exists:clocks,id', 'required_without:unit_id'],
-            'unit_id' => ['nullable', 'integer', 'required_without:clock_id'],
+            'clock_id' => ['nullable', 'integer', 'exists:clocks,id', 'required_without_all:unit_id,device_serial,serial_number'],
+            'unit_id' => ['nullable', 'integer', 'required_without_all:clock_id,device_serial,serial_number'],
             'enrolment_type' => ['required', Rule::in(['FINGERPRINT', 'FACE'])],
             'template_vendor_id' => ['required', 'string', 'max:191'],
             'template_b64' => [
@@ -109,6 +115,7 @@ class EnrolmentCompleteRequest extends FormRequest
                 },
             ],
             'device_serial' => ['nullable', 'string', 'max:191'],
+            'serial_number' => ['nullable', 'string', 'max:191'],
             'samples_count' => ['nullable', 'integer', 'min:0', 'max:99'],
             'quality_score' => ['nullable', 'integer', 'min:0', 'max:100'],
             'template_version' => ['nullable', 'string', 'max:80'],

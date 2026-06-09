@@ -25,11 +25,13 @@ class EnrolmentAudit extends Model
         'performed_at',
         'status',
         'reason',
+        'metadata',
         'created_at',
     ];
 
     protected $casts = [
         'performed_at' => 'datetime',
         'created_at' => 'datetime',
+        'metadata' => 'array',
     ];
 }

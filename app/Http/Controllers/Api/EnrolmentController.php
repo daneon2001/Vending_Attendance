@@ -8,14 +8,21 @@ use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\EmployeeFingerprint;
 use App\Models\EnrolmentAudit;
-use App\Models\Location;
+use App\Services\OnPremise\ClockUnitResolution;
+use App\Services\OnPremise\ClockUnitResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class EnrolmentController extends Controller
 {
+    public function __construct(
+        private readonly ClockUnitResolver $clockUnitResolver,
+    ) {
+    }
+
     public function complete(EnrolmentCompleteRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -55,58 +62,102 @@ class EnrolmentController extends Controller
             ], 422);
         }
 
-        $clock = $this->resolveClock($validated);
-        $requestedUnitId = isset($validated['unit_id'])
-            ? $this->resolveInternalUnitId((int) $validated['unit_id'])
-            : null;
-        $resolvedUnitId = $this->resolveUnitId($validated, $clock, $employee);
+        $resolution = $this->clockUnitResolver->resolve($validated, $employee);
+        $clock = $resolution->clock;
+        $clockId = $resolution->resolvedClockId();
+        $resolvedUnitId = $resolution->resolvedUnitId();
+        $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $resolution);
 
-        if (isset($validated['unit_id']) && ! $this->isAcceptedUnitId((int) $validated['unit_id'], $employee)) {
-            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clock?->id ? (int) $clock->id : null, null);
-            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'The selected unit id is invalid.');
+        if ($resolution->hasFailure()) {
+            $reason = $resolution->failureMessage ?? 'Unable to resolve clock/unit for enrolment.';
+            $event = $resolution->failureCode === 'unit_resolution_ambiguous'
+                ? 'onprem.enrollment.unit_resolution_ambiguous'
+                : 'onprem.enrollment.unit_validation_failed';
+
+            $this->logResolutionFailure($event, $request, $resolution, $employee, $reason);
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, $reason);
+
+            return $this->buildRejectedResponse(
+                employeeId: $employeeId,
+                fortiaEmployeeId: $fortiaEmployeeId,
+                vendorTemplateId: $vendorTemplateId,
+                resolution: $resolution,
+                message: $reason,
+                status: 422,
+            );
+        }
+
+        if ($resolution->providedUnitId !== null && $resolvedUnitId === null) {
+            $reason = 'The selected unit id is invalid.';
+
+            $this->logResolutionFailure(
+                'onprem.enrollment.unit_validation_failed',
+                $request,
+                $resolution,
+                $employee,
+                $reason
+            );
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, $reason);
 
             return response()->json([
-                'message' => 'The selected unit id is invalid.',
+                'message' => $reason,
                 'errors' => [
-                    'unit_id' => ['The selected unit id is invalid.'],
+                    'unit_id' => [$reason],
                 ],
             ], 422);
         }
 
-        if ($clock && isset($validated['unit_id']) && $requestedUnitId !== null && $clock->location_id !== null && $requestedUnitId !== (int) $clock->location_id) {
-            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, (int) $clock->id, $resolvedUnitId);
-            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Clock does not belong to the provided unit.');
+        if (
+            $clock
+            && $resolution->providedUnitId !== null
+            && $resolvedUnitId !== null
+            && $clock->location_id !== null
+            && $resolvedUnitId !== (int) $clock->location_id
+        ) {
+            $reason = $this->buildClockUnitMismatchMessage($clock, $resolution);
 
-            return response()->json([
-                'success' => false,
-                'employee_id' => $employeeId,
-                'fortia_employee_id' => $fortiaEmployeeId,
-                'clock_id' => (int) $clock->id,
-                'unit_id' => $resolvedUnitId,
-                'vendor_template_id' => $vendorTemplateId,
-                'action' => 'REJECTED',
-                'message' => 'Clock does not belong to the provided unit.',
-            ], 422);
+            $this->logResolutionFailure(
+                'onprem.enrollment.unit_validation_failed',
+                $request,
+                $resolution,
+                $employee,
+                $reason
+            );
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, $reason);
+
+            return $this->buildRejectedResponse(
+                employeeId: $employeeId,
+                fortiaEmployeeId: $fortiaEmployeeId,
+                vendorTemplateId: $vendorTemplateId,
+                resolution: $resolution,
+                message: $reason,
+                status: 422,
+            );
         }
 
         if ($resolvedUnitId === null) {
-            $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clock?->id ? (int) $clock->id : null, null);
-            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Unable to resolve unit for enrolment.');
+            $reason = 'Unable to resolve unit for enrolment.';
+
+            $this->logResolutionFailure(
+                'onprem.enrollment.unit_validation_failed',
+                $request,
+                $resolution,
+                $employee,
+                $reason
+            );
+            $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, $reason);
 
             return response()->json([
                 'success' => false,
                 'employee_id' => $employeeId,
                 'fortia_employee_id' => $fortiaEmployeeId,
-                'clock_id' => $clock?->id ? (int) $clock->id : null,
+                'clock_id' => $clockId,
                 'unit_id' => null,
                 'vendor_template_id' => $vendorTemplateId,
                 'action' => 'REJECTED',
-                'message' => 'Unable to resolve unit for enrolment.',
+                'message' => $reason,
             ], 422);
         }
-
-        $clockId = $clock?->id ? (int) $clock->id : null;
-        $auditPayload = $this->mergeAuditPayload($validated, $employeeId, $clockId, $resolvedUnitId);
 
         if (! $this->isActiveEmployee($employee->status)) {
             $this->audit($auditPayload, EnrolmentAudit::STATUS_REJECTED, 'Employee is not active.');
@@ -154,6 +205,7 @@ class EnrolmentController extends Controller
                 ! $request->filled('template_b64')
                 && ! $request->filled('template_format')
                 && ! $request->filled('device_serial')
+                && ! $request->filled('serial_number')
                 && ! $existingTemplateIsIncomplete
             ) {
                 $employee->refreshFingerprintFlag();
@@ -211,7 +263,7 @@ class EnrolmentController extends Controller
             'template_format' => $validated['template_format'] ?? $existingByVendor?->template_format,
             'template_vendor' => $this->resolveTemplateVendor($enrolmentType),
             'template_source' => $this->resolveTemplateSource($enrolmentType),
-            'device_serial' => $validated['device_serial'] ?? $existingByVendor?->device_serial,
+            'device_serial' => $validated['device_serial'] ?? $validated['serial_number'] ?? $existingByVendor?->device_serial,
             'enrolled_at' => $validated['performed_at'],
             'performed_at' => $validated['performed_at'],
             'deleted_at' => null,
@@ -257,7 +309,7 @@ class EnrolmentController extends Controller
                         'face_quality_score' => isset($validated['quality_score']) ? (int) $validated['quality_score'] : null,
                         'vendor_template_id' => $vendorTemplateId,
                         'template_format' => $validated['template_format'] ?? null,
-                        'device_serial' => $validated['device_serial'] ?? null,
+                        'device_serial' => $validated['device_serial'] ?? $validated['serial_number'] ?? null,
                         'face_meta' => $faceMeta,
                     ]);
                 }
@@ -282,11 +334,7 @@ class EnrolmentController extends Controller
         }
 
         $employee->refresh();
-        $this->audit(
-            $auditPayload,
-            EnrolmentAudit::STATUS_SENT,
-            $message
-        );
+        $this->audit($auditPayload, EnrolmentAudit::STATUS_SENT, $message);
 
         return response()->json([
             'success' => true,
@@ -360,7 +408,7 @@ class EnrolmentController extends Controller
 
     private function audit(array $payload, string $status, string $reason): void
     {
-        EnrolmentAudit::query()->create([
+        $attributes = [
             'employee_id' => isset($payload['employee_id']) ? (int) $payload['employee_id'] : null,
             'clock_id' => isset($payload['clock_id']) ? (int) $payload['clock_id'] : null,
             'enrolment_type' => $payload['enrolment_type'] ?? null,
@@ -370,7 +418,13 @@ class EnrolmentController extends Controller
             'status' => $status,
             'reason' => $reason,
             'created_at' => now(),
-        ]);
+        ];
+
+        if (Schema::hasTable('enrolment_audits') && Schema::hasColumn('enrolment_audits', 'metadata')) {
+            $attributes['metadata'] = $payload['audit_metadata'] ?? null;
+        }
+
+        EnrolmentAudit::query()->create($attributes);
     }
 
     private function resolveEmployee(array $validated): ?Employee
@@ -402,96 +456,110 @@ class EnrolmentController extends Controller
             || in_array($driverCode, ['1062', '19'], true);
     }
 
-    private function resolveClock(array $validated): ?Clock
+    private function mergeAuditPayload(array $validated, int $employeeId, ClockUnitResolution $resolution): array
     {
-        if (isset($validated['clock_id'])) {
-            return Clock::query()->find((int) $validated['clock_id']);
-        }
+        $clock = $resolution->clock;
 
-        if (isset($validated['unit_id'])) {
-            return Clock::query()
-                ->where('location_id', (int) $validated['unit_id'])
-                ->orderByDesc('updated_at')
-                ->orderBy('id')
-                ->first();
-        }
-
-        return null;
-    }
-
-    private function isAcceptedUnitId(int $unitId, Employee $employee): bool
-    {
-        if ($unitId <= 0) {
-            return false;
-        }
-
-        $requestedInternalUnitId = $this->resolveInternalUnitId($unitId);
-        if ($requestedInternalUnitId !== null) {
-            return true;
-        }
-
-        if ($employee->base_location_id === null) {
-            return false;
-        }
-
-        if ((int) $employee->base_location_id === $unitId) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private function resolveUnitId(array $validated, ?Clock $clock, Employee $employee): ?int
-    {
-        if (isset($validated['unit_id'])) {
-            $resolvedUnitId = $this->resolveInternalUnitId((int) $validated['unit_id']);
-
-            return $resolvedUnitId ?? (int) $validated['unit_id'];
-        }
-
-        if ($clock && $clock->location_id !== null) {
-            return (int) $clock->location_id;
-        }
-
-        if ($employee->base_location_id !== null) {
-            return $this->resolveInternalUnitId((int) $employee->base_location_id);
-        }
-
-        return null;
-    }
-
-    private function resolveInternalUnitId(int $unitId): ?int
-    {
-        if ($unitId <= 0) {
-            return null;
-        }
-
-        $query = Location::query()
-            ->whereKey($unitId);
-
-        if (Schema::hasColumn('locations', 'fortia_location_id')) {
-            $query->orWhere('fortia_location_id', $unitId);
-        }
-
-        if (Schema::hasColumn('locations', 'code')) {
-            $query->orWhere('code', (string) $unitId);
-        }
-
-        $resolvedUnitId = $query->value('id');
-        if (! is_numeric($resolvedUnitId)) {
-            return null;
-        }
-
-        return (int) $resolvedUnitId;
-    }
-
-    private function mergeAuditPayload(array $validated, int $employeeId, ?int $clockId, ?int $unitId): array
-    {
         return array_merge($validated, [
             'employee_id' => $employeeId,
-            'clock_id' => $clockId,
-            'unit_id' => $unitId,
+            'clock_id' => $resolution->resolvedClockId(),
+            'unit_id' => $resolution->resolvedUnitId(),
+            'device_serial' => $validated['device_serial'] ?? $validated['serial_number'] ?? $resolution->deviceSerial,
+            'audit_metadata' => array_filter(
+                array_merge(
+                    $resolution->toAuditMetadata(),
+                    [
+                        'provided_unit_id' => $resolution->providedUnitId,
+                        'resolved_unit_id' => $resolution->resolvedUnitId(),
+                        'provided_clock_id' => $resolution->providedClockId,
+                        'resolved_clock_id' => $resolution->resolvedClockId(),
+                        'clock_location_id' => $resolution->clockLocationId(),
+                        'device_serial' => $validated['device_serial'] ?? $validated['serial_number'] ?? $resolution->deviceSerial,
+                        'clock_serial_number' => $clock?->serial_number,
+                    ]
+                ),
+                fn ($value) => $value !== null && $value !== ''
+            ),
         ]);
+    }
+
+    private function buildRejectedResponse(
+        int $employeeId,
+        string $fortiaEmployeeId,
+        string $vendorTemplateId,
+        ClockUnitResolution $resolution,
+        string $message,
+        int $status,
+    ): JsonResponse {
+        return response()->json([
+            'success' => false,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => $fortiaEmployeeId,
+            'clock_id' => $resolution->resolvedClockId(),
+            'unit_id' => $resolution->resolvedUnitId(),
+            'vendor_template_id' => $vendorTemplateId,
+            'action' => 'REJECTED',
+            'message' => $message,
+        ], $status);
+    }
+
+    private function buildClockUnitMismatchMessage(Clock $clock, ClockUnitResolution $resolution): string
+    {
+        $location = $clock->relationLoaded('location') ? $clock->location : $clock->location()->first();
+        $serial = trim((string) ($resolution->deviceSerial ?? $clock->serial_number ?? ''));
+        $serialLabel = $serial !== '' ? $serial : (string) $clock->id;
+
+        return sprintf(
+            'El reloj con serie %s pertenece a location_id=%s / fortia_location_id=%s / code=%s, pero la solicitud envió unit_id=%s y se resolvió como location_id=%s.',
+            $serialLabel,
+            $clock->location_id !== null ? (string) $clock->location_id : 'null',
+            $location?->fortia_location_id !== null ? (string) $location->fortia_location_id : 'null',
+            $location?->code !== null ? (string) $location->code : 'null',
+            $resolution->providedUnitId !== null ? (string) $resolution->providedUnitId : 'null',
+            $resolution->resolvedUnitId() !== null ? (string) $resolution->resolvedUnitId() : 'null',
+        );
+    }
+
+    private function logResolutionFailure(
+        string $event,
+        EnrolmentCompleteRequest $request,
+        ClockUnitResolution $resolution,
+        Employee $employee,
+        string $reason,
+    ): void {
+        $clock = $resolution->clock;
+        $clockLocation = $clock?->relationLoaded('location') ? $clock->location : $clock?->location()->first();
+
+        Log::warning($event, [
+            'endpoint' => $request->path(),
+            'request_id' => $this->resolveRequestId($request),
+            'employee_id' => (int) $employee->getKey(),
+            'fortia_employee_id' => $employee->fortia_employee_id !== null ? (string) $employee->fortia_employee_id : null,
+            'clock_id' => $resolution->resolvedClockId(),
+            'provided_clock_id' => $resolution->providedClockId,
+            'device_serial' => $resolution->deviceSerial,
+            'clock_serial_number' => $clock?->serial_number,
+            'clock_location_id' => $resolution->clockLocationId(),
+            'provided_unit_id' => $resolution->providedUnitId,
+            'resolved_unit_id' => $resolution->resolvedUnitId(),
+            'location_fortia_id' => $clockLocation?->fortia_location_id,
+            'location_code' => $clockLocation?->code,
+            'unit_resolution_source' => $resolution->unitResolutionSource,
+            'clock_resolution_source' => $resolution->clockResolutionSource,
+            'reason' => $reason,
+        ]);
+    }
+
+    private function resolveRequestId(EnrolmentCompleteRequest $request): ?string
+    {
+        foreach (['X-Request-Id', 'X-Correlation-Id'] as $header) {
+            $value = trim((string) $request->headers->get($header, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     private function resolveTemplateVendor(string $enrolmentType): string
