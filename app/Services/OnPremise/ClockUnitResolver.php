@@ -18,20 +18,6 @@ class ClockUnitResolver
         $deviceSerial = $this->normalizeString($validated['device_serial'] ?? $validated['serial_number'] ?? null);
 
         $unitResolution = $this->resolveLocationFromProvidedUnit($providedUnitId);
-        if ($unitResolution['failure_code'] !== null) {
-            return new ClockUnitResolution(
-                clock: null,
-                resolvedLocation: null,
-                providedClockId: $providedClockId,
-                providedUnitId: $providedUnitId,
-                deviceSerial: $deviceSerial,
-                clockResolutionSource: null,
-                unitResolutionSource: null,
-                failureCode: $unitResolution['failure_code'],
-                failureMessage: $unitResolution['failure_message'],
-                unitCandidates: $unitResolution['unit_candidates'],
-            );
-        }
 
         $clockFromId = $providedClockId !== null ? $this->findClockById($providedClockId) : null;
         $clockBySerial = $deviceSerial !== null ? $this->resolveClockFromDeviceSerial($deviceSerial) : null;
@@ -113,6 +99,34 @@ class ClockUnitResolver
 
         $resolvedLocation = $unitResolution['location'];
         $unitResolutionSource = $unitResolution['source'];
+
+        if ($unitResolution['failure_code'] !== null) {
+            if (
+                $unitResolution['failure_code'] === 'unit_resolution_ambiguous'
+                && $clock !== null
+                && $clock->location_id !== null
+                && $providedUnitId !== null
+                && (int) $clock->location_id === $providedUnitId
+            ) {
+                $resolvedLocation = $this->findLocationById((int) $clock->location_id);
+                $unitResolutionSource = $resolvedLocation !== null
+                    ? 'clock.location_id'
+                    : 'clock.location_id_compat';
+            } else {
+                return new ClockUnitResolution(
+                    clock: $clock,
+                    resolvedLocation: null,
+                    providedClockId: $providedClockId,
+                    providedUnitId: $providedUnitId,
+                    deviceSerial: $deviceSerial,
+                    clockResolutionSource: $clockResolutionSource,
+                    unitResolutionSource: $unitResolution['source'],
+                    failureCode: $unitResolution['failure_code'],
+                    failureMessage: $unitResolution['failure_message'],
+                    unitCandidates: $unitResolution['unit_candidates'],
+                );
+            }
+        }
 
         if ($providedUnitId !== null && $resolvedLocation === null) {
             if ($clock && $clock->location_id !== null && (int) $clock->location_id === $providedUnitId) {

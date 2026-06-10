@@ -451,6 +451,40 @@ class EnrolmentCompleteTest extends TestCase
             ->assertJsonPath('unit_id', $locationId);
     }
 
+    public function test_complete_accepts_device_serial_with_internal_unit_id_even_when_fortia_match_is_ambiguous(): void
+    {
+        $locationId = $this->createLocation([
+            'fortia_location_id' => 100006,
+            'code' => '100006',
+            'name' => 'Hotel Bali Hai',
+        ]);
+        $clockId = $this->createClock($locationId, [
+            'serial_number' => '100006',
+            'clock_name' => 'Clock Hotel Bali Hai',
+        ]);
+        $this->createLocation([
+            'fortia_location_id' => $locationId,
+            'code' => '253',
+            'name' => 'Location Fortia Ambigua',
+        ]);
+        $employeeId = $this->createEmployee(['fortia_employee_id' => 12022]);
+
+        $response = $this->postJson(self::URI, [
+            'employee_id' => $employeeId,
+            'device_serial' => '100006',
+            'unit_id' => $locationId,
+            'enrolment_type' => 'FINGERPRINT',
+            'template_vendor_id' => 'TPL-INTERNAL-UNIT-SERIAL',
+            'template_b64' => base64_encode('template-100006'),
+            'template_format' => 'DPFP.Template.Bytes',
+            'performed_at' => '2026-06-10T10:00:00Z',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('clock_id', $clockId)
+            ->assertJsonPath('unit_id', $locationId);
+    }
+
     public function test_complete_accepts_device_serial_without_unit_id(): void
     {
         $locationId = $this->createLocation([
