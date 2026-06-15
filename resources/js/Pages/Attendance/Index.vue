@@ -186,7 +186,7 @@ const columnStorageKey = computed(() => `attendance-central.columns.${currentVie
 const visibleColumnKeys = ref([]);
 const showColumnsPanel = ref(false);
 
-const sanitizeColumnKeys = (keys = []) => {
+const sanitizeColumnKeys = (keys = [], enforceDefaults = true) => {
     const allowed = new Map(availableColumns.value.map((column) => [column.key, column]));
     const ordered = [];
 
@@ -196,7 +196,22 @@ const sanitizeColumnKeys = (keys = []) => {
         }
     }
 
-    return ordered.filter((key) => allowed.has(key));
+    const sanitized = ordered.filter((key) => allowed.has(key));
+    const nonLockedVisible = sanitized.filter((key) => !allowed.get(key)?.locked);
+
+    if (!enforceDefaults || nonLockedVisible.length > 0) {
+        return sanitized;
+    }
+
+    const fallback = [];
+
+    for (const column of availableColumns.value) {
+        if (defaultColumns.value.includes(column.key) || column.locked) {
+            fallback.push(column.key);
+        }
+    }
+
+    return fallback.filter((key) => allowed.has(key));
 };
 
 const syncVisibleColumns = () => {
@@ -245,7 +260,21 @@ const toggleColumn = (key) => {
     }
 
     if (visibleColumnKeys.value.includes(key)) {
-        visibleColumnKeys.value = visibleColumnKeys.value.filter((value) => value !== key);
+        const nextKeys = sanitizeColumnKeys(
+            visibleColumnKeys.value.filter((value) => value !== key),
+            false,
+        );
+        const stillVisible = nextKeys.filter((value) => {
+            const candidate = availableColumns.value.find((item) => item.key === value);
+
+            return candidate && !candidate.locked;
+        });
+
+        if (stillVisible.length === 0) {
+            return;
+        }
+
+        visibleColumnKeys.value = nextKeys;
         return;
     }
 
