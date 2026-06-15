@@ -62,7 +62,7 @@ class AttendanceCentralModuleTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_index_filters_records_by_date_range(): void
+    public function test_index_defaults_to_grouped_view_by_employee_and_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
 
@@ -105,17 +105,71 @@ class AttendanceCentralModuleTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Attendance/Index')
+            ->where('viewMode', 'grouped')
             ->where('initialRecords.meta.total', 1)
-            ->where('initialRecords.data.0.log_id', 1001)
+            ->where('initialRecords.data.0.employee_id', $employeeId)
+            ->where('initialRecords.data.0.local_date', '2026-02-10')
+            ->where('initialRecords.data.0.total_checks', 1)
         );
     }
 
-    public function test_index_displays_local_time_from_utc_using_location_timezone(): void
+    public function test_grouped_view_calculates_first_and_last_check_correctly(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
 
         DB::table('attendance_logs')->insert([
-            'log_id' => 2401,
+            [
+                'log_id' => 2401,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 14:30:20',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2402,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 23:15:40',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+        ]));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.data.0.total_checks', 2)
+            ->where('initialRecords.data.0.first_check_display', '2026-04-26 14:30:20')
+            ->where('initialRecords.data.0.last_check_display', '2026-04-26 23:15:40')
+            ->where('initialRecords.data.0.entry_count', 1)
+            ->where('initialRecords.data.0.exit_count', 1)
+        );
+    }
+
+    public function test_raw_view_displays_local_time_from_utc_using_location_timezone(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2403,
             'company_id' => 1,
             'employee_id' => $employeeId,
             'fortia_employee_id' => 88001,
@@ -135,24 +189,131 @@ class AttendanceCentralModuleTest extends TestCase
         $response = $this->get(route('admin.asistencias.index', [
             'from' => '2026-04-26',
             'to' => '2026-04-26',
+            'view_mode' => 'raw',
         ]));
 
         $response->assertOk();
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Attendance/Index')
-            ->where('initialRecords.data.0.log_id', 2401)
+            ->where('viewMode', 'raw')
+            ->where('initialRecords.data.0.log_id', 2403)
             ->where('initialRecords.data.0.log_date_display', '2026-04-26 16:30:20')
             ->where('initialRecords.data.0.log_date_timezone', 'America/Mexico_City')
             ->where('initialRecords.data.0.log_date_utc_display', '2026-04-26 22:30:20')
         );
     }
 
-    public function test_export_includes_local_timezone_and_utc_columns(): void
+    public function test_grouped_detail_returns_all_employee_checks_for_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
 
         DB::table('attendance_logs')->insert([
-            'log_id' => 2402,
+            [
+                'log_id' => 2510,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 14:30:20',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'adjustment_reason' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2511,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 20:45:20',
+                'log_type' => 2,
+                'source' => 'manual',
+                'attendance_status' => 'corregida',
+                'adjustment_reason' => 'Salida registrada manualmente',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(route('admin.asistencias.grouped-detail', [
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+            'employee_id' => $employeeId,
+            'local_date' => '2026-04-26',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.summary.total_checks', 2)
+            ->assertJsonPath('data.records.0.log_id', 2510)
+            ->assertJsonPath('data.records.1.log_id', 2511);
+    }
+
+    public function test_grouped_export_respects_visible_columns(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2601,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 14:30:20',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2602,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 22:30:20',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export', [
+            'format' => 'csv',
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+            'view_mode' => 'grouped',
+            'columns' => ['empleado', 'fecha_local', 'primera_checada', 'ultima_checada', 'total_checadas'],
+        ]));
+
+        $response->assertOk();
+
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString('Empleado,"Hora local / Fecha local","Primera checada"', $content);
+        $this->assertStringContainsString('"Total checadas"', $content);
+        $this->assertStringContainsString('"Empleado Demo",2026-04-26,"2026-04-26 14:30:20","2026-04-26 22:30:20",2', $content);
+        $this->assertStringNotContainsString('Acciones', $content);
+        $this->assertStringNotContainsString('Fuente', $content);
+    }
+
+    public function test_raw_export_includes_local_timezone_and_utc_columns(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2404,
             'company_id' => 1,
             'employee_id' => $employeeId,
             'fortia_employee_id' => 88001,
@@ -173,15 +334,16 @@ class AttendanceCentralModuleTest extends TestCase
             'format' => 'csv',
             'from' => '2026-04-26',
             'to' => '2026-04-26',
+            'view_mode' => 'raw',
+            'columns' => ['hora_local', 'fecha_utc', 'empleado', 'unidad', 'reloj', 'tipo', 'fuente', 'status', 'observaciones'],
         ]));
 
         $response->assertOk();
 
         $content = $response->streamedContent();
 
-        $this->assertStringContainsString('FechaHoraLocal,Timezone,FechaHoraUTC,Empleado,CodigoEmpleado,Unidad,Reloj,Tipo,Fuente,Estatus,Motivo,LogId,RegistroId', $content);
-        $this->assertStringContainsString('"2026-04-26 16:30:20",America/Mexico_City,"2026-04-26 22:30:20"', $content);
-        $this->assertStringContainsString('"Empleado Demo",88001,Matriz,"Clock Main",IN,API,Valida,,2402', $content);
+        $this->assertStringContainsString('"Hora local","Fecha UTC",Empleado,Unidad,Reloj,Tipo,Fuente,Status,Observaciones', $content);
+        $this->assertStringContainsString('"2026-04-26 16:30:20","2026-04-26 22:30:20","Empleado Demo",Matriz,"Clock Main",IN,API,Valida,', $content);
     }
 
     public function test_manual_adjustment_creates_audit_record(): void
@@ -256,6 +418,7 @@ class AttendanceCentralModuleTest extends TestCase
     {
         $locationId = DB::table('locations')->insertGetId([
             'name' => 'Matriz',
+            'code' => 'MAT',
             'timezone' => 'America/Mexico_City',
             'created_at' => now(),
             'updated_at' => now(),
@@ -263,6 +426,7 @@ class AttendanceCentralModuleTest extends TestCase
 
         $clockId = DB::table('clocks')->insertGetId([
             'clock_name' => 'Clock Main',
+            'serial_number' => 'CLK-001',
             'location_id' => $locationId,
             'created_at' => now(),
             'updated_at' => now(),
@@ -313,14 +477,20 @@ class AttendanceCentralModuleTest extends TestCase
             Schema::create('locations', function (Blueprint $table): void {
                 $table->id();
                 $table->string('name');
+                $table->string('code')->nullable();
                 $table->string('timezone', 64)->nullable();
                 $table->timestamps();
             });
             $this->createdLocationsTable = true;
         }
+        if (! Schema::hasColumn('locations', 'code')) {
+            Schema::table('locations', function (Blueprint $table): void {
+                $table->string('code')->nullable()->after('name');
+            });
+        }
         if (! Schema::hasColumn('locations', 'timezone')) {
             Schema::table('locations', function (Blueprint $table): void {
-                $table->string('timezone', 64)->nullable()->after('name');
+                $table->string('timezone', 64)->nullable()->after('code');
             });
         }
 
@@ -328,10 +498,16 @@ class AttendanceCentralModuleTest extends TestCase
             Schema::create('clocks', function (Blueprint $table): void {
                 $table->id();
                 $table->string('clock_name');
+                $table->string('serial_number')->nullable();
                 $table->unsignedBigInteger('location_id')->nullable();
                 $table->timestamps();
             });
             $this->createdClocksTable = true;
+        }
+        if (! Schema::hasColumn('clocks', 'serial_number')) {
+            Schema::table('clocks', function (Blueprint $table): void {
+                $table->string('serial_number')->nullable()->after('clock_name');
+            });
         }
 
         if (! Schema::hasTable('attendance_logs')) {

@@ -25,6 +25,9 @@ class AttendanceFilterRequest extends FormRequest
             'source' => ['nullable', Rule::in(config('attendance.sources', ['sync', 'manual', 'import', 'api']))],
             'status' => ['nullable', Rule::in(config('attendance.statuses', ['valida', 'anulada', 'corregida']))],
             'per_page' => ['nullable', 'integer', 'between:10,200'],
+            'view_mode' => ['nullable', Rule::in(['grouped', 'raw'])],
+            'columns' => ['nullable', 'array'],
+            'columns.*' => ['string', 'max:80'],
             'format' => ['nullable', Rule::in(['csv', 'excel'])],
         ];
     }

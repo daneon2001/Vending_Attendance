@@ -174,11 +174,68 @@ const defaultSummary = {
     recent_activity: [],
     enrollment: {
         employees_active: 0,
+        with_fingerprint: 0,
+        with_face: 0,
+        with_both_biometrics: 0,
         without_fingerprint: 0,
         without_face: 0,
         without_any_biometric: 0,
         with_any_biometric: 0,
+        coverage_percent: 0,
         coverage_percentage: 0,
+    },
+    executive_summary: {
+        attendance: {
+            active_employees: 0,
+            attended: 0,
+            pending: 0,
+            coverage_percent: 0,
+            entries: 0,
+            exits: 0,
+            last_attendance_at: null,
+        },
+        enrolment: {
+            active_employees: 0,
+            with_any_biometric: 0,
+            with_fingerprint: 0,
+            with_face: 0,
+            with_both_biometrics: 0,
+            without_fingerprint: 0,
+            without_face: 0,
+            without_any_biometric: 0,
+            coverage_percent: 0,
+        },
+        clocks: {
+            total: 0,
+            online: 0,
+            offline: 0,
+            stale: 0,
+            operational_status: 'nodata',
+            is_business_hours: true,
+            operational_note: 'Sin datos operativos para el periodo.',
+        },
+        compact_charts: {
+            attendance_donut: {
+                attended: 0,
+                pending: 0,
+                coverage_percent: 0,
+            },
+            enrolment_bar: {
+                with_any_biometric: 0,
+                without_any_biometric: 0,
+                with_fingerprint: 0,
+                with_face: 0,
+                coverage_percent: 0,
+            },
+            hourly_activity: [],
+            clocks_status: {
+                online: 0,
+                offline: 0,
+                stale: 0,
+                total: 0,
+            },
+        },
+        alerts: [],
     },
     kpis: {
         checkins_total: 0,
@@ -280,6 +337,26 @@ const mergeSummaryPayload = (current, incoming) => {
     return {
         ...base,
         ...incoming,
+        executive_summary: {
+            ...(base.executive_summary ?? {}),
+            ...(incoming?.executive_summary ?? {}),
+            attendance: {
+                ...(base.executive_summary?.attendance ?? {}),
+                ...(incoming?.executive_summary?.attendance ?? {}),
+            },
+            enrolment: {
+                ...(base.executive_summary?.enrolment ?? {}),
+                ...(incoming?.executive_summary?.enrolment ?? {}),
+            },
+            clocks: {
+                ...(base.executive_summary?.clocks ?? {}),
+                ...(incoming?.executive_summary?.clocks ?? {}),
+            },
+            compact_charts: {
+                ...(base.executive_summary?.compact_charts ?? {}),
+                ...(incoming?.executive_summary?.compact_charts ?? {}),
+            },
+        },
         charts: {
             ...(base.charts ?? {}),
             ...(incoming?.charts ?? {}),
@@ -304,6 +381,12 @@ const locationsRanking = computed(() => summaryData.value.locations ?? []);
 const locationsMeta = computed(() => summaryData.value.locations_meta ?? defaultSummary.locations_meta);
 const recentActivity = computed(() => summaryData.value.recent_activity ?? []);
 const enrollmentBlock = computed(() => summaryData.value.enrollment ?? defaultSummary.enrollment);
+const executiveSummary = computed(() => summaryData.value.executive_summary ?? defaultSummary.executive_summary);
+const executiveAttendance = computed(() => executiveSummary.value.attendance ?? defaultSummary.executive_summary.attendance);
+const executiveEnrolment = computed(() => executiveSummary.value.enrolment ?? defaultSummary.executive_summary.enrolment);
+const executiveClocks = computed(() => executiveSummary.value.clocks ?? defaultSummary.executive_summary.clocks);
+const executiveCompactCharts = computed(() => executiveSummary.value.compact_charts ?? defaultSummary.executive_summary.compact_charts);
+const executiveAlerts = computed(() => executiveSummary.value.alerts ?? []);
 const activeTabDefinition = computed(() => (
     dashboardTabDefinitions.find((tab) => tab.key === activeTab.value)
     ?? dashboardTabDefinitions[0]
@@ -922,22 +1005,198 @@ const heroIndicators = computed(() => [
     {
         id: 'coverage',
         label: 'Cobertura asistencia',
-        value: formatPercent(summaryBlock.value.attendance_coverage ?? 0),
-        hint: `${formatNumber(summaryBlock.value.attendance_registered ?? 0)} de ${formatNumber(summaryBlock.value.employees_active ?? 0)} empleados`,
+        value: formatPercent(executiveAttendance.value.coverage_percent ?? 0),
+        hint: `${formatNumber(executiveAttendance.value.attended ?? 0)} de ${formatNumber(executiveAttendance.value.active_employees ?? 0)} empleados`,
+    },
+    {
+        id: 'biometric-coverage',
+        label: 'Cobertura biometrica',
+        value: formatPercent(executiveEnrolment.value.coverage_percent ?? 0),
+        hint: `${formatNumber(executiveEnrolment.value.with_any_biometric ?? 0)} con al menos una biometria`,
     },
     {
         id: 'clocks-online',
-        label: 'Relojes en linea',
-        value: `${formatNumber(clockBlock.value.online ?? 0)} / ${formatNumber(clockBlock.value.total ?? 0)}`,
-        hint: `${formatNumber(clockBlock.value.offline ?? 0)} sin conexion`,
+        label: 'Relojes reportando',
+        value: `${formatNumber(executiveClocks.value.online ?? 0)} / ${formatNumber(executiveClocks.value.total ?? 0)}`,
+        hint: executiveClocks.value.is_business_hours
+            ? `${formatNumber(executiveClocks.value.offline ?? 0)} sin conexion`
+            : 'Fuera de horario operativo',
     },
     {
-        id: 'alerts-active',
-        label: 'Alertas activas',
-        value: formatNumber(alertsList.value.length),
-        hint: `${formatNumber(alertsList.value.filter((item) => item.level === 'critical').length)} criticas`,
+        id: 'last-attendance',
+        label: 'Ultima checada',
+        value: formatRelative(executiveAttendance.value.last_attendance_at),
+        hint: formatDateTime(executiveAttendance.value.last_attendance_at),
     },
 ]);
+
+const executiveAttendanceText = computed(() => {
+    const attended = formatNumber(executiveAttendance.value.attended ?? 0);
+    const active = formatNumber(executiveAttendance.value.active_employees ?? 0);
+    const pending = formatNumber(executiveAttendance.value.pending ?? 0);
+
+    return `Asistieron ${attended} de ${active} empleados activos. Faltan ${pending} por registrar asistencia.`;
+});
+
+const executiveActivityText = computed(() => {
+    const entries = formatNumber(executiveAttendance.value.entries ?? 0);
+    const exits = formatNumber(executiveAttendance.value.exits ?? 0);
+
+    return `Se registraron ${entries} entradas y ${exits} salidas en el periodo.`;
+});
+
+const executiveEnrolmentText = computed(() => {
+    const coverage = formatPercent(executiveEnrolment.value.coverage_percent ?? 0);
+    const withAny = formatNumber(executiveEnrolment.value.with_any_biometric ?? 0);
+    const active = formatNumber(executiveEnrolment.value.active_employees ?? 0);
+
+    return `${coverage} del personal activo cuenta con al menos una biometria. ${withAny} de ${active} empleados estan cubiertos.`;
+});
+
+const executiveClocksText = computed(() => {
+    const online = formatNumber(executiveClocks.value.online ?? 0);
+    const total = formatNumber(executiveClocks.value.total ?? 0);
+
+    return `${online} de ${total} relojes reportan correctamente.`;
+});
+
+const executiveEnrolmentRows = computed(() => [
+    {
+        id: 'with-fingerprint',
+        label: 'Con huella',
+        value: formatNumber(executiveEnrolment.value.with_fingerprint ?? 0),
+        tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    },
+    {
+        id: 'with-face',
+        label: 'Con Face ID',
+        value: formatNumber(executiveEnrolment.value.with_face ?? 0),
+        tone: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
+    },
+    {
+        id: 'without-face',
+        label: 'Sin Face ID',
+        value: formatNumber(executiveEnrolment.value.without_face ?? 0),
+        tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+    },
+    {
+        id: 'without-any',
+        label: 'Sin biometria',
+        value: formatNumber(executiveEnrolment.value.without_any_biometric ?? 0),
+        tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+    },
+]);
+
+const executiveClockRows = computed(() => [
+    {
+        id: 'online',
+        label: 'En linea',
+        value: formatNumber(executiveClocks.value.online ?? 0),
+        tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    },
+    {
+        id: 'offline',
+        label: 'Sin conexion',
+        value: formatNumber(executiveClocks.value.offline ?? 0),
+        tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+    },
+    {
+        id: 'stale',
+        label: 'Sin actividad',
+        value: formatNumber(executiveClocks.value.stale ?? 0),
+        tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+    },
+]);
+
+const executiveAlertClasses = (severity) => {
+    switch (severity) {
+        case 'critical':
+            return 'border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40';
+        case 'warning':
+            return 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40';
+        case 'info':
+            return 'border-sky-200 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40';
+        default:
+            return 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/70';
+    }
+};
+
+const executiveAlertBadgeClasses = (severity) => {
+    switch (severity) {
+        case 'critical':
+            return 'bg-rose-600 text-white';
+        case 'warning':
+            return 'bg-amber-500 text-white';
+        case 'info':
+            return 'bg-sky-600 text-white';
+        default:
+            return 'bg-slate-500 text-white';
+    }
+};
+
+const hourlyMiniData = computed(() => ({
+    labels: (executiveCompactCharts.value.hourly_activity ?? []).map((item) => item.hour),
+    datasets: [
+        {
+            label: 'Actividad',
+            data: (executiveCompactCharts.value.hourly_activity ?? []).map((item) => item.total ?? 0),
+            backgroundColor: '#2563eb',
+            borderRadius: 6,
+            borderSkipped: false,
+            maxBarThickness: 10,
+        },
+    ],
+}));
+
+const hourlyMiniHasData = computed(() => hasChartData(hourlyMiniData.value));
+
+const hourlyMiniOptions = {
+    plugins: {
+        legend: { display: false },
+    },
+    scales: {
+        x: {
+            ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+            },
+            grid: { display: false },
+        },
+        y: {
+            beginAtZero: true,
+            ticks: {
+                precision: 0,
+                maxTicksLimit: 4,
+            },
+        },
+    },
+};
+
+const attendanceCoverageWidth = computed(() => `${Math.min(executiveAttendance.value.coverage_percent ?? 0, 100)}%`);
+const enrollmentCoverageWidth = computed(() => `${Math.min(executiveEnrolment.value.coverage_percent ?? 0, 100)}%`);
+const clocksOnlineWidth = computed(() => {
+    const total = Number(executiveClocks.value.total ?? 0);
+    const online = Number(executiveClocks.value.online ?? 0);
+
+    if (total <= 0) {
+        return '0%';
+    }
+
+    return `${Math.min((online / total) * 100, 100)}%`;
+});
+
+const executiveBusinessHoursLabel = computed(() => (
+    executiveClocks.value.is_business_hours
+        ? 'Horario operativo'
+        : 'Fuera de horario operativo'
+));
+
+const executiveBusinessHoursTone = computed(() => (
+    executiveClocks.value.is_business_hours
+        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+        : 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300'
+));
 
 const attendanceDonutData = computed(() => ({
     labels: ['Asistieron', 'Pendientes'],
@@ -1338,66 +1597,71 @@ onBeforeUnmount(() => {
                 <div class="card h-40 animate-pulse bg-slate-100/80" />
             </div>
 
-            <article v-if="activeTab === 'resumen' && !showActiveTabSkeleton" class="card overflow-hidden border px-5 py-5 sm:px-6" :class="executiveHeroClasses.panel">
-                <div class="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+            <article v-if="activeTab === 'resumen' && !showActiveTabSkeleton" class="card overflow-hidden border px-4 py-4 sm:px-5" :class="executiveHeroClasses.panel">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em]" :class="executiveHeroClasses.badge">
+                            <span class="h-2 w-2 rounded-full bg-white/90" />
+                            {{ executiveStatus.title }}
+                        </span>
+                        <span class="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" :class="executiveBusinessHoursTone">
+                            {{ executiveBusinessHoursLabel }}
+                        </span>
+                    </div>
+                    <span class="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                        Ultima actualizacion {{ formatRelative(summaryBlock.last_updated_at) }}
+                    </span>
+                </div>
+
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                     <div>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]" :class="executiveHeroClasses.badge">
-                                <span class="h-2.5 w-2.5 rounded-full bg-white/90" />
-                                {{ executiveStatus.title }}
-                            </span>
-                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-muted">
-                                Ultima actualizacion {{ formatRelative(summaryBlock.last_updated_at) }}
-                            </span>
-                        </div>
-                        <p class="mt-2 text-xs text-muted">
+                        <p class="text-xs text-muted">
                             {{ dashboardTimezoneNote }}
                         </p>
-
-                        <h2 class="mt-4 text-3xl font-semibold text-app sm:text-4xl">
-                            Estado general del dia
+                        <h2 class="mt-2 text-2xl font-semibold text-app sm:text-3xl">
+                            Vista rapida ejecutiva
                         </h2>
-                        <p class="mt-3 max-w-3xl text-base leading-7 text-slate-600">
+                        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                             {{ executiveStatus.message }}
                         </p>
 
-                        <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <article
                                 v-for="indicator in heroIndicators"
                                 :key="indicator.id"
-                                class="card-subtle bg-white/80 px-4 py-4 shadow-sm backdrop-blur"
+                                class="card-subtle bg-white/80 px-3 py-3 shadow-sm backdrop-blur"
                             >
-                                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-soft">
                                     {{ indicator.label }}
                                 </p>
-                                <p class="mt-3 text-3xl font-semibold text-app">
+                                <p class="mt-2 text-2xl font-semibold text-app">
                                     {{ indicator.value }}
                                 </p>
-                                <p class="mt-2 text-sm text-muted">
+                                <p class="mt-1 text-xs text-muted">
                                     {{ indicator.hint }}
                                 </p>
                             </article>
                         </div>
                     </div>
 
-                    <div class="card bg-white/80 p-5 backdrop-blur">
+                    <div class="card bg-white/80 p-4 backdrop-blur">
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                     Lectura ejecutiva
                                 </p>
-                                <h3 class="mt-1 text-xl font-semibold text-app">
-                                    Lo que importa ahora
+                                <h3 class="mt-1 text-lg font-semibold text-app">
+                                    Lo importante ahora
                                 </h3>
                             </div>
-                            <span class="h-3.5 w-3.5 rounded-full" :class="executiveHeroClasses.dot" />
+                            <span class="h-3 w-3 rounded-full" :class="executiveHeroClasses.dot" />
                         </div>
 
-                        <ul class="mt-5 space-y-3 text-sm text-slate-600">
+                        <ul class="mt-4 grid gap-2">
                             <li
                                 v-for="(bullet, index) in executiveStatus.bullets"
                                 :key="`${index}-${bullet}`"
-                                class="card-subtle flex gap-3 px-3 py-3"
+                                class="card-subtle flex gap-3 px-3 py-3 text-sm text-slate-600 dark:text-slate-300"
                             >
                                 <span class="mt-1 h-2 w-2 rounded-full bg-slate-400" />
                                 <span>{{ bullet }}</span>
@@ -1407,21 +1671,154 @@ onBeforeUnmount(() => {
                 </div>
             </article>
 
-            <div v-if="activeTab === 'resumen' && !showActiveTabSkeleton" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-                <article
-                    v-for="item in summaryCards"
-                    :key="item.id"
-                    class="card bg-gradient-to-br px-4 py-4"
-                    :class="item.tone"
+            <div
+                v-if="activeTab === 'resumen' && !showActiveTabSkeleton"
+                class="grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch"
+            >
+                <ChartCard
+                    title="Asistencia actual"
+                    description="Asistieron, pendientes y cobertura"
+                    type="doughnut"
+                    :options="attendanceChartOptions"
+                    :dataset="attendanceDonutData"
+                    :has-data="attendanceHasData"
+                    :chart-key="chartVersion"
+                    height-class="h-40 sm:h-44"
+                    content-class="p-4"
+                    empty-text="Sin registros en el periodo"
                 >
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                        {{ item.title }}
+                    <template #footer>
+                        <div class="space-y-3">
+                            <div class="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                                <div
+                                    class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all"
+                                    :style="{ width: attendanceCoverageWidth }"
+                                />
+                            </div>
+                            <p class="text-sm text-muted">
+                                {{ executiveAttendanceText }}
+                            </p>
+                        </div>
+                    </template>
+                </ChartCard>
+
+                <ChartCard
+                    title="Actividad del dia"
+                    description="Entradas, salidas y pulso por hora"
+                    type="bar"
+                    :options="hourlyMiniOptions"
+                    :dataset="hourlyMiniData"
+                    :has-data="hourlyMiniHasData"
+                    :chart-key="chartVersion + 11"
+                    height-class="h-40 sm:h-44"
+                    content-class="p-4"
+                    empty-text="Sin actividad horaria en el periodo"
+                >
+                    <template #footer>
+                        <div class="space-y-2">
+                            <div class="grid gap-2 sm:grid-cols-2">
+                                <div class="card-subtle px-3 py-2 text-sm">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-soft">Entradas</p>
+                                    <p class="mt-1 text-lg font-semibold text-app">{{ formatNumber(executiveAttendance.entries ?? 0) }}</p>
+                                </div>
+                                <div class="card-subtle px-3 py-2 text-sm">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-soft">Salidas</p>
+                                    <p class="mt-1 text-lg font-semibold text-app">{{ formatNumber(executiveAttendance.exits ?? 0) }}</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-muted">
+                                {{ executiveActivityText }}
+                            </p>
+                        </div>
+                    </template>
+                </ChartCard>
+
+                <article class="card flex h-full flex-col px-4 py-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Enrolamiento biometrico
+                            </p>
+                            <h3 class="mt-1 text-lg font-semibold text-app">
+                                Cobertura actual
+                            </h3>
+                        </div>
+                        <span class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                            {{ formatPercent(executiveEnrolment.coverage_percent ?? 0) }}
+                        </span>
+                    </div>
+
+                    <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                            class="h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 transition-all"
+                            :style="{ width: enrollmentCoverageWidth }"
+                        />
+                    </div>
+
+                    <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                        <article
+                            v-for="row in executiveEnrolmentRows"
+                            :key="row.id"
+                            class="rounded-2xl px-3 py-3"
+                            :class="row.tone"
+                        >
+                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                {{ row.label }}
+                            </p>
+                            <p class="mt-1 text-xl font-semibold">
+                                {{ row.value }}
+                            </p>
+                        </article>
+                    </div>
+
+                    <p class="mt-4 text-sm text-muted">
+                        {{ executiveEnrolmentText }}
                     </p>
-                    <p class="mt-3 text-3xl font-semibold text-app">
-                        {{ item.value }}
+                </article>
+
+                <article class="card flex h-full flex-col px-4 py-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
+                                Relojes operativos
+                            </p>
+                            <h3 class="mt-1 text-lg font-semibold text-app">
+                                Conectividad general
+                            </h3>
+                        </div>
+                        <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="executiveBusinessHoursTone">
+                            {{ executiveBusinessHoursLabel }}
+                        </span>
+                    </div>
+
+                    <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                            class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all"
+                            :style="{ width: clocksOnlineWidth }"
+                        />
+                    </div>
+
+                    <div class="mt-4 grid gap-2 sm:grid-cols-3">
+                        <article
+                            v-for="row in executiveClockRows"
+                            :key="row.id"
+                            class="rounded-2xl px-3 py-3"
+                            :class="row.tone"
+                        >
+                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                {{ row.label }}
+                            </p>
+                            <p class="mt-1 text-xl font-semibold">
+                                {{ row.value }}
+                            </p>
+                        </article>
+                    </div>
+
+                    <p class="mt-4 text-sm text-muted">
+                        {{ executiveClocksText }}
                     </p>
-                    <p class="mt-2 text-sm text-muted">
-                        {{ item.hint }}
+                    <p class="mt-2 text-xs text-muted">
+                        {{ executiveClocks.operational_note }}
                     </p>
                 </article>
             </div>
@@ -1470,57 +1867,40 @@ onBeforeUnmount(() => {
 
             <div
                 v-if="activeTab === 'resumen' && !showActiveTabSkeleton"
-                class="grid gap-6 lg:grid-cols-2 xl:grid-cols-3 xl:items-start"
+                class="grid gap-3 xl:grid-cols-3"
             >
-                <ChartCard
-                    title="Asistencia del dia"
-                    description="Asistieron vs pendientes"
-                    type="doughnut"
-                    :options="attendanceChartOptions"
-                    :dataset="attendanceDonutData"
-                    :has-data="attendanceHasData"
-                    :chart-key="chartVersion"
-                    height-class="h-52 sm:h-56 lg:h-60"
-                    content-class="p-5"
-                    empty-text="Sin registros de asistencia para el periodo"
+                <article
+                    v-for="alert in executiveAlerts"
+                    :key="alert.id"
+                    class="card border px-4 py-4"
+                    :class="executiveAlertClasses(alert.severity)"
                 >
-                    <template #footer>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">Asistieron</p>
-                                <p class="mt-2 text-2xl font-semibold text-emerald-700">{{ formatNumber(summaryData.charts.attendance_donut.present) }}</p>
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-sm font-semibold text-app">
+                                    {{ alert.title }}
+                                </h3>
+                                <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" :class="executiveAlertBadgeClasses(alert.severity)">
+                                    {{ alert.severity }}
+                                </span>
                             </div>
-                            <div class="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-700">Pendientes</p>
-                                <p class="mt-2 text-2xl font-semibold text-amber-700">{{ formatNumber(summaryData.charts.attendance_donut.pending) }}</p>
-                            </div>
+                            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                                {{ alert.message }}
+                            </p>
                         </div>
-                    </template>
-                </ChartCard>
+                        <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                            {{ formatNumber(alert.count ?? 0) }}
+                        </span>
+                    </div>
+                    <p class="mt-3 text-xs font-medium text-muted">
+                        {{ alert.action }}
+                    </p>
+                </article>
 
-                <ChartCard
-                    title="Personas presentes"
-                    description="Colaboradores con al menos una checada"
-                    :dataset="peopleChartData"
-                    :has-data="presenceHasData"
-                    :chart-key="chartVersion + 3"
-                    height-class="h-52 sm:h-56 lg:h-60"
-                    content-class="p-5"
-                    empty-text="Sin personas registradas en el periodo"
-                />
-
-                <ChartCard
-                    title="Estado de empleados"
-                    description="Activos vs bajas"
-                    type="doughnut"
-                    :options="{ plugins: { legend: { position: 'bottom' } }, cutout: '68%' }"
-                    :dataset="employeeStatusData"
-                    :has-data="employeeStatusHasData"
-                    :chart-key="chartVersion + 4"
-                    height-class="h-52 sm:h-56 lg:h-60"
-                    content-class="p-5"
-                    empty-text="Sin empleados para el filtro actual"
-                />
+                <article v-if="!executiveAlerts.length" class="card-subtle px-4 py-4 text-sm text-muted xl:col-span-3">
+                    Sin alertas ejecutivas prioritarias para el periodo seleccionado.
+                </article>
             </div>
 
             <div

@@ -33,6 +33,7 @@ class DashboardSummaryService
     {
         $timezone = $this->operationsTimezone();
         $storageTimezone = $this->storageTimezone();
+        $isBusinessHours = $this->isBusinessHours($timezone);
         $activeTab = $this->normalizeTab(isset($filters['tab']) ? (string) $filters['tab'] : null);
         $range = (string) ($filters['range'] ?? 'today');
         $companyId = isset($filters['company_id']) && $filters['company_id'] !== '' ? (int) $filters['company_id'] : null;
@@ -109,7 +110,8 @@ class DashboardSummaryService
             $clocksOnline,
             $clocksOffline,
             $clocksWarning,
-            $heartbeatStale
+            $heartbeatStale,
+            $isBusinessHours
         );
         $lastReportingClock = $this->shouldIncludeLastReportingClock($activeTab)
             ? $this->resolveLastReportingClock(clone $clocksBase)
@@ -148,6 +150,7 @@ class DashboardSummaryService
                 locations: $locations,
                 enrollment: $enrollment ?? $this->emptyEnrollmentSummary(),
                 syncState: $syncState,
+                isBusinessHours: $isBusinessHours,
             )
             : collect();
 
@@ -158,6 +161,7 @@ class DashboardSummaryService
                 clocksOffline: $clocksOffline,
                 clocksNeverConnected: $clocksNeverConnected,
                 heartbeatStale: $heartbeatStale,
+                isBusinessHours: $isBusinessHours,
             )
             : collect();
 
@@ -177,6 +181,7 @@ class DashboardSummaryService
                 alerts: $alerts,
                 enrollment: $enrollment ?? $this->emptyEnrollmentSummary(),
                 timezone: $timezone,
+                isBusinessHours: $isBusinessHours,
             )
             : null;
 
@@ -192,7 +197,7 @@ class DashboardSummaryService
             ? $this->buildEmployeeStatusDataset($companyId, $employeeBaseLocationId)
             : null;
 
-        $hourlyActivity = $this->includesTab($activeTab, self::TAB_ACTIVITY)
+        $hourlyActivity = ($this->includesTab($activeTab, self::TAB_ACTIVITY) || $this->includesTab($activeTab, self::TAB_SUMMARY))
             ? $this->buildHourlyActivity(clone $attendanceBase, $entryTypes, $exitTypes, $timezone, $storageTimezone)
             : null;
 
@@ -229,11 +234,15 @@ class DashboardSummaryService
             'warning' => $clocksWarning,
             'heartbeat_recent' => $heartbeatRecent,
             'heartbeat_stale' => $heartbeatStale,
+            'stale' => $heartbeatStale,
             'never_connected' => $clocksNeverConnected,
             'last_reporting_clock' => $lastReportingClock,
             'status' => $clockStatus['status'],
             'status_label' => $clockStatus['label'],
             'status_reason' => $clockStatus['reason'],
+            'operational_status' => $clockStatus['status'],
+            'operational_note' => $clockStatus['reason'],
+            'is_business_hours' => $isBusinessHours,
             'online_threshold_minutes' => self::ONLINE_THRESHOLD_MINUTES,
         ];
 
@@ -277,6 +286,22 @@ class DashboardSummaryService
             'connectivity_alerts' => $connectivityAlerts->values()->all(),
             'kpis' => $kpis,
             'charts' => $charts,
+            'executive_summary' => $this->buildExecutiveSummary(
+                employeesActive: $employeesActive,
+                attendanceRegistered: $attendanceRegistered,
+                pendingAttendance: $pendingAttendance,
+                attendanceCoverage: $attendanceCoverage,
+                entriesTotal: $entriesTotal,
+                exitsTotal: $exitsTotal,
+                latestAttendanceAt: $latestAttendanceAt,
+                timezone: $timezone,
+                storageTimezone: $storageTimezone,
+                enrollment: $enrollment ?? $this->emptyEnrollmentSummary(),
+                clocks: $clocks,
+                hourlyActivity: $hourlyActivity ?? [],
+                alerts: $alerts,
+                isBusinessHours: $isBusinessHours,
+            ),
         ];
 
         if ($executiveStatus !== null) {
@@ -400,10 +425,14 @@ class DashboardSummaryService
     {
         return [
             'employees_active' => 0,
+            'with_fingerprint' => 0,
+            'with_face' => 0,
+            'with_both_biometrics' => 0,
             'without_fingerprint' => 0,
             'without_face' => 0,
             'without_any_biometric' => 0,
             'with_any_biometric' => 0,
+            'coverage_percent' => 0,
             'coverage_percentage' => 0,
         ];
     }
@@ -587,6 +616,9 @@ class DashboardSummaryService
     {
         $activeEmployees = $this->activeEmployeesQuery($companyId, $employeeBaseLocationId);
         $employeesActive = (clone $activeEmployees)->count();
+        $withFingerprint = (clone $activeEmployees)
+            ->where('has_fingerprint', true)
+            ->count();
         $withoutFingerprint = (clone $activeEmployees)
             ->where(function (Builder $query): void {
                 $query->whereNull('has_fingerprint')
@@ -595,12 +627,24 @@ class DashboardSummaryService
             ->count();
 
         $supportsFace = $this->employeesSupportFaceFields();
+        $withFace = $supportsFace
+            ? (clone $activeEmployees)
+                ->where('has_face_enrollment', true)
+                ->count()
+            : 0;
         $withoutFace = $supportsFace
             ? (clone $activeEmployees)
                 ->where(function (Builder $query): void {
                     $query->whereNull('has_face_enrollment')
                         ->orWhere('has_face_enrollment', false);
                 })
+                ->count()
+            : 0;
+
+        $withBoth = $supportsFace
+            ? (clone $activeEmployees)
+                ->where('has_fingerprint', true)
+                ->where('has_face_enrollment', true)
                 ->count()
             : 0;
 
@@ -622,10 +666,14 @@ class DashboardSummaryService
 
         return [
             'employees_active' => $employeesActive,
+            'with_fingerprint' => $withFingerprint,
+            'with_face' => $withFace,
+            'with_both_biometrics' => $withBoth,
             'without_fingerprint' => $withoutFingerprint,
             'without_face' => $withoutFace,
             'without_any_biometric' => $withoutAnyBiometric,
             'with_any_biometric' => $withAnyBiometric,
+            'coverage_percent' => $this->percentage($withAnyBiometric, $employeesActive),
             'coverage_percentage' => $this->percentage($withAnyBiometric, $employeesActive),
         ];
     }
@@ -800,13 +848,22 @@ class DashboardSummaryService
         int $clocksOnline,
         int $clocksOffline,
         int $clocksWarning,
-        int $heartbeatStale
+        int $heartbeatStale,
+        bool $isBusinessHours
     ): array {
         if ($clocksTotal === 0) {
             return [
                 'status' => 'nodata',
                 'label' => 'Sin datos',
                 'reason' => 'No hay relojes configurados.',
+            ];
+        }
+
+        if (! $isBusinessHours) {
+            return [
+                'status' => 'info',
+                'label' => 'Fuera de horario operativo',
+                'reason' => 'Fuera de horario operativo: conectividad informativa.',
             ];
         }
 
@@ -844,32 +901,46 @@ class DashboardSummaryService
         int $heartbeatStale,
         Collection $locations,
         array $enrollment,
-        ?array $syncState
+        ?array $syncState,
+        bool $isBusinessHours
     ): Collection {
         $alerts = collect();
 
-        if ($clocksTotal > 0 && $clocksOnline === 0) {
-            $alerts->push($this->makeAlert(
-                'critical',
-                'Sin heartbeat reciente',
-                'Ningun reloj biometrico ha reportado dentro de los ultimos '.self::ONLINE_THRESHOLD_MINUTES.' minutos.',
-                $clocksOffline
-            ));
-        } elseif ($clocksOffline > 0) {
-            $alerts->push($this->makeAlert(
-                'critical',
-                'Relojes sin conexion',
-                $clocksOffline.' reloj(es) no han reportado dentro del umbral operativo.',
-                $clocksOffline
-            ));
-        }
+        if ($isBusinessHours) {
+            if ($clocksTotal > 0 && $clocksOnline === 0) {
+                $alerts->push($this->makeAlert(
+                    'critical',
+                    'Sin heartbeat reciente',
+                    'Ningun reloj biometrico ha reportado dentro de los ultimos '.self::ONLINE_THRESHOLD_MINUTES.' minutos.',
+                    $clocksOffline,
+                    'Validar conectividad, energia y enlace del administrador on-premise.'
+                ));
+            } elseif ($clocksOffline > 0) {
+                $alerts->push($this->makeAlert(
+                    'critical',
+                    'Relojes sin conexion',
+                    $clocksOffline.' reloj(es) no han reportado dentro del umbral operativo.',
+                    $clocksOffline,
+                    'Revisar relojes, red local y heartbeat del sitio.'
+                ));
+            }
 
-        if ($heartbeatStale > 0 && $clocksOnline > 0) {
+            if ($heartbeatStale > 0 && $clocksOnline > 0) {
+                $alerts->push($this->makeAlert(
+                    'warning',
+                    'Heartbeat con rezago',
+                    $heartbeatStale.' reloj(es) tienen mas de '.self::ONLINE_THRESHOLD_MINUTES.' minutos sin actividad.',
+                    $heartbeatStale,
+                    'Verificar latencia o reinicio preventivo de los equipos con rezago.'
+                ));
+            }
+        } elseif ($clocksOffline > 0 || $heartbeatStale > 0) {
             $alerts->push($this->makeAlert(
-                'warning',
-                'Heartbeat con rezago',
-                $heartbeatStale.' reloj(es) tienen mas de '.self::ONLINE_THRESHOLD_MINUTES.' minutos sin actividad.',
-                $heartbeatStale
+                'info',
+                'Conectividad fuera de horario',
+                'Fuera de horario operativo: conectividad informativa.',
+                max($clocksOffline, $heartbeatStale),
+                'Monitorear nuevamente durante el siguiente horario operativo.'
             ));
         }
 
@@ -882,7 +953,8 @@ class DashboardSummaryService
                 'critical',
                 'Unidades sin asistencia',
                 $locationsWithoutAttendance->count().' unidad(es) activas no registran asistencias en el periodo.',
-                $locationsWithoutAttendance->count()
+                $locationsWithoutAttendance->count(),
+                'Confirmar asistencia, cobertura de checadas y disponibilidad de reloj por unidad.'
             ));
         }
 
@@ -891,7 +963,8 @@ class DashboardSummaryService
                 'warning',
                 'Relojes nunca conectados',
                 $clocksNeverConnected.' reloj(es) estan registrados pero nunca han reportado heartbeat.',
-                $clocksNeverConnected
+                $clocksNeverConnected,
+                'Validar instalacion o configuracion inicial del dispositivo.'
             ));
         }
 
@@ -900,7 +973,8 @@ class DashboardSummaryService
                 'warning',
                 'Empleados sin biometria',
                 $enrollment['without_any_biometric'].' empleado(s) activos no tienen huella ni Face ID.',
-                (int) $enrollment['without_any_biometric']
+                (int) $enrollment['without_any_biometric'],
+                'Priorizar jornadas de enrolamiento para personal sin ningun metodo.'
             ));
         }
 
@@ -909,7 +983,8 @@ class DashboardSummaryService
                 'warning',
                 'Cobertura baja de asistencia',
                 'La cobertura de asistencia esta en '.$attendanceCoverage.'% frente al personal activo.',
-                $pendingAttendance
+                $pendingAttendance,
+                'Revisar faltantes y validar incidencias operativas del periodo.'
             ));
         }
 
@@ -918,7 +993,8 @@ class DashboardSummaryService
                 'info',
                 'Sincronizacion antigua',
                 'La ultima sincronizacion exitosa de empleados fue hace mas de 3 horas.',
-                (int) $syncState['minutes_since_success']
+                (int) $syncState['minutes_since_success'],
+                'Confirmar la sincronizacion de catalogos y empleados.'
             ));
         }
 
@@ -948,32 +1024,46 @@ class DashboardSummaryService
         int $clocksOnline,
         int $clocksOffline,
         int $clocksNeverConnected,
-        int $heartbeatStale
+        int $heartbeatStale,
+        bool $isBusinessHours
     ): Collection {
         $alerts = collect();
 
-        if ($clocksTotal > 0 && $clocksOnline === 0) {
-            $alerts->push($this->makeAlert(
-                'critical',
-                'Sin heartbeat reciente',
-                'Ningun reloj biometrico ha reportado dentro de los ultimos '.self::ONLINE_THRESHOLD_MINUTES.' minutos.',
-                $clocksOffline
-            ));
-        } elseif ($clocksOffline > 0) {
-            $alerts->push($this->makeAlert(
-                'critical',
-                'Relojes sin conexion',
-                $clocksOffline.' reloj(es) no han reportado dentro del umbral operativo.',
-                $clocksOffline
-            ));
-        }
+        if ($isBusinessHours) {
+            if ($clocksTotal > 0 && $clocksOnline === 0) {
+                $alerts->push($this->makeAlert(
+                    'critical',
+                    'Sin heartbeat reciente',
+                    'Ningun reloj biometrico ha reportado dentro de los ultimos '.self::ONLINE_THRESHOLD_MINUTES.' minutos.',
+                    $clocksOffline,
+                    'Validar energia, red local y heartbeat del sitio.'
+                ));
+            } elseif ($clocksOffline > 0) {
+                $alerts->push($this->makeAlert(
+                    'critical',
+                    'Relojes sin conexion',
+                    $clocksOffline.' reloj(es) no han reportado dentro del umbral operativo.',
+                    $clocksOffline,
+                    'Revisar conectividad y disponibilidad de los relojes.'
+                ));
+            }
 
-        if ($heartbeatStale > 0 && $clocksOnline > 0) {
+            if ($heartbeatStale > 0 && $clocksOnline > 0) {
+                $alerts->push($this->makeAlert(
+                    'warning',
+                    'Heartbeat con rezago',
+                    $heartbeatStale.' reloj(es) tienen mas de '.self::ONLINE_THRESHOLD_MINUTES.' minutos sin actividad.',
+                    $heartbeatStale,
+                    'Verificar los equipos con mayor rezago de actividad.'
+                ));
+            }
+        } elseif ($clocksOffline > 0 || $heartbeatStale > 0) {
             $alerts->push($this->makeAlert(
-                'warning',
-                'Heartbeat con rezago',
-                $heartbeatStale.' reloj(es) tienen mas de '.self::ONLINE_THRESHOLD_MINUTES.' minutos sin actividad.',
-                $heartbeatStale
+                'info',
+                'Conectividad fuera de horario',
+                'Fuera de horario operativo: conectividad informativa.',
+                max($clocksOffline, $heartbeatStale),
+                'Revisar de nuevo durante el horario operativo.'
             ));
         }
 
@@ -982,7 +1072,8 @@ class DashboardSummaryService
                 'warning',
                 'Relojes nunca conectados',
                 $clocksNeverConnected.' reloj(es) estan registrados pero nunca han reportado heartbeat.',
-                $clocksNeverConnected
+                $clocksNeverConnected,
+                'Validar configuracion inicial y asociacion del equipo.'
             ));
         }
 
@@ -1009,7 +1100,7 @@ class DashboardSummaryService
     /**
      * @return array<string, mixed>
      */
-    protected function makeAlert(string $level, string $title, string $message, int $metric): array
+    protected function makeAlert(string $level, string $title, string $message, int $metric, ?string $action = null): array
     {
         return [
             'id' => md5($level.'|'.$title.'|'.$message),
@@ -1017,6 +1108,7 @@ class DashboardSummaryService
             'title' => $title,
             'message' => $message,
             'metric' => $metric,
+            'action' => $action,
         ];
     }
 
@@ -1034,7 +1126,8 @@ class DashboardSummaryService
         Collection $locations,
         Collection $alerts,
         array $enrollment,
-        string $timezone
+        string $timezone,
+        bool $isBusinessHours
     ): array {
         $criticalLocations = $locations->where('status', 'critical')->count();
         $warningLocations = $locations->where('status', 'warning')->count();
@@ -1042,14 +1135,14 @@ class DashboardSummaryService
         $level = 'normal';
 
         if (
-            ($clocksTotal > 0 && $clocksOnline === 0)
-            || $clocksOffline > 0
+            (($clocksTotal > 0 && $clocksOnline === 0) && $isBusinessHours)
+            || ($clocksOffline > 0 && $isBusinessHours)
             || ($employeesActive > 0 && $attendanceCoverage < 50)
             || $criticalLocations > 0
         ) {
             $level = 'critical';
         } elseif (
-            $clocksWarning > 0
+            ($clocksWarning > 0 && $isBusinessHours)
             || ($employeesActive > 0 && $attendanceCoverage < 85)
             || $warningLocations > 0
             || $alerts->where('level', 'warning')->isNotEmpty()
@@ -1068,12 +1161,12 @@ class DashboardSummaryService
 
         $message = match ($level) {
             'critical' => 'Operacion critica: '.$this->joinFragments(array_filter([
-                $clocksOffline > 0 ? $clocksOffline.' reloj(es) sin conexion' : null,
+                ($clocksOffline > 0 && $isBusinessHours) ? $clocksOffline.' reloj(es) sin conexion' : null,
                 $employeesActive > 0 ? 'cobertura de asistencia en '.$attendanceCoverage.'%' : null,
                 $criticalLocations > 0 ? $criticalLocations.' unidad(es) en estado critico' : null,
             ])),
             'warning' => 'Seguimiento preventivo: '.$this->joinFragments(array_filter([
-                $clocksWarning > 0 ? $clocksWarning.' reloj(es) requieren atencion' : null,
+                ($clocksWarning > 0 && $isBusinessHours) ? $clocksWarning.' reloj(es) requieren atencion' : null,
                 $employeesActive > 0 ? 'cobertura de asistencia en '.$attendanceCoverage.'%' : null,
                 $warningLocations > 0 ? $warningLocations.' unidad(es) con riesgo operativo' : null,
             ])),
@@ -1085,10 +1178,14 @@ class DashboardSummaryService
         };
 
         $bullets = [];
-        $clocksAttention = min($clocksOffline + $clocksWarning, $clocksTotal);
+        $clocksAttention = $isBusinessHours
+            ? min($clocksOffline + $clocksWarning, $clocksTotal)
+            : 0;
 
         if ($clocksTotal > 0) {
-            $bullets[] = $clocksAttention.' de '.$clocksTotal.' relojes requieren atencion.';
+            $bullets[] = $isBusinessHours
+                ? $clocksAttention.' de '.$clocksTotal.' relojes requieren atencion.'
+                : 'Fuera de horario operativo: conectividad informativa.';
         } else {
             $bullets[] = 'No hay relojes configurados para el filtro actual.';
         }
@@ -1124,8 +1221,102 @@ class DashboardSummaryService
         ];
     }
 
+    protected function buildExecutiveSummary(
+        int $employeesActive,
+        int $attendanceRegistered,
+        int $pendingAttendance,
+        float $attendanceCoverage,
+        int $entriesTotal,
+        int $exitsTotal,
+        mixed $latestAttendanceAt,
+        string $timezone,
+        string $storageTimezone,
+        array $enrollment,
+        array $clocks,
+        array $hourlyActivity,
+        Collection $alerts,
+        bool $isBusinessHours
+    ): array {
+        $latestAttendanceIso = $this->toOperationsIsoString($latestAttendanceAt, $timezone, $storageTimezone);
+        $topAlerts = $alerts
+            ->take(3)
+            ->map(fn (array $alert): array => [
+                'id' => $alert['id'],
+                'severity' => $alert['level'],
+                'count' => (int) ($alert['metric'] ?? 0),
+                'title' => $alert['title'],
+                'message' => $alert['message'],
+                'action' => $alert['action'] ?? 'Revisar el modulo correspondiente.',
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'attendance' => [
+                'active_employees' => $employeesActive,
+                'attended' => $attendanceRegistered,
+                'pending' => $pendingAttendance,
+                'coverage_percent' => $attendanceCoverage,
+                'entries' => $entriesTotal,
+                'exits' => $exitsTotal,
+                'last_attendance_at' => $latestAttendanceIso,
+            ],
+            'enrolment' => [
+                'active_employees' => (int) ($enrollment['employees_active'] ?? 0),
+                'with_any_biometric' => (int) ($enrollment['with_any_biometric'] ?? 0),
+                'with_fingerprint' => (int) ($enrollment['with_fingerprint'] ?? 0),
+                'with_face' => (int) ($enrollment['with_face'] ?? 0),
+                'with_both_biometrics' => (int) ($enrollment['with_both_biometrics'] ?? 0),
+                'without_fingerprint' => (int) ($enrollment['without_fingerprint'] ?? 0),
+                'without_face' => (int) ($enrollment['without_face'] ?? 0),
+                'without_any_biometric' => (int) ($enrollment['without_any_biometric'] ?? 0),
+                'coverage_percent' => (float) ($enrollment['coverage_percent'] ?? $enrollment['coverage_percentage'] ?? 0),
+            ],
+            'clocks' => [
+                'total' => (int) ($clocks['total'] ?? 0),
+                'online' => (int) ($clocks['online'] ?? 0),
+                'offline' => (int) ($clocks['offline'] ?? 0),
+                'stale' => (int) ($clocks['heartbeat_stale'] ?? 0),
+                'operational_status' => $clocks['operational_status'] ?? ($clocks['status'] ?? 'nodata'),
+                'is_business_hours' => $isBusinessHours,
+                'operational_note' => $clocks['operational_note'] ?? ($clocks['status_reason'] ?? null),
+            ],
+            'compact_charts' => [
+                'attendance_donut' => [
+                    'attended' => $attendanceRegistered,
+                    'pending' => $pendingAttendance,
+                    'coverage_percent' => $attendanceCoverage,
+                ],
+                'enrolment_bar' => [
+                    'with_any_biometric' => (int) ($enrollment['with_any_biometric'] ?? 0),
+                    'without_any_biometric' => (int) ($enrollment['without_any_biometric'] ?? 0),
+                    'with_fingerprint' => (int) ($enrollment['with_fingerprint'] ?? 0),
+                    'with_face' => (int) ($enrollment['with_face'] ?? 0),
+                    'coverage_percent' => (float) ($enrollment['coverage_percent'] ?? $enrollment['coverage_percentage'] ?? 0),
+                ],
+                'hourly_activity' => $hourlyActivity,
+                'clocks_status' => [
+                    'online' => (int) ($clocks['online'] ?? 0),
+                    'offline' => (int) ($clocks['offline'] ?? 0),
+                    'stale' => (int) ($clocks['heartbeat_stale'] ?? 0),
+                    'total' => (int) ($clocks['total'] ?? 0),
+                ],
+            ],
+            'alerts' => $topAlerts,
+        ];
+    }
+
+    protected function isBusinessHours(string $timezone): bool
+    {
+        $hour = (int) now($timezone)->format('G');
+
+        return $hour >= 7 && $hour < 20;
+    }
+
     protected function joinFragments(array $parts): string
     {
+        $parts = array_values(array_filter($parts, fn ($value) => $value !== null && $value !== ''));
+
         if ($parts === []) {
             return 'sin incidencias relevantes';
         }

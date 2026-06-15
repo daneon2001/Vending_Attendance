@@ -56,92 +56,94 @@ class DashboardExecutiveSummaryTest extends TestCase
     {
         config()->set('operations.timezone', 'America/Mexico_City');
         config()->set('operations.storage_timezone', 'UTC');
+        Carbon::setTestNow(Carbon::parse('2026-06-12 10:15:00', 'America/Mexico_City'));
 
-        $company = Company::query()->create([
-            'name' => 'Medical Life',
-            'code' => 'ML',
-            'status' => 1,
-        ]);
+        try {
+            $company = Company::query()->create([
+                'name' => 'Medical Life',
+                'code' => 'ML',
+                'status' => 1,
+            ]);
 
-        $location = Location::query()->create([
-            'company_id' => $company->id,
-            'name' => 'Unidad Centro',
-            'code' => 'CTR',
-            'timezone' => 'America/Mexico_City',
-            'status' => 1,
-        ]);
+            $location = Location::query()->create([
+                'company_id' => $company->id,
+                'name' => 'Unidad Centro',
+                'code' => 'CTR',
+                'timezone' => 'America/Mexico_City',
+                'status' => 1,
+            ]);
 
-        $employeeWithAttendance = Employee::query()->create([
-            'fortia_employee_id' => 1001,
-            'company_id' => $company->id,
-            'base_location_id' => $location->id,
-            'name' => 'Ana',
-            'last_name' => 'Lopez',
-            'full_name' => 'Ana Lopez',
-            'status' => 'A',
-            'has_fingerprint' => true,
-            'has_face_enrollment' => true,
-            'face_enabled' => true,
-            'face_status' => 'enrolled',
-        ]);
+            $employeeWithAttendance = Employee::query()->create([
+                'fortia_employee_id' => 1001,
+                'company_id' => $company->id,
+                'base_location_id' => $location->id,
+                'name' => 'Ana',
+                'last_name' => 'Lopez',
+                'full_name' => 'Ana Lopez',
+                'status' => 'A',
+                'has_fingerprint' => true,
+                'has_face_enrollment' => true,
+                'face_enabled' => true,
+                'face_status' => 'enrolled',
+            ]);
 
-        Employee::query()->create([
-            'fortia_employee_id' => 1002,
-            'company_id' => $company->id,
-            'base_location_id' => $location->id,
-            'name' => 'Luis',
-            'last_name' => 'Perez',
-            'full_name' => 'Luis Perez',
-            'status' => 'A',
-            'has_fingerprint' => false,
-            'has_face_enrollment' => false,
-            'face_enabled' => false,
-            'face_status' => 'none',
-        ]);
+            Employee::query()->create([
+                'fortia_employee_id' => 1002,
+                'company_id' => $company->id,
+                'base_location_id' => $location->id,
+                'name' => 'Luis',
+                'last_name' => 'Perez',
+                'full_name' => 'Luis Perez',
+                'status' => 'A',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => false,
+                'face_enabled' => false,
+                'face_status' => 'none',
+            ]);
 
-        $onlineClock = Clock::query()->create([
-            'company_id' => $company->id,
-            'location_id' => $location->id,
-            'clock_name' => 'Reloj Centro 1',
-            'serial_number' => 'CTR-1',
-            'status' => 1,
-            'monitoring_status' => 'online',
-            'program_status' => 'online',
-            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(2)->format('Y-m-d H:i:s'),
-        ]);
+            $onlineClock = Clock::query()->create([
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'clock_name' => 'Reloj Centro 1',
+                'serial_number' => 'CTR-1',
+                'status' => 1,
+                'monitoring_status' => 'online',
+                'program_status' => 'online',
+                'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(2)->format('Y-m-d H:i:s'),
+            ]);
 
-        Clock::query()->create([
-            'company_id' => $company->id,
-            'location_id' => $location->id,
-            'clock_name' => 'Reloj Centro 2',
-            'serial_number' => 'CTR-2',
-            'status' => 1,
-            'monitoring_status' => 'offline',
-            'program_status' => 'offline',
-            'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(10)->format('Y-m-d H:i:s'),
-        ]);
+            Clock::query()->create([
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'clock_name' => 'Reloj Centro 2',
+                'serial_number' => 'CTR-2',
+                'status' => 1,
+                'monitoring_status' => 'offline',
+                'program_status' => 'offline',
+                'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(10)->format('Y-m-d H:i:s'),
+            ]);
 
-        AttendanceLog::query()->create([
-            'log_id' => 1001,
-            'employee_id' => $employeeWithAttendance->id,
-            'company_id' => $company->id,
-            'location_id' => $location->id,
-            'device_id' => $onlineClock->id,
-            'log_date' => Carbon::now('UTC')->subMinutes(15)->format('Y-m-d H:i:s'),
-            'log_type' => 1,
-            'source' => 'api',
-            'attendance_status' => 'valida',
-            'raw_payload' => ['provider' => 'fingerprint'],
-        ]);
+            AttendanceLog::query()->create([
+                'log_id' => 1001,
+                'employee_id' => $employeeWithAttendance->id,
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'device_id' => $onlineClock->id,
+                'log_date' => Carbon::now('UTC')->subMinutes(15)->format('Y-m-d H:i:s'),
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => ['provider' => 'fingerprint'],
+            ]);
 
-        $response = $this->getJson(route('dashboard.summary', [
-            'range' => 'today',
-            'company_id' => $company->id,
-            'unit_id' => $location->id,
-        ]));
+            $response = $this->getJson(route('dashboard.summary', [
+                'range' => 'today',
+                'company_id' => $company->id,
+                'unit_id' => $location->id,
+            ]));
 
-        $response->assertOk()
-            ->assertJsonStructure([
+            $response->assertOk()
+                ->assertJsonStructure([
                 'ok',
                 'empty',
                 'timezone' => ['name', 'label', 'offset'],
@@ -177,6 +179,39 @@ class DashboardExecutiveSummaryTest extends TestCase
                 'recent_activity',
                 'enrollment',
                 'kpis',
+                'executive_summary' => [
+                    'attendance' => [
+                        'active_employees',
+                        'attended',
+                        'pending',
+                        'coverage_percent',
+                        'entries',
+                        'exits',
+                    ],
+                    'enrolment' => [
+                        'active_employees',
+                        'with_any_biometric',
+                        'with_fingerprint',
+                        'with_face',
+                        'without_any_biometric',
+                        'coverage_percent',
+                    ],
+                    'clocks' => [
+                        'total',
+                        'online',
+                        'offline',
+                        'stale',
+                        'operational_status',
+                        'is_business_hours',
+                    ],
+                    'compact_charts' => [
+                        'attendance_donut',
+                        'enrolment_bar',
+                        'hourly_activity',
+                        'clocks_status',
+                    ],
+                    'alerts',
+                ],
                 'charts' => [
                     'attendance_donut' => ['present', 'pending', 'percentage'],
                     'clocks_donut' => ['online', 'offline', 'stale'],
@@ -219,7 +254,127 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('enrollment.coverage_percentage', 50)
             ->assertJsonPath('charts.enrollment.with_any_biometric', 1)
             ->assertJsonPath('charts.enrollment.without_any_biometric', 1)
-            ->assertJsonPath('charts.enrollment.percentage', 50);
+            ->assertJsonPath('charts.enrollment.percentage', 50)
+            ->assertJsonPath('executive_summary.attendance.active_employees', 2)
+            ->assertJsonPath('executive_summary.attendance.attended', 1)
+            ->assertJsonPath('executive_summary.attendance.pending', 1)
+            ->assertJsonPath('executive_summary.attendance.coverage_percent', 50)
+            ->assertJsonPath('executive_summary.enrolment.with_fingerprint', 1)
+            ->assertJsonPath('executive_summary.enrolment.with_face', 1)
+            ->assertJsonPath('executive_summary.enrolment.without_any_biometric', 1)
+            ->assertJsonPath('executive_summary.enrolment.coverage_percent', 50)
+            ->assertJsonPath('executive_summary.clocks.total', 2)
+            ->assertJsonPath('executive_summary.clocks.online', 1)
+            ->assertJsonPath('executive_summary.clocks.offline', 1)
+            ->assertJsonPath('executive_summary.clocks.stale', 1)
+                ->assertJsonPath('executive_summary.clocks.is_business_hours', true)
+                ->assertJsonCount(3, 'executive_summary.alerts');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_summary_outside_business_hours_does_not_mark_clock_shutdown_as_critical(): void
+    {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+
+        Carbon::setTestNow(Carbon::parse('2026-06-12 22:15:00', 'America/Mexico_City'));
+
+        try {
+            $company = Company::query()->create([
+                'name' => 'Medical Life',
+                'code' => 'ML',
+                'status' => 1,
+            ]);
+
+            $location = Location::query()->create([
+                'company_id' => $company->id,
+                'name' => 'Unidad Noche',
+                'code' => 'NOC',
+                'timezone' => 'America/Mexico_City',
+                'status' => 1,
+            ]);
+
+            Clock::query()->create([
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'clock_name' => 'Reloj Noche',
+                'serial_number' => 'NOC-1',
+                'status' => 1,
+                'monitoring_status' => 'offline',
+                'program_status' => 'offline',
+                'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(30)->format('Y-m-d H:i:s'),
+            ]);
+
+            $response = $this->getJson(route('dashboard.summary', [
+                'range' => 'today',
+                'company_id' => $company->id,
+                'unit_id' => $location->id,
+            ]));
+
+            $response->assertOk()
+                ->assertJsonPath('clocks.is_business_hours', false)
+                ->assertJsonPath('clocks.operational_status', 'info')
+                ->assertJsonPath('clocks.status_label', 'Fuera de horario operativo')
+                ->assertJsonPath('executive_summary.clocks.is_business_hours', false)
+                ->assertJsonPath('executive_summary.clocks.operational_status', 'info')
+                ->assertJsonPath('alerts.0.level', 'info')
+                ->assertJsonPath('alerts.0.title', 'Conectividad fuera de horario')
+                ->assertJsonMissingPath('alerts.1.level');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_summary_inside_business_hours_marks_offline_clocks_as_critical(): void
+    {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+
+        Carbon::setTestNow(Carbon::parse('2026-06-12 10:15:00', 'America/Mexico_City'));
+
+        try {
+            $company = Company::query()->create([
+                'name' => 'Medical Life',
+                'code' => 'ML',
+                'status' => 1,
+            ]);
+
+            $location = Location::query()->create([
+                'company_id' => $company->id,
+                'name' => 'Unidad Dia',
+                'code' => 'DIA',
+                'timezone' => 'America/Mexico_City',
+                'status' => 1,
+            ]);
+
+            Clock::query()->create([
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'clock_name' => 'Reloj Dia',
+                'serial_number' => 'DIA-1',
+                'status' => 1,
+                'monitoring_status' => 'offline',
+                'program_status' => 'offline',
+                'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(30)->format('Y-m-d H:i:s'),
+            ]);
+
+            $response = $this->getJson(route('dashboard.summary', [
+                'range' => 'today',
+                'company_id' => $company->id,
+                'unit_id' => $location->id,
+            ]));
+
+            $response->assertOk()
+                ->assertJsonPath('clocks.is_business_hours', true)
+                ->assertJsonPath('clocks.operational_status', 'critical')
+                ->assertJsonPath('executive_summary.clocks.is_business_hours', true)
+                ->assertJsonPath('alerts.0.level', 'critical')
+                ->assertJsonPath('alerts.0.title', 'Sin heartbeat reciente');
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_dashboard_summary_can_refresh_only_clocks_tab(): void

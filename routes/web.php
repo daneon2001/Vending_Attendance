@@ -183,6 +183,10 @@ Route::middleware('auth')->group(function () {
             ->middleware('perm:asistencias,edit')
             ->name('annul');
 
+        Route::get('/grouped-detail', [AdminAttendanceController::class, 'groupedDetail'])
+            ->middleware('perm:asistencias,view')
+            ->name('grouped-detail');
+
         Route::get('/{attendance_record}', [AdminAttendanceController::class, 'show'])
             ->middleware('perm:asistencias,view')
             ->name('show');
