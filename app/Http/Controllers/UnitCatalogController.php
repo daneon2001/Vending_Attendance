@@ -35,6 +35,10 @@ class UnitCatalogController extends Controller
                 ],
             ],
             'summary' => $summary,
+            'columns' => [
+                'available' => app(UnitController::class)->availableColumns(),
+                'default' => app(UnitController::class)->defaultColumns(),
+            ],
             'filteredMeta' => [
                 'filtered_total' => $units->total(),
                 'current_page_count' => $units->count(),

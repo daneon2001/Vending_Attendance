@@ -99,6 +99,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/units/list', [UnitController::class, 'index'])
         ->middleware('perm:units,view')
         ->name('units.list');
+    Route::get('/units/export', [UnitController::class, 'export'])
+        ->middleware('perm:units,view')
+        ->name('units.export');
+    Route::get('/units/bulk-deactivation-preview', [UnitController::class, 'bulkDeactivationPreview'])
+        ->middleware('perm:units,disable')
+        ->name('units.bulk-deactivation-preview');
+    Route::post('/units/bulk-deactivate-inactive', [UnitController::class, 'bulkDeactivateInactive'])
+        ->middleware('perm:units,disable')
+        ->name('units.bulk-deactivate-inactive');
     Route::post('/units', [UnitController::class, 'store'])
         ->middleware('perm:units,create')
         ->name('units.store');

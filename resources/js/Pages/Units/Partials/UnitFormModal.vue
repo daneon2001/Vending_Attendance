@@ -1,4 +1,5 @@
 <script setup>
+import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { computed } from 'vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
@@ -72,16 +73,14 @@ const title = computed(() =>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <label class="text-sm font-medium text-slate-600">
                         Empresa
-                        <select
+                        <SearchableSelect
                             v-model="form.company_id"
-                            data-select-search="on"
-                            class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
-                        >
-                            <option disabled value="">Selecciona empresa</option>
-                            <option v-for="company in companies" :key="company.id" :value="company.id">
-                                {{ company.name }}
-                            </option>
-                        </select>
+                            :options="companies"
+                            placeholder="Selecciona empresa"
+                            search-placeholder="Buscar empresa..."
+                            :searchable="true"
+                            input-class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
+                        />
                         <span v-if="errors.company_id" class="text-xs text-rose-600">
                             {{ errors.company_id[0] }}
                         </span>

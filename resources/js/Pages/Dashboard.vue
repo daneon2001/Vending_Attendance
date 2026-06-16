@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ChartCard from '@/Components/ChartCard.vue';
+import SearchableSelect from '@/Components/SearchableSelect.vue';
 import Toast from '@/Components/Toast.vue';
 import UnitDetailDrawer from '@/Pages/Units/Partials/UnitDetailDrawer.vue';
 import { hasChartData } from '@/utils/chart';
@@ -285,6 +286,12 @@ const closeToast = () => {
 
 const locationOptions = computed(() => props.locations ?? []);
 const companyOptions = computed(() => props.companies ?? []);
+const companySelectOptions = computed(() =>
+    companyOptions.value.map((company) => ({
+        ...company,
+        label: company.code ? `${company.name} (${company.code})` : company.name,
+    })),
+);
 const hasCustomRange = computed(() => filters.range === 'custom');
 
 const filteredLocations = computed(() => {
@@ -294,6 +301,12 @@ const filteredLocations = computed(() => {
 
     return locationOptions.value.filter((location) => String(location.company_id ?? '') === String(filters.company_id));
 });
+const locationSelectOptions = computed(() =>
+    filteredLocations.value.map((location) => ({
+        ...location,
+        label: location.code ? `${location.name} (${location.code})` : location.name,
+    })),
+);
 
 const normalizeTabKey = (value) => {
     const normalized = String(value ?? '')
@@ -1455,13 +1468,13 @@ onBeforeUnmount(() => {
         </template>
 
         <section class="space-y-6">
-            <div class="card overflow-hidden px-4 py-4 sm:px-6">
-                <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
+            <div class="card overflow-visible px-4 py-4 sm:px-5">
+                <div class="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Rango
                         <select
                             v-model="filters.range"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
+                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
                         >
                             <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
@@ -1471,7 +1484,7 @@ onBeforeUnmount(() => {
 
                     <div
                         v-if="hasCustomRange"
-                        class="grid w-full min-w-0 gap-3 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:grid-cols-2 sm:tracking-[0.3em] xl:w-auto xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                        class="grid w-full min-w-0 gap-3 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:grid-cols-2 sm:tracking-[0.3em] lg:col-span-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                     >
                         <label class="flex min-w-0 flex-col gap-2">
                             Desde
@@ -1499,35 +1512,33 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
 
-                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empresa
-                        <select
+                        <SearchableSelect
                             v-model="filters.company_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
-                        >
-                            <option value="">Todas</option>
-                            <option v-for="company in companyOptions" :key="company.id" :value="company.id">
-                                {{ company.name }}{{ company.code ? ` (${company.code})` : '' }}
-                            </option>
-                        </select>
+                            :options="companySelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar empresa..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
+                        />
                     </label>
 
-                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:w-auto sm:tracking-[0.3em]">
+                    <label class="flex w-full min-w-0 flex-col gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Sucursal
-                        <select
+                        <SearchableSelect
                             v-model="filters.unit_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold sm:w-auto"
-                        >
-                            <option value="">Todas</option>
-                            <option v-for="location in filteredLocations" :key="location.id" :value="location.id">
-                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
-                            </option>
-                        </select>
+                            :options="locationSelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar sucursal..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm font-semibold"
+                        />
                     </label>
 
                     <button
                         type="button"
-                        class="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:w-auto"
+                        class="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 lg:w-auto"
                         :disabled="loading"
                         @click="fetchSummary({ tab: activeTab })"
                     >
@@ -1536,7 +1547,7 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
 
-                <div class="mt-4 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
+                <div class="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted">
                     <span class="max-w-full truncate rounded-full bg-slate-100 px-3 py-1">
                         {{ resolveCompanyName(filters.company_id) }}
                     </span>
@@ -1555,13 +1566,13 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <div class="card overflow-hidden p-2 sm:p-3">
-                <div class="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
+            <div class="card overflow-hidden p-2.5">
+                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                     <button
                         v-for="tab in dashboardTabs"
                         :key="tab.key"
                         type="button"
-                        class="min-w-[13rem] flex-none rounded-[1.75rem] border px-4 py-3 text-left transition sm:min-w-0 sm:flex-1"
+                        class="min-w-0 rounded-[1.5rem] border px-3.5 py-2.5 text-left transition"
                         :class="activeTab === tab.key
                             ? 'border-indigo-300 bg-white/90 shadow-sm ring-1 ring-indigo-200/80 dark:border-indigo-500/50 dark:bg-slate-900/80 dark:ring-indigo-500/30'
                             : 'border-slate-100 bg-white/90 hover:border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-slate-700 dark:hover:bg-slate-900/80'"
@@ -1569,10 +1580,10 @@ onBeforeUnmount(() => {
                     >
                         <div class="flex min-w-0 items-start justify-between gap-3">
                             <div class="min-w-0">
-                                <p class="whitespace-normal text-sm font-semibold text-app">
+                                <p class="whitespace-normal text-sm font-semibold leading-tight text-app">
                                     {{ tab.label }}
                                 </p>
-                                <p class="mt-1 whitespace-normal text-xs text-muted">
+                                <p class="mt-1 line-clamp-2 whitespace-normal text-[11px] leading-4 text-muted">
                                     {{ tab.description }}
                                 </p>
                             </div>
@@ -1608,60 +1619,60 @@ onBeforeUnmount(() => {
                             {{ executiveBusinessHoursLabel }}
                         </span>
                     </div>
-                    <span class="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                    <span class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                         Ultima actualizacion {{ formatRelative(summaryBlock.last_updated_at) }}
                     </span>
                 </div>
 
-                <div class="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                     <div>
-                        <p class="text-xs text-muted">
+                        <p class="text-[11px] text-muted">
                             {{ dashboardTimezoneNote }}
                         </p>
-                        <h2 class="mt-2 text-2xl font-semibold text-app sm:text-3xl">
+                        <h2 class="mt-1.5 text-xl font-semibold text-app sm:text-2xl">
                             Vista rapida ejecutiva
                         </h2>
-                        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        <p class="mt-1.5 max-w-3xl text-sm leading-5 text-slate-600 dark:text-slate-300">
                             {{ executiveStatus.message }}
                         </p>
 
-                        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <article
                                 v-for="indicator in heroIndicators"
                                 :key="indicator.id"
-                                class="card-subtle bg-white/80 px-3 py-3 shadow-sm backdrop-blur"
+                                class="card-subtle bg-white/80 px-3 py-2.5 shadow-sm backdrop-blur"
                             >
                                 <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-soft">
                                     {{ indicator.label }}
                                 </p>
-                                <p class="mt-2 text-2xl font-semibold text-app">
+                                <p class="mt-1.5 text-xl font-semibold text-app">
                                     {{ indicator.value }}
                                 </p>
-                                <p class="mt-1 text-xs text-muted">
+                                <p class="mt-0.5 text-[11px] leading-4 text-muted">
                                     {{ indicator.hint }}
                                 </p>
                             </article>
                         </div>
                     </div>
 
-                    <div class="card bg-white/80 p-4 backdrop-blur">
+                    <div class="card bg-white/80 p-3.5 backdrop-blur">
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                                     Lectura ejecutiva
                                 </p>
-                                <h3 class="mt-1 text-lg font-semibold text-app">
+                                <h3 class="mt-1 text-base font-semibold text-app">
                                     Lo importante ahora
                                 </h3>
                             </div>
                             <span class="h-3 w-3 rounded-full" :class="executiveHeroClasses.dot" />
                         </div>
 
-                        <ul class="mt-4 grid gap-2">
+                        <ul class="mt-3 grid gap-2">
                             <li
                                 v-for="(bullet, index) in executiveStatus.bullets"
                                 :key="`${index}-${bullet}`"
-                                class="card-subtle flex gap-3 px-3 py-3 text-sm text-slate-600 dark:text-slate-300"
+                                class="card-subtle flex gap-3 px-3 py-2.5 text-sm text-slate-600 dark:text-slate-300"
                             >
                                 <span class="mt-1 h-2 w-2 rounded-full bg-slate-400" />
                                 <span>{{ bullet }}</span>
@@ -1673,7 +1684,7 @@ onBeforeUnmount(() => {
 
             <div
                 v-if="activeTab === 'resumen' && !showActiveTabSkeleton"
-                class="grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch"
+                class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch"
             >
                 <ChartCard
                     title="Asistencia actual"
@@ -1683,12 +1694,12 @@ onBeforeUnmount(() => {
                     :dataset="attendanceDonutData"
                     :has-data="attendanceHasData"
                     :chart-key="chartVersion"
-                    height-class="h-40 sm:h-44"
-                    content-class="p-4"
+                    height-class="h-36 sm:h-40"
+                    content-class="p-3.5"
                     empty-text="Sin registros en el periodo"
                 >
                     <template #footer>
-                        <div class="space-y-3">
+                            <div class="space-y-2.5">
                             <div class="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                                 <div
                                     class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all"
@@ -1710,13 +1721,13 @@ onBeforeUnmount(() => {
                     :dataset="hourlyMiniData"
                     :has-data="hourlyMiniHasData"
                     :chart-key="chartVersion + 11"
-                    height-class="h-40 sm:h-44"
-                    content-class="p-4"
+                    height-class="h-36 sm:h-40"
+                    content-class="p-3.5"
                     empty-text="Sin actividad horaria en el periodo"
                 >
                     <template #footer>
-                        <div class="space-y-2">
-                            <div class="grid gap-2 sm:grid-cols-2">
+                            <div class="space-y-2">
+                                <div class="grid gap-2 sm:grid-cols-2">
                                 <div class="card-subtle px-3 py-2 text-sm">
                                     <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-soft">Entradas</p>
                                     <p class="mt-1 text-lg font-semibold text-app">{{ formatNumber(executiveAttendance.entries ?? 0) }}</p>
@@ -1733,7 +1744,7 @@ onBeforeUnmount(() => {
                     </template>
                 </ChartCard>
 
-                <article class="card flex h-full flex-col px-4 py-4">
+                <article class="card flex h-full flex-col px-3.5 py-3.5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1748,35 +1759,35 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
 
-                    <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                    <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                         <div
                             class="h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 transition-all"
                             :style="{ width: enrollmentCoverageWidth }"
                         />
                     </div>
 
-                    <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                    <div class="mt-3 grid gap-2 sm:grid-cols-2">
                         <article
                             v-for="row in executiveEnrolmentRows"
                             :key="row.id"
-                            class="rounded-2xl px-3 py-3"
+                            class="rounded-2xl px-3 py-2.5"
                             :class="row.tone"
                         >
                             <p class="text-[11px] font-semibold uppercase tracking-[0.18em]">
                                 {{ row.label }}
                             </p>
-                            <p class="mt-1 text-xl font-semibold">
+                            <p class="mt-1 text-lg font-semibold">
                                 {{ row.value }}
                             </p>
                         </article>
                     </div>
 
-                    <p class="mt-4 text-sm text-muted">
+                    <p class="mt-3 text-sm text-muted">
                         {{ executiveEnrolmentText }}
                     </p>
                 </article>
 
-                <article class="card flex h-full flex-col px-4 py-4">
+                <article class="card flex h-full flex-col px-3.5 py-3.5">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">
@@ -1791,33 +1802,33 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
 
-                    <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                    <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                         <div
                             class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all"
                             :style="{ width: clocksOnlineWidth }"
                         />
                     </div>
 
-                    <div class="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div class="mt-3 grid gap-2 sm:grid-cols-3">
                         <article
                             v-for="row in executiveClockRows"
                             :key="row.id"
-                            class="rounded-2xl px-3 py-3"
+                            class="rounded-2xl px-3 py-2.5"
                             :class="row.tone"
                         >
                             <p class="text-[11px] font-semibold uppercase tracking-[0.18em]">
                                 {{ row.label }}
                             </p>
-                            <p class="mt-1 text-xl font-semibold">
+                            <p class="mt-1 text-lg font-semibold">
                                 {{ row.value }}
                             </p>
                         </article>
                     </div>
 
-                    <p class="mt-4 text-sm text-muted">
+                    <p class="mt-3 text-sm text-muted">
                         {{ executiveClocksText }}
                     </p>
-                    <p class="mt-2 text-xs text-muted">
+                    <p class="mt-1.5 text-xs text-muted">
                         {{ executiveClocks.operational_note }}
                     </p>
                 </article>

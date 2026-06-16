@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -113,6 +114,19 @@ watch(
 
 const locationOptions = computed(() => props.locations ?? []);
 const companyOptions = computed(() => props.companies ?? []);
+const companySelectOptions = computed(() =>
+    companyOptions.value.map((company) => ({
+        ...company,
+        label: company.code ? `${company.name} (${company.code})` : company.name,
+    })),
+);
+const locationSelectOptions = computed(() =>
+    locationOptions.value.map((location) => ({
+        ...location,
+        label: location.code ? `${location.name} (${location.code})` : location.name,
+        code: location.code,
+    })),
+);
 
 const monitoringStyles = {
     online: {
@@ -938,7 +952,7 @@ const resetLogsFilters = () => {
                 </div>
             </div>
 
-            <section class="card overflow-hidden p-4">
+            <section class="card overflow-visible p-4">
                 <form class="grid min-w-0 grid-cols-1 gap-3 overflow-hidden sm:grid-cols-2 lg:grid-cols-3" @submit.prevent="applyFilters(1)">
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em] lg:col-span-3">
                         Buscar
@@ -952,31 +966,28 @@ const resetLogsFilters = () => {
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Empresa
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.company_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            :options="companySelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar empresa..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
-                        >
-                            <option value="">Todas</option>
-                            <option v-for="company in companyOptions" :key="company.id" :value="String(company.id)">
-                                {{ company.name }}
-                            </option>
-                        </select>
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
                         Unidad
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.location_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            :options="[{ id: 'unassigned', label: 'Sin unidad asignada' }, ...locationSelectOptions]"
+                            placeholder="Todas"
+                            search-placeholder="Buscar unidad..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                             @change="applySelectFilters"
-                        >
-                            <option value="">Todas</option>
-                            <option value="unassigned">Sin unidad asignada</option>
-                            <option v-for="location in locationOptions" :key="location.id" :value="String(location.id)">
-                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
-                            </option>
-                        </select>
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 sm:tracking-[0.3em]">
@@ -1354,29 +1365,27 @@ const resetLogsFilters = () => {
                     <div class="grid gap-4 sm:grid-cols-3">
                         <label class="text-sm font-medium text-slate-600">
                             Compañía
-                            <select
-                                v-model.number="formModal.form.company_id"
-                                data-select-search="on"
-                                class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
-                            >
-                                <option :value="null">Sin asignar</option>
-                                <option v-for="company in companyOptions" :key="company.id" :value="company.id">
-                                    {{ company.name }}
-                                </option>
-                            </select>
+                            <SearchableSelect
+                                v-model="formModal.form.company_id"
+                                :options="[{ id: null, label: 'Sin asignar' }, ...companySelectOptions]"
+                                placeholder="Sin asignar"
+                                search-placeholder="Buscar compañía..."
+                                :searchable="true"
+                                :empty-value="null"
+                                input-class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
+                            />
                         </label>
                         <label class="text-sm font-medium text-slate-600">
                             Unidad
-                            <select
-                                v-model.number="formModal.form.location_id"
-                                data-select-search="on"
-                                class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
-                            >
-                                <option :value="null">Sin asignar</option>
-                                <option v-for="location in locationOptions" :key="location.id" :value="location.id">
-                                    {{ location.name }} ({{ location.code ?? 'N/A' }})
-                                </option>
-                            </select>
+                            <SearchableSelect
+                                v-model="formModal.form.location_id"
+                                :options="[{ id: null, label: 'Sin asignar' }, ...locationSelectOptions]"
+                                placeholder="Sin asignar"
+                                search-placeholder="Buscar unidad..."
+                                :searchable="true"
+                                :empty-value="null"
+                                input-class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
+                            />
                             <span v-if="formModal.errors.location_id" class="text-xs text-rose-600">
                                 {{ formModal.errors.location_id[0] }}
                             </span>
@@ -1476,16 +1485,15 @@ const resetLogsFilters = () => {
                 <form class="mt-6 space-y-4" @submit.prevent="submitAssignment">
                     <label class="text-sm font-medium text-slate-600">
                         Selecciona la unidad
-                        <select
-                            v-model.number="assignModal.location_id"
-                            data-select-search="on"
-                            class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
-                        >
-                            <option :value="null">Sin asignar</option>
-                            <option v-for="location in locationOptions" :key="location.id" :value="location.id">
-                                {{ location.name }} ({{ location.code ?? 'N/A' }})
-                            </option>
-                        </select>
+                        <SearchableSelect
+                            v-model="assignModal.location_id"
+                            :options="[{ id: null, label: 'Sin asignar' }, ...locationSelectOptions]"
+                            placeholder="Sin asignar"
+                            search-placeholder="Buscar unidad..."
+                            :searchable="true"
+                            :empty-value="null"
+                            input-class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm"
+                        />
                         <span v-if="assignModal.errors.location_id" class="text-xs text-rose-600">
                             {{ assignModal.errors.location_id[0] }}
                         </span>

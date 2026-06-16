@@ -2,6 +2,7 @@
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import PaginationBar from '@/Components/PaginationBar.vue';
+import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
@@ -163,6 +164,27 @@ const canExport = computed(
 
 const flashStatus = computed(() => props.flash?.status ?? null);
 const flashWarning = computed(() => props.flash?.warning ?? null);
+const employeeSelectOptions = computed(() =>
+    (props.employees ?? []).map((employee) => ({
+        ...employee,
+        label: employee.code ? `${employee.name} (${employee.code})` : employee.name,
+        code: employee.code,
+    })),
+);
+const locationSelectOptions = computed(() =>
+    (props.locations ?? []).map((location) => ({
+        ...location,
+        label: location.code ? `${location.name} (${location.code})` : location.name,
+        code: location.code,
+    })),
+);
+const clockSelectOptions = computed(() =>
+    (props.clocks ?? []).map((clock) => ({
+        ...clock,
+        label: clock.serial_number ? `${clock.name} (${clock.serial_number})` : clock.name,
+        code: clock.serial_number,
+    })),
+);
 
 const statusBadgeClass = (status) => {
     if (status === 'anulada') {
@@ -577,54 +599,38 @@ const detailLabelForColumn = (record, key) => {
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empleado exacto
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.employee_id"
-                            data-select-search="on"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Todos</option>
-                            <option
-                                v-for="employee in employees"
-                                :key="employee.id"
-                                :value="String(employee.id)"
-                            >
-                                {{ employee.name }} ({{ employee.code }})
-                            </option>
-                        </select>
+                            :options="employeeSelectOptions"
+                            placeholder="Todos"
+                            search-placeholder="Buscar por nombre, código o ID"
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Unidad / sucursal
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.location_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Todas</option>
-                            <option
-                                v-for="location in locations"
-                                :key="location.id"
-                                :value="String(location.id)"
-                            >
-                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
-                            </option>
-                        </select>
+                            :options="locationSelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar unidad..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Reloj / dispositivo
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.device_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Todos</option>
-                            <option
-                                v-for="clock in clocks"
-                                :key="clock.id"
-                                :value="String(clock.id)"
-                            >
-                                {{ clock.name }}{{ clock.serial_number ? ` (${clock.serial_number})` : '' }}
-                            </option>
-                        </select>
+                            :options="clockSelectOptions"
+                            placeholder="Todos"
+                            search-placeholder="Buscar reloj o serie..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
@@ -1210,21 +1216,14 @@ const detailLabelForColumn = (record, key) => {
                 <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitAdjustment">
                     <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft md:col-span-2">
                         Empleado
-                        <select
+                        <SearchableSelect
                             v-model="adjustmentForm.employee_id"
-                            data-select-search="on"
-                            required
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Selecciona empleado</option>
-                            <option
-                                v-for="employee in employees"
-                                :key="employee.id"
-                                :value="String(employee.id)"
-                            >
-                                {{ employee.name }} ({{ employee.code }})
-                            </option>
-                        </select>
+                            :options="employeeSelectOptions"
+                            placeholder="Selecciona empleado"
+                            search-placeholder="Buscar empleado..."
+                            :searchable="true"
+                            input-class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                         <span v-if="adjustmentForm.errors.employee_id" class="text-xs text-rose-600">
                             {{ adjustmentForm.errors.employee_id }}
                         </span>
@@ -1261,19 +1260,14 @@ const detailLabelForColumn = (record, key) => {
 
                     <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                         Unidad (opcional)
-                        <select
+                        <SearchableSelect
                             v-model="adjustmentForm.location_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Sin unidad especifica</option>
-                            <option
-                                v-for="location in locations"
-                                :key="location.id"
-                                :value="String(location.id)"
-                            >
-                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
-                            </option>
-                        </select>
+                            :options="locationSelectOptions"
+                            placeholder="Sin unidad específica"
+                            search-placeholder="Buscar unidad..."
+                            :searchable="true"
+                            input-class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                         <span v-if="adjustmentForm.errors.location_id" class="text-xs text-rose-600">
                             {{ adjustmentForm.errors.location_id }}
                         </span>
@@ -1281,19 +1275,14 @@ const detailLabelForColumn = (record, key) => {
 
                     <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.3em] text-soft">
                         Reloj (opcional)
-                        <select
+                        <SearchableSelect
                             v-model="adjustmentForm.device_id"
-                            class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
-                        >
-                            <option value="">Sin reloj especifico</option>
-                            <option
-                                v-for="clock in clocks"
-                                :key="clock.id"
-                                :value="String(clock.id)"
-                            >
-                                {{ clock.name }}{{ clock.serial_number ? ` (${clock.serial_number})` : '' }}
-                            </option>
-                        </select>
+                            :options="clockSelectOptions"
+                            placeholder="Sin reloj específico"
+                            search-placeholder="Buscar reloj o serie..."
+                            :searchable="true"
+                            input-class="rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
+                        />
                         <span v-if="adjustmentForm.errors.device_id" class="text-xs text-rose-600">
                             {{ adjustmentForm.errors.device_id }}
                         </span>

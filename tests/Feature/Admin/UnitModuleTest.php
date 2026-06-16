@@ -9,6 +9,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -206,6 +207,271 @@ class UnitModuleTest extends TestCase
         ]);
     }
 
+    public function test_bulk_deactivation_preview_only_returns_safe_candidates(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Empresa Demo',
+            'code' => 'EMP',
+            'status' => 1,
+        ]);
+
+        $candidate = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad candidata',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        $withActiveClock = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad con reloj',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $withActiveClock->id,
+            'clock_name' => 'Clock activo',
+            'status' => 1,
+        ]);
+
+        $withAttendance = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad con asistencia',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 5001,
+            'company_id' => $company->id,
+            'employee_id' => 1,
+            'fortia_employee_id' => 1,
+            'location_id' => $withAttendance->id,
+            'device_id' => null,
+            'local_id' => 'UT-5001',
+            'log_date' => now(),
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $withCode = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad con código',
+            'code' => 'U-001',
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        $user = $this->createUserWithPermissions([
+            'units' => ['disable'],
+        ]);
+
+        $response = $this->actingAs($user)->getJson(route('units.bulk-deactivation-preview'));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.total_candidates', 1)
+            ->assertJsonPath('data.preview.0.id', $candidate->id);
+
+        $this->assertNotEquals($candidate->id, $withActiveClock->id);
+        $this->assertNotEquals($candidate->id, $withAttendance->id);
+        $this->assertNotEquals($candidate->id, $withCode->id);
+    }
+
+    public function test_bulk_deactivation_preview_accepts_units_without_code_even_if_fortia_location_id_exists(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Empresa Demo',
+            'code' => 'EMP',
+            'status' => 1,
+        ]);
+
+        $candidate = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad sin código pero con Fortia ID',
+            'code' => null,
+            'fortia_location_id' => 212,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        $user = $this->createUserWithPermissions([
+            'units' => ['disable'],
+        ]);
+
+        $response = $this->actingAs($user)->getJson(route('units.bulk-deactivation-preview'));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true);
+
+        $previewIds = collect($response->json('data.preview'))->pluck('id')->all();
+
+        $this->assertContains($candidate->id, $previewIds);
+    }
+
+    public function test_bulk_deactivation_dry_run_does_not_modify_units(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Empresa Demo',
+            'code' => 'EMP',
+            'status' => 1,
+        ]);
+
+        $candidate = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad candidata',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        $user = $this->createUserWithPermissions([
+            'units' => ['disable'],
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('units.bulk-deactivate-inactive'), [
+            'dry_run' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('dry_run', true);
+
+        $this->assertDatabaseHas('locations', [
+            'id' => $candidate->id,
+            'status' => 1,
+        ]);
+    }
+
+    public function test_bulk_deactivation_only_disables_real_candidates(): void
+    {
+        $company = Company::query()->create([
+            'name' => 'Empresa Demo',
+            'code' => 'EMP',
+            'status' => 1,
+        ]);
+
+        $candidate = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad candidata',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        $protected = Unit::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Unidad protegida',
+            'code' => null,
+            'fortia_location_id' => null,
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        Clock::query()->create([
+            'company_id' => $company->id,
+            'location_id' => $protected->id,
+            'clock_name' => 'Clock activo',
+            'status' => 1,
+        ]);
+
+        $user = $this->createUserWithPermissions([
+            'units' => ['disable'],
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('units.bulk-deactivate-inactive'));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('deactivated', 1);
+
+        $this->assertDatabaseHas('locations', [
+            'id' => $candidate->id,
+            'status' => 0,
+        ]);
+
+        $this->assertDatabaseHas('locations', [
+            'id' => $protected->id,
+            'status' => 1,
+        ]);
+    }
+
+    public function test_units_export_respects_filters_and_columns(): void
+    {
+        $companyA = Company::query()->create([
+            'name' => 'Empresa Norte',
+            'code' => 'NTE',
+            'status' => 1,
+        ]);
+
+        $companyB = Company::query()->create([
+            'name' => 'Empresa Sur',
+            'code' => 'SUR',
+            'status' => 1,
+        ]);
+
+        $unit = Unit::query()->create([
+            'company_id' => $companyA->id,
+            'name' => 'Unidad Norte',
+            'code' => 'U-NTE',
+            'fortia_location_id' => 9001,
+            'city' => 'Monterrey',
+            'status' => 1,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        Unit::query()->create([
+            'company_id' => $companyB->id,
+            'name' => 'Unidad Sur',
+            'code' => 'U-SUR',
+            'fortia_location_id' => 9002,
+            'city' => 'Puebla',
+            'status' => 0,
+            'timezone' => 'America/Mexico_City',
+        ]);
+
+        Clock::query()->create([
+            'company_id' => $companyA->id,
+            'location_id' => $unit->id,
+            'clock_name' => 'Clock A',
+            'status' => 1,
+        ]);
+
+        $user = $this->createUserWithPermissions([
+            'units' => ['view'],
+        ]);
+
+        $response = $this->actingAs($user)->get(route('units.export', [
+            'format' => 'csv',
+            'company_id' => $companyA->id,
+            'status' => 1,
+            'search' => 'Norte',
+            'columns' => ['company_name', 'name', 'code', 'clocks_count'],
+        ]));
+
+        $response->assertOk();
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString('Empresa,Unidad,Código,Relojes', $content);
+        $this->assertStringContainsString('"Empresa Norte","Unidad Norte",U-NTE,1', $content);
+        $this->assertStringNotContainsString('Unidad Sur', $content);
+        $this->assertStringNotContainsString('Acciones', $content);
+    }
+
     public function test_requests_are_blocked_without_unit_permissions(): void
     {
         $company = Company::query()->create([
@@ -256,6 +522,14 @@ class UnitModuleTest extends TestCase
 
         $this->actingAs($user)
             ->putJson(route('units.toggle-status', $unit))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->getJson(route('units.bulk-deactivation-preview'))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->postJson(route('units.bulk-deactivate-inactive'))
             ->assertForbidden();
     }
 

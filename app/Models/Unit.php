@@ -12,6 +12,7 @@ class Unit extends Model
     protected $table = 'locations';
 
     protected $fillable = [
+        'fortia_location_id',
         'company_id',
         'code',
         'name',

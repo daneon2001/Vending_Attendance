@@ -10,6 +10,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    searchable: {
+        type: [Boolean, String, Number],
+        default: 'auto',
+    },
     placeholder: {
         type: String,
         default: 'Selecciona una opcion',
@@ -42,13 +46,37 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    emptyValue: {
+        type: [String, Number, Boolean, Object],
+        default: '',
+    },
+    maxDropdownHeight: {
+        type: [String, Number],
+        default: 280,
+    },
+    noResultsText: {
+        type: String,
+        default: 'Sin resultados',
+    },
+    preserveWidth: {
+        type: Boolean,
+        default: true,
+    },
+    dropdownClass: {
+        type: String,
+        default: '',
+    },
+    selectedLabel: {
+        type: String,
+        default: '',
+    },
     inputClass: {
         type: String,
         default: '',
     },
 });
 
-const emit = defineEmits(['update:modelValue', 'change', 'search-change', 'open', 'close']);
+const emit = defineEmits(['update:modelValue', 'change', 'search-change', 'search', 'open', 'close', 'clear']);
 
 const rootRef = ref(null);
 const searchInputRef = ref(null);
@@ -56,32 +84,101 @@ const open = ref(false);
 const searchQuery = ref('');
 const highlightedIndex = ref(-1);
 
+const normalizeKey = (value) => {
+    if (value === null) {
+        return '__fortia_null__';
+    }
+
+    if (value === undefined) {
+        return '__fortia_undefined__';
+    }
+
+    if (typeof value === 'number') {
+        return `number:${value}`;
+    }
+
+    if (typeof value === 'boolean') {
+        return `boolean:${value ? '1' : '0'}`;
+    }
+
+    if (typeof value === 'string') {
+        return `string:${value}`;
+    }
+
+    return `json:${JSON.stringify(value)}`;
+};
+
+const normalizeSearchText = (value) =>
+    String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+
+const isSearchEnabled = computed(() => {
+    if (props.searchable === 'auto') {
+        return props.options.length > 10;
+    }
+
+    if (props.searchable === true || props.searchable === 'true' || props.searchable === 1 || props.searchable === '1') {
+        return true;
+    }
+
+    if (props.searchable === false || props.searchable === 'false' || props.searchable === 0 || props.searchable === '0') {
+        return false;
+    }
+
+    return props.options.length > 10;
+});
+
+const dropdownListStyle = computed(() => ({
+    maxHeight: typeof props.maxDropdownHeight === 'number'
+        ? `${props.maxDropdownHeight}px`
+        : props.maxDropdownHeight,
+}));
+
+const dropdownStyle = computed(() => (
+    props.preserveWidth
+        ? {
+            minWidth: '100%',
+            width: '100%',
+            maxWidth: 'min(100%, calc(100vw - 2rem))',
+        }
+        : {}
+));
+
 const normalizedOptions = computed(() =>
     props.options.map((option) => ({
         raw: option,
-        value: String(option?.[props.optionValue] ?? option.value ?? option.id ?? ''),
+        rawValue: option?.[props.optionValue] ?? option.value ?? option.id ?? '',
+        value: normalizeKey(option?.[props.optionValue] ?? option.value ?? option.id ?? ''),
         text: option?.[props.optionLabel] ?? option.label ?? option.name ?? '',
         searchText: [
             option?.[props.optionLabel],
             option?.label,
             option?.name,
             option?.code,
+            option?.description,
             option?.searchText,
         ]
             .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
-            .map((value) => String(value).trim().toLowerCase())
+            .map((value) => normalizeSearchText(value))
             .join(' '),
         disabled: Boolean(option.disabled),
     })),
 );
 
-const normalizedValue = computed(() => String(props.modelValue ?? ''));
+const normalizedValue = computed(() => normalizeKey(props.modelValue));
 const selectedOption = computed(() =>
     normalizedOptions.value.find((option) => option.value === normalizedValue.value) ?? null,
 );
 
 const filteredOptions = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    if (!isSearchEnabled.value) {
+        return normalizedOptions.value;
+    }
+
+    const query = normalizeSearchText(searchQuery.value);
 
     if (query === '') {
         return normalizedOptions.value;
@@ -90,10 +187,14 @@ const filteredOptions = computed(() => {
     return normalizedOptions.value.filter((option) => option.searchText.includes(query));
 });
 
-const triggerLabel = computed(() => selectedOption.value?.text || props.placeholder);
-const hasSelection = computed(() => normalizedValue.value !== '');
+const triggerLabel = computed(() => selectedOption.value?.text || props.selectedLabel || props.placeholder);
+const hasSelection = computed(() => normalizedValue.value !== normalizeKey(props.emptyValue));
 
 const focusSearchInput = async () => {
+    if (!isSearchEnabled.value) {
+        return;
+    }
+
     await nextTick();
     searchInputRef.value?.focus();
     searchInputRef.value?.select();
@@ -109,6 +210,7 @@ const openDropdown = async () => {
     highlightedIndex.value = filteredOptions.value.findIndex((option) => option.value === normalizedValue.value);
     emit('open');
     emit('search-change', '');
+    emit('search', '');
     await focusSearchInput();
 };
 
@@ -124,8 +226,8 @@ const selectOption = (option) => {
         return;
     }
 
-    emit('update:modelValue', option.value);
-    emit('change', option.value);
+    emit('update:modelValue', option.rawValue);
+    emit('change', option.rawValue);
     closeDropdown();
 };
 
@@ -134,8 +236,9 @@ const clearSelection = () => {
         return;
     }
 
-    emit('update:modelValue', '');
-    emit('change', '');
+    emit('update:modelValue', props.emptyValue);
+    emit('change', props.emptyValue);
+    emit('clear');
     closeDropdown();
 };
 
@@ -223,6 +326,11 @@ const handleSearchKeydown = (event) => {
         return;
     }
 
+    if (event.key === 'Tab') {
+        closeDropdown();
+        return;
+    }
+
     if (event.key === 'Escape') {
         event.preventDefault();
         closeDropdown();
@@ -241,11 +349,12 @@ watch(filteredOptions, (options) => {
 });
 
 watch(searchQuery, (value) => {
-    if (!open.value) {
+    if (!open.value || !isSearchEnabled.value) {
         return;
     }
 
     emit('search-change', value);
+    emit('search', value);
 });
 
 watch(
@@ -319,9 +428,11 @@ onBeforeUnmount(() => {
 
         <div
             v-if="open"
-            class="absolute left-0 right-0 top-full z-50 mt-2 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            class="absolute left-0 top-full z-[70] mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            :class="dropdownClass"
+            :style="dropdownStyle"
         >
-            <div class="border-b border-slate-100 p-2 dark:border-slate-800">
+            <div v-if="isSearchEnabled" class="border-b border-slate-100 p-2 dark:border-slate-800">
                 <input
                     ref="searchInputRef"
                     v-model="searchQuery"
@@ -333,7 +444,7 @@ onBeforeUnmount(() => {
                 />
             </div>
 
-            <div class="max-h-64 overflow-y-auto py-1" role="listbox">
+            <div class="overflow-y-auto py-1" :style="dropdownListStyle" role="listbox">
                 <button
                     v-if="clearable"
                     type="button"
@@ -352,7 +463,7 @@ onBeforeUnmount(() => {
                     :aria-selected="option.value === normalizedValue"
                     class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                     :class="[
-                        option.disabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-700',
+                        option.disabled ? 'cursor-not-allowed text-slate-300 dark:text-slate-600' : 'text-slate-700 dark:text-slate-100',
                         highlightedIndex === index ? 'bg-slate-50 dark:bg-slate-800' : '',
                     ]"
                     :disabled="option.disabled"
@@ -382,7 +493,7 @@ onBeforeUnmount(() => {
                     v-else-if="!filteredOptions.length"
                     class="px-3 py-3 text-sm text-slate-400 dark:text-slate-500"
                 >
-                    Sin coincidencias
+                    {{ noResultsText }}
                 </div>
             </div>
         </div>

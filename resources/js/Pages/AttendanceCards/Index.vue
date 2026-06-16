@@ -118,6 +118,24 @@ const filteredLocations = computed(() => {
 
     return props.locations.filter((location) => String(location.company_id ?? '') === String(filterForm.company_id));
 });
+const companySelectOptions = computed(() =>
+    props.companies.map((company) => ({
+        ...company,
+        label: company.code ? `${company.name} (${company.code})` : company.name,
+    })),
+);
+const locationSelectOptions = computed(() =>
+    filteredLocations.value.map((location) => ({
+        ...location,
+        label: location.code ? `${location.name} (${location.code})` : location.name,
+    })),
+);
+const departmentSelectOptions = computed(() =>
+    props.departments.map((department) => ({
+        ...department,
+        label: department.name,
+    })),
+);
 
 const employeeSelectOptions = computed(() => employeeOptions.value ?? []);
 
@@ -302,41 +320,37 @@ const summaryCards = computed(() => [
                 <form class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" @submit.prevent="applyFilters">
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empresa
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.company_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
-                        >
-                            <option value="">Todas</option>
-                            <option v-for="company in companies" :key="company.id" :value="String(company.id)">
-                                {{ company.name }}
-                            </option>
-                        </select>
+                            :options="companySelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar empresa..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Unidad / sucursal
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.location_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
-                        >
-                            <option value="">Todas</option>
-                            <option v-for="location in filteredLocations" :key="location.id" :value="String(location.id)">
-                                {{ location.name }}{{ location.code ? ` (${location.code})` : '' }}
-                            </option>
-                        </select>
+                            :options="locationSelectOptions"
+                            placeholder="Todas"
+                            search-placeholder="Buscar unidad..."
+                            :searchable="true"
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Departamento
-                        <select
+                        <SearchableSelect
                             v-model="filterForm.department_id"
-                            class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
-                        >
-                            <option value="">Todos</option>
-                            <option v-for="department in departments" :key="department.id" :value="String(department.id)">
-                                {{ department.name }}
-                            </option>
-                        </select>
+                            :options="departmentSelectOptions"
+                            placeholder="Todos"
+                            search-placeholder="Buscar departamento..."
+                            input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app"
+                        />
                     </label>
 
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">

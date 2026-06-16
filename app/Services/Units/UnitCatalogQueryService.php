@@ -2,8 +2,11 @@
 
 namespace App\Services\Units;
 
+use App\Models\Clock;
 use App\Models\Unit;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class UnitCatalogQueryService
 {
@@ -18,8 +21,9 @@ class UnitCatalogQueryService
     public function buildFilteredListQuery(array $filters): Builder
     {
         $query = $this->buildVisibleQuery()
-            ->with('company:id,name')
-            ->withCount('clocks');
+            ->with('company:id,name');
+
+        $this->applyCatalogSelects($query);
 
         $this->applyFilters($query, $filters);
 
@@ -59,7 +63,45 @@ class UnitCatalogQueryService
             $query->where(function (Builder $searchQuery) use ($search): void {
                 $searchQuery->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%");
+
+                if (Schema::hasColumn('locations', 'fortia_location_id') && preg_match('/^\d+$/', $search) === 1) {
+                    $searchQuery->orWhere('fortia_location_id', (int) $search);
+                }
             });
+        }
+    }
+
+    public function applyCatalogSelects(Builder $query): void
+    {
+        $query->select('locations.*')
+            ->withCount('clocks')
+            ->withCount([
+                'clocks as active_clocks_count' => fn (Builder $clockQuery) => $clockQuery->where('status', 1),
+            ]);
+
+        if (Schema::hasColumn('clocks', 'last_heartbeat_at')) {
+            $query->selectSub(
+                Clock::query()
+                    ->selectRaw('MAX(last_heartbeat_at)')
+                    ->whereColumn('clocks.location_id', 'locations.id'),
+                'last_heartbeat_at'
+            );
+
+            $query->withCount([
+                'clocks as offline_clocks_count' => function (Builder $clockQuery): void {
+                    $clockQuery->where('status', 1)
+                        ->where(function (Builder $offlineQuery): void {
+                            $offlineQuery->whereNull('last_heartbeat_at');
+
+                            if (Schema::hasColumn('clocks', 'last_heartbeat_at')) {
+                                $offlineQuery->orWhere('last_heartbeat_at', '<', Clock::heartbeatOnlineThreshold());
+                            }
+                        });
+                },
+            ]);
+        } else {
+            $query->selectRaw('NULL as last_heartbeat_at')
+                ->selectRaw('0 as offline_clocks_count');
         }
     }
 }
