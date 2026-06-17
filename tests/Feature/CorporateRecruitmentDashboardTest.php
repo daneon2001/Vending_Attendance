@@ -276,6 +276,43 @@ class CorporateRecruitmentDashboardTest extends TestCase
         }
     }
 
+    public function test_export_xlsx_yesterday_route_with_explicit_dates_returns_file_and_uses_real_check_date(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+            $this->createLateSyncedAttendanceLog($fixture);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'yesterday',
+                    'from_date' => '2026-06-16',
+                    'to_date' => '2026-06-16',
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+            $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+            $globalRows = $this->exportSheetRows($response, 'Resumen global');
+            $detailRows = $this->exportSheetRows($response, 'Detalle checadas');
+
+            $globalMap = collect($globalRows)
+                ->filter(fn (array $row) => isset($row[0], $row[1]) && is_string($row[0]) && $row[0] !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1]])
+                ->all();
+
+            $this->assertSame('1', (string) ($globalMap['Asistieron'] ?? null));
+            $this->assertSame('1', (string) ($globalMap['Total checadas'] ?? null));
+            $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[1][0] ?? null);
+            $this->assertSame((string) $fixture['corporate_employee_pending']->id, (string) ($detailRows[1][4] ?? null));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_export_csv_uses_real_local_check_date_in_detail_rows(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
