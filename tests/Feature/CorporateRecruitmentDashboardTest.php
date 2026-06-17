@@ -360,7 +360,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
         }
     }
 
-    public function test_export_xlsx_respects_unit_and_clock_filters(): void
+
     public function test_export_csv_uses_real_local_check_date_in_detail_rows(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
