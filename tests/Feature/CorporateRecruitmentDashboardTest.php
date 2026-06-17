@@ -185,9 +185,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
         }
     }
 
-<<<<<<< HEAD
     public function test_export_xlsx_generates_operational_attendance_report_with_dynamic_checks_and_pending_rows(): void
-=======
     public function test_dashboard_summary_uses_real_local_check_date_instead_of_sync_day(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
@@ -231,14 +229,12 @@ class CorporateRecruitmentDashboardTest extends TestCase
     }
 
     public function test_export_xlsx_uses_real_local_check_date_and_matches_dashboard_for_single_day(): void
->>>>>>> qa
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
 
         try {
             $fixture = $this->seedDashboardFixture();
             $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
-<<<<<<< HEAD
 
             AttendanceLog::query()->create([
                 'log_id' => 5005,
@@ -263,7 +259,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'source' => 'api',
                 'attendance_status' => 'valida',
             ]);
-=======
             $this->createLateSyncedAttendanceLog($fixture);
 
             $summary = $this->actingAs($user)
@@ -276,24 +271,19 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $summary->assertOk()
                 ->assertJsonPath('global.attended', 1)
                 ->assertJsonPath('global.total_checks', 1);
->>>>>>> qa
 
             $response = $this->actingAs($user)
                 ->get(route('dashboard.corporativo-reclutamiento.export', [
                     'range' => 'custom',
                     'from_date' => '2026-06-16',
-<<<<<<< HEAD
                     'to_date' => '2026-06-17',
-=======
                     'to_date' => '2026-06-16',
->>>>>>> qa
                     'format' => 'xlsx',
                 ]));
 
             $response->assertOk();
             $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
-<<<<<<< HEAD
             $workbook = $this->exportWorkbook($response);
 
             $this->assertSame(
@@ -353,7 +343,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $workbook->disconnectWorksheets();
             unset($workbook);
-=======
             $globalRows = $this->exportSheetRows($response, 'Resumen global');
             $detailRows = $this->exportSheetRows($response, 'Detalle checadas');
 
@@ -367,24 +356,19 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertCount(2, $detailRows);
             $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[1][0] ?? null);
             $this->assertSame((string) $fixture['corporate_employee_pending']->id, (string) ($detailRows[1][4] ?? null));
->>>>>>> qa
         } finally {
             Carbon::setTestNow();
         }
     }
 
-<<<<<<< HEAD
     public function test_export_xlsx_respects_unit_and_clock_filters(): void
-=======
     public function test_export_csv_uses_real_local_check_date_in_detail_rows(): void
->>>>>>> qa
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
 
         try {
             $fixture = $this->seedDashboardFixture();
             $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
-<<<<<<< HEAD
 
             AttendanceLog::query()->create([
                 'log_id' => 5101,
@@ -448,7 +432,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $workbook->disconnectWorksheets();
             unset($workbook);
-=======
             $this->createLateSyncedAttendanceLog($fixture);
 
             $response = $this->actingAs($user)
@@ -466,7 +449,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $this->assertStringContainsString('2026-06-16T18:00:00-06:00', $content);
             $this->assertStringContainsString((string) $fixture['corporate_employee_pending']->id, $content);
->>>>>>> qa
         } finally {
             Carbon::setTestNow();
         }
@@ -680,9 +662,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
         return $user;
     }
 
-<<<<<<< HEAD
     private function exportWorkbook($response): \PhpOffice\PhpSpreadsheet\Spreadsheet
-=======
     /**
      * @param  array<string, mixed>  $fixture
      */
@@ -711,7 +691,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
      * @return array<int, array<int, mixed>>
      */
     protected function exportSheetRows($response, string $sheetName): array
->>>>>>> qa
     {
         $binaryResponse = $response->baseResponse;
         $this->assertInstanceOf(BinaryFileResponse::class, $binaryResponse);
@@ -720,9 +699,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
         $this->assertFileExists($path);
         $this->assertGreaterThan(0, filesize($path));
 
-<<<<<<< HEAD
         return IOFactory::load($path);
-=======
         $spreadsheet = IOFactory::load($path);
         $sheet = $spreadsheet->getSheetByName($sheetName);
         $this->assertNotNull($sheet, "No se encontro la hoja {$sheetName} en el export.");
@@ -731,6 +708,5 @@ class CorporateRecruitmentDashboardTest extends TestCase
         unset($spreadsheet);
 
         return $rows;
->>>>>>> qa
     }
 }
