@@ -346,6 +346,245 @@ class AttendanceCentralModuleTest extends TestCase
         $this->assertStringContainsString('"2026-04-26 16:30:20","2026-04-26 22:30:20","Empleado Demo",Matriz,"Clock Main",IN,API,Valida,', $content);
     }
 
+    public function test_full_checks_export_respects_filters_and_requested_columns(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        $secondaryClockId = DB::table('clocks')->insertGetId([
+            'clock_name' => 'Clock Side',
+            'serial_number' => 'CLK-002',
+            'location_id' => $locationId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2701,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 08:15:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'adjustment_reason' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2702,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $secondaryClockId,
+                'log_date' => '2026-04-26 18:45:00',
+                'log_type' => 2,
+                'source' => 'manual',
+                'attendance_status' => 'corregida',
+                'adjustment_reason' => 'No debe salir en este filtro',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'csv',
+            'scope' => 'filtered',
+            'date_from' => '2026-04-26',
+            'date_to' => '2026-04-26',
+            'clock_id' => $clockId,
+            'status' => 'valida',
+            'columns' => ['empleado', 'fecha_local', 'hora_local', 'reloj', 'status', 'columna_invalida'],
+        ]));
+
+        $response->assertOk();
+
+        [$heading, $rows] = $this->parseExportCsvDataSection($response->streamedContent());
+
+        $this->assertSame(['Empleado', 'Fecha local', 'Hora local', 'Reloj', 'Status'], $heading);
+        $this->assertCount(1, $rows);
+        $this->assertSame(['Empleado Demo', '2026-04-26', '08:15:00', 'Clock Main', 'Valida'], $rows[0]);
+    }
+
+    public function test_full_checks_employee_day_scope_returns_individual_rows_for_local_day(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        $otherEmployeeId = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 88002,
+            'company_id' => 1,
+            'base_location_id' => $locationId,
+            'full_name' => 'Empleado Alterno',
+            'name' => 'Alterno',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2801,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 23:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_utc' => '2026-04-26 23:30:00',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2802,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-27 02:15:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_utc' => '2026-04-27 02:15:00',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2803,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-27 07:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_utc' => '2026-04-27 07:30:00',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2804,
+                'company_id' => 1,
+                'employee_id' => $otherEmployeeId,
+                'fortia_employee_id' => 88002,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-27 01:45:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_utc' => '2026-04-27 01:45:00',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'csv',
+            'scope' => 'employee_day',
+            'from' => '2026-04-26',
+            'to' => '2026-04-27',
+            'employee_id' => $employeeId,
+            'local_date' => '2026-04-26',
+            'columns' => ['empleado', 'fecha_local', 'hora_local', 'tipo', 'status'],
+        ]));
+
+        $response->assertOk();
+
+        [$heading, $rows] = $this->parseExportCsvDataSection($response->streamedContent());
+
+        $this->assertSame(['Empleado', 'Fecha local', 'Hora local', 'Tipo', 'Status'], $heading);
+        $this->assertCount(2, $rows);
+        $this->assertSame(['Empleado Demo', '2026-04-26', '17:30:00', 'IN', 'Valida'], $rows[0]);
+        $this->assertSame(['Empleado Demo', '2026-04-26', '20:15:00', 'OUT', 'Valida'], $rows[1]);
+    }
+
+    public function test_full_checks_export_is_not_limited_by_current_page(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2901,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 08:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2902,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 12:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2903,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-04-26 18:00:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'csv',
+            'scope' => 'filtered',
+            'from' => '2026-04-26',
+            'to' => '2026-04-26',
+            'per_page' => 10,
+            'page' => 1,
+            'columns' => ['hora_local', 'tipo'],
+        ]));
+
+        $response->assertOk();
+
+        [, $rows] = $this->parseExportCsvDataSection($response->streamedContent());
+
+        $this->assertCount(3, $rows);
+        $this->assertSame(['08:00:00', 'IN'], $rows[0]);
+        $this->assertSame(['12:00:00', 'IN'], $rows[1]);
+        $this->assertSame(['18:00:00', 'OUT'], $rows[2]);
+    }
+
     public function test_manual_adjustment_creates_audit_record(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
@@ -606,5 +845,39 @@ class AttendanceCentralModuleTest extends TestCase
         DB::table('clocks')->delete();
         DB::table('locations')->delete();
         DB::table('users')->delete();
+    }
+
+    /**
+     * @return array{0: array<int, string>, 1: array<int, array<int, string>>}
+     */
+    private function parseExportCsvDataSection(string $content): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
+        $dataLines = [];
+        $dataSectionStarted = false;
+
+        foreach ($lines as $line) {
+            if (! $dataSectionStarted) {
+                if (trim($line) === '') {
+                    $dataSectionStarted = true;
+                }
+
+                continue;
+            }
+
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $dataLines[] = str_getcsv($line);
+        }
+
+        $heading = array_shift($dataLines) ?? [];
+
+        if (isset($heading[0])) {
+            $heading[0] = preg_replace('/^\xEF\xBB\xBF/', '', $heading[0]) ?? $heading[0];
+        }
+
+        return [$heading, $dataLines];
     }
 }

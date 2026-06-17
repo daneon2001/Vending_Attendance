@@ -17,10 +17,13 @@ class AttendanceFilterRequest extends FormRequest
         return [
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'employee' => ['nullable', 'string', 'max:150'],
             'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'device_id' => ['nullable', 'integer', 'exists:clocks,id'],
+            'clock_id' => ['nullable', 'integer', 'exists:clocks,id'],
             'type' => ['nullable', Rule::in(['in', 'out', 'unknown', '0', '1', '2', '3', '4'])],
             'source' => ['nullable', Rule::in(config('attendance.sources', ['sync', 'manual', 'import', 'api']))],
             'status' => ['nullable', Rule::in(config('attendance.statuses', ['valida', 'anulada', 'corregida']))],
@@ -28,7 +31,9 @@ class AttendanceFilterRequest extends FormRequest
             'view_mode' => ['nullable', Rule::in(['grouped', 'raw'])],
             'columns' => ['nullable', 'array'],
             'columns.*' => ['string', 'max:80'],
-            'format' => ['nullable', Rule::in(['csv', 'excel'])],
+            'format' => ['nullable', Rule::in(['csv', 'excel', 'xlsx'])],
+            'scope' => ['nullable', Rule::in(['filtered', 'employee_day'])],
+            'local_date' => ['nullable', 'date'],
         ];
     }
 }

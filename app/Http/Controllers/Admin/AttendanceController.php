@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\ArraySheetExport;
+use App\Exports\AttendanceChecksWorkbookExport;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AttendanceAdjustmentRequest;
 use App\Http\Requests\Admin\AttendanceAnnulRequest;
@@ -11,9 +13,11 @@ use App\Models\AttendanceRecord;
 use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\Location;
+use App\Support\AttendanceChecksExportFormatter;
 use App\Services\Audit\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,12 +26,18 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceController extends Controller
 {
+    public function __construct(
+        protected AttendanceChecksExportFormatter $checksExportFormatter
+    ) {
+    }
+
     public function index(AttendanceFilterRequest $request): Response
     {
         $filters = $this->normalizeFilters($request->validated());
@@ -76,6 +86,7 @@ class AttendanceController extends Controller
             'typeLabels' => $this->logTypeLabels(),
             'statusLabels' => $this->statusLabels(),
             'sourceLabels' => $this->sourceLabels(),
+            'checksExportColumns' => $this->attendanceChecksExportColumnConfig($request),
             'flash' => [
                 'status' => session('status'),
                 'warning' => session('warning'),
@@ -319,6 +330,84 @@ class AttendanceController extends Controller
             [
                 'Content-Type' => 'text/csv; charset=UTF-8',
             ]
+        );
+    }
+
+    public function exportChecks(AttendanceFilterRequest $request): StreamedResponse|BinaryFileResponse
+    {
+        $filters = $this->normalizeFilters($request->validated());
+        $format = $filters['format'] ?? 'xlsx';
+        $scope = $filters['scope'] ?? 'filtered';
+        $includeTechnicalColumns = $this->canIncludeTechnicalExportColumns($request);
+        $columns = $this->checksExportColumns($filters['columns'] ?? [], $includeTechnicalColumns);
+        $filenameBase = 'reporte_checadas_completo_'.now($this->attendanceFallbackTimezone())->format('Ymd_His');
+
+        AuditLogger::log(
+            event: 'attendance.checks_exported',
+            auditable: null,
+            description: 'Attendance raw checks export generated',
+            metadata: [
+                'action' => 'export',
+                'entity' => 'attendance_logs',
+                'reason' => 'manual_checks_export',
+                'new_values' => [
+                    'format' => $format,
+                    'scope' => $scope,
+                    'columns' => $columns,
+                    'filters' => $filters,
+                ],
+            ],
+        );
+
+        $summaryRows = $this->buildChecksExportSummaryRows($filters, $columns, $scope, $includeTechnicalColumns);
+
+        if ($scope === 'employee_day') {
+            $records = $this->buildChecksExportCollection($filters, $scope);
+
+            if ($format === 'csv') {
+                return $this->streamChecksCsvExport(
+                    records: $records,
+                    columns: $columns,
+                    summaryRows: $summaryRows,
+                    filename: $filenameBase.'.csv'
+                );
+            }
+
+            $detailRows = [
+                $this->checksExportFormatter->headings($columns, $includeTechnicalColumns),
+                ...$records->map(fn (AttendanceRecord $record) => $this->checksExportFormatter->exportValuesForRecord($record, $columns))->all(),
+            ];
+
+            return Excel::download(
+                new AttendanceChecksWorkbookExport(
+                    summaryRows: $summaryRows,
+                    columns: $columns,
+                    formatter: $this->checksExportFormatter,
+                    detailRows: $detailRows
+                ),
+                $filenameBase.'.xlsx'
+            );
+        }
+
+        $query = $this->buildChecksExportQuery($filters);
+
+        if ($format === 'csv') {
+            return $this->streamChecksCsvExport(
+                query: $query,
+                columns: $columns,
+                summaryRows: $summaryRows,
+                filename: $filenameBase.'.csv'
+            );
+        }
+
+        return Excel::download(
+            new AttendanceChecksWorkbookExport(
+                summaryRows: $summaryRows,
+                columns: $columns,
+                formatter: $this->checksExportFormatter,
+                query: $query
+            ),
+            $filenameBase.'.xlsx'
         );
     }
 
@@ -583,6 +672,18 @@ class AttendanceController extends Controller
     {
         $filters = $validated;
 
+        if (empty($filters['from']) && ! empty($filters['date_from'])) {
+            $filters['from'] = $filters['date_from'];
+        }
+
+        if (empty($filters['to']) && ! empty($filters['date_to'])) {
+            $filters['to'] = $filters['date_to'];
+        }
+
+        if (empty($filters['device_id']) && ! empty($filters['clock_id'])) {
+            $filters['device_id'] = $filters['clock_id'];
+        }
+
         if (empty($filters['from']) && empty($filters['to'])) {
             $filters['from'] = now()->subDays(6)->toDateString();
             $filters['to'] = now()->toDateString();
@@ -608,25 +709,169 @@ class AttendanceController extends Controller
             $filters['columns'] = [];
         }
 
+        $filters['scope'] = in_array(($filters['scope'] ?? 'filtered'), ['filtered', 'employee_day'], true)
+            ? ($filters['scope'] ?? 'filtered')
+            : 'filtered';
+
+        if (! empty($filters['local_date'])) {
+            $filters['local_date'] = Carbon::parse($filters['local_date'])->toDateString();
+        }
+
         return $filters;
+    }
+
+    protected function attendanceChecksExportColumnConfig(Request $request): array
+    {
+        $includeTechnicalColumns = $this->canIncludeTechnicalExportColumns($request);
+
+        return [
+            'available' => $this->checksExportColumnsAvailable($includeTechnicalColumns),
+            'default' => $this->checksExportFormatter->defaultColumns(),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function checksExportColumnsAvailable(bool $includeTechnicalColumns = false): array
+    {
+        return $this->checksExportFormatter->availableColumns($includeTechnicalColumns);
+    }
+
+    /**
+     * @param  array<int, mixed>  $requestedColumns
+     * @return array<int, string>
+     */
+    protected function checksExportColumns(array $requestedColumns, bool $includeTechnicalColumns = false): array
+    {
+        return $this->checksExportFormatter->normalizeRequestedColumns($requestedColumns, $includeTechnicalColumns);
+    }
+
+    protected function canIncludeTechnicalExportColumns(Request $request): bool
+    {
+        $user = $request->user();
+
+        if (! $user || ! method_exists($user, 'hasPermission')) {
+            return false;
+        }
+
+        try {
+            return $user->hasPermission('asistencias', 'admin')
+                || $user->hasPermission('settings', 'manage');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     protected function rawRecordRelations(): array
     {
-        $employeeColumns = ['id', 'full_name', 'name', 'fortia_employee_id'];
-
-        foreach (['company_name', 'department_name', 'position_name'] as $column) {
-            if (Schema::hasColumn('employees', $column)) {
-                $employeeColumns[] = $column;
-            }
-        }
-
         return [
-            'employee:'.implode(',', $employeeColumns),
+            'employee:'.implode(',', $this->checksExportFormatter->employeeRelationColumns()),
             'location:id,name,code,timezone',
             'clock:id,clock_name,serial_number,location_id',
             'clock.location:id,name,code,timezone',
         ];
+    }
+
+    protected function buildChecksExportQuery(array $filters): Builder
+    {
+        return $this->buildFilteredQuery($filters)
+            ->with($this->rawRecordRelations())
+            ->orderBy('id');
+    }
+
+    protected function buildChecksExportCollection(array $filters, string $scope): Collection
+    {
+        $query = $this->buildFilteredQuery($filters)
+            ->with($this->rawRecordRelations())
+            ->orderBy('log_date');
+
+        if ($scope === 'employee_day' && ! empty($filters['employee_id']) && ! empty($filters['local_date'])) {
+            $localDate = Carbon::parse($filters['local_date'], $this->attendanceFallbackTimezone())->toDateString();
+
+            return $query->get()
+                ->filter(fn (AttendanceRecord $record) => $this->resolveRecordLocalDate($record)?->toDateString() === $localDate)
+                ->values();
+        }
+
+        return $query->get();
+    }
+
+    /**
+     * @param  array<int, string>  $columns
+     * @return array<int, array<int, mixed>>
+     */
+    protected function buildChecksExportSummaryRows(
+        array $filters,
+        array $columns,
+        string $scope,
+        bool $includeTechnicalColumns = false
+    ): array {
+        $columnLabels = $this->checksExportFormatter->headings($columns, $includeTechnicalColumns);
+        $scopeLabel = $scope === 'employee_day' ? 'employee_day' : 'filtered';
+        $visibleFilters = [
+            'from' => $filters['from'] ?? null,
+            'to' => $filters['to'] ?? null,
+            'employee' => $filters['employee'] ?? null,
+            'employee_id' => $filters['employee_id'] ?? null,
+            'location_id' => $filters['location_id'] ?? null,
+            'clock_id' => $filters['device_id'] ?? null,
+            'type' => $filters['type'] ?? null,
+            'source' => $filters['source'] ?? null,
+            'status' => $filters['status'] ?? null,
+            'local_date' => $filters['local_date'] ?? null,
+        ];
+
+        return [
+            ['Reporte completo de checadas'],
+            ['Generado', now($this->attendanceFallbackTimezone())->format('Y-m-d H:i:s')],
+            ['Timezone', 'America/Mexico_City'],
+            ['Scope', $scopeLabel],
+            ['Filtros', json_encode(array_filter($visibleFilters, fn ($value) => $value !== null && $value !== ''), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)],
+            ['Columnas', implode(', ', $columnLabels)],
+        ];
+    }
+
+    protected function streamChecksCsvExport(
+        array $columns,
+        array $summaryRows,
+        string $filename,
+        ?Builder $query = null,
+        ?Collection $records = null
+    ): StreamedResponse {
+        return response()->streamDownload(function () use ($columns, $summaryRows, $query, $records): void {
+            $output = fopen('php://output', 'w');
+            fwrite($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+            foreach ($summaryRows as $row) {
+                fputcsv($output, $row);
+            }
+
+            fputcsv($output, []);
+            fputcsv($output, $this->checksExportFormatter->headings($columns, true));
+
+            if ($records instanceof Collection) {
+                foreach ($records as $record) {
+                    fputcsv($output, $this->checksExportFormatter->exportValuesForRecord($record, $columns));
+                }
+
+                fclose($output);
+
+                return;
+            }
+
+            if ($query !== null) {
+                (clone $query)
+                    ->lazyById(500, 'id')
+                    ->each(function (AttendanceRecord $record) use ($output, $columns): void {
+                        fputcsv($output, $this->checksExportFormatter->exportValuesForRecord($record, $columns));
+                    });
+            }
+
+            fclose($output);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     protected function transformPaginatorMeta(LengthAwarePaginator $paginator): array

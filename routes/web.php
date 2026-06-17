@@ -197,6 +197,10 @@ Route::middleware('auth')->group(function () {
             ->middleware('perm:asistencias,export')
             ->name('export');
 
+        Route::get('/export-checks', [AdminAttendanceController::class, 'exportChecks'])
+            ->middleware('perm:asistencias,export')
+            ->name('export-checks');
+
         Route::post('/adjustments', [AdminAttendanceController::class, 'storeManualAdjustment'])
             ->middleware('perm:asistencias,edit')
             ->name('adjustments.store');

@@ -55,6 +55,13 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    checksExportColumns: {
+        type: Object,
+        default: () => ({
+            available: [],
+            default: [],
+        }),
+    },
     flash: {
         type: Object,
         default: () => ({}),
@@ -207,6 +214,18 @@ const defaultColumns = computed(() => props.columns?.default?.[currentViewMode.v
 const columnStorageKey = computed(() => `attendance-central.columns.${currentViewMode.value}`);
 const visibleColumnKeys = ref([]);
 const showColumnsPanel = ref(false);
+const availableChecksExportColumns = computed(() => props.checksExportColumns?.available ?? []);
+const defaultChecksExportColumns = computed(() => props.checksExportColumns?.default ?? []);
+const checksExportColumnStorageKey = 'attendance-central.columns.export-checks';
+const visibleChecksExportColumnKeys = ref([]);
+const showChecksExportColumnsPanel = ref(false);
+const exportState = reactive({
+    currentCsv: false,
+    currentExcel: false,
+    checksCsv: false,
+    checksXlsx: false,
+    detailChecks: false,
+});
 
 const sanitizeColumnKeys = (keys = [], enforceDefaults = true) => {
     const allowed = new Map(availableColumns.value.map((column) => [column.key, column]));
@@ -252,6 +271,41 @@ const syncVisibleColumns = () => {
 
 watch([availableColumns, currentViewMode], syncVisibleColumns, { immediate: true });
 
+const sanitizeChecksExportColumnKeys = (keys = [], enforceDefaults = true) => {
+    const allowed = new Map(availableChecksExportColumns.value.map((column) => [column.key, column]));
+    const ordered = [];
+
+    for (const column of availableChecksExportColumns.value) {
+        if (keys.includes(column.key)) {
+            ordered.push(column.key);
+        }
+    }
+
+    const sanitized = ordered.filter((key) => allowed.has(key));
+
+    if (!enforceDefaults || sanitized.length > 0) {
+        return sanitized;
+    }
+
+    return defaultChecksExportColumns.value.filter((key) => allowed.has(key));
+};
+
+const syncChecksExportColumns = () => {
+    if (typeof window === 'undefined') {
+        visibleChecksExportColumnKeys.value = sanitizeChecksExportColumnKeys(defaultChecksExportColumns.value);
+        return;
+    }
+
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(checksExportColumnStorageKey) ?? '[]');
+        visibleChecksExportColumnKeys.value = sanitizeChecksExportColumnKeys(Array.isArray(stored) ? stored : defaultChecksExportColumns.value);
+    } catch {
+        visibleChecksExportColumnKeys.value = sanitizeChecksExportColumnKeys(defaultChecksExportColumns.value);
+    }
+};
+
+watch(availableChecksExportColumns, syncChecksExportColumns, { immediate: true });
+
 watch(
     visibleColumnKeys,
     (value) => {
@@ -264,6 +318,21 @@ watch(
     { deep: true },
 );
 
+watch(
+    visibleChecksExportColumnKeys,
+    (value) => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        window.localStorage.setItem(
+            checksExportColumnStorageKey,
+            JSON.stringify(sanitizeChecksExportColumnKeys(value)),
+        );
+    },
+    { deep: true },
+);
+
 const orderedVisibleColumns = computed(() =>
     availableColumns.value.filter((column) => visibleColumnKeys.value.includes(column.key)),
 );
@@ -272,6 +341,12 @@ const visibleExportColumns = computed(() =>
     orderedVisibleColumns.value
         .filter((column) => column.exportable !== false)
         .map((column) => column.key),
+);
+const orderedChecksExportColumns = computed(() =>
+    availableChecksExportColumns.value.filter((column) => visibleChecksExportColumnKeys.value.includes(column.key)),
+);
+const visibleChecksExportColumns = computed(() =>
+    orderedChecksExportColumns.value.map((column) => column.key),
 );
 
 const toggleColumn = (key) => {
@@ -303,6 +378,27 @@ const toggleColumn = (key) => {
     visibleColumnKeys.value = sanitizeColumnKeys([...visibleColumnKeys.value, key]);
 };
 
+const toggleChecksExportColumn = (key) => {
+    if (visibleChecksExportColumnKeys.value.includes(key)) {
+        const nextKeys = sanitizeChecksExportColumnKeys(
+            visibleChecksExportColumnKeys.value.filter((value) => value !== key),
+            false,
+        );
+
+        if (nextKeys.length === 0) {
+            return;
+        }
+
+        visibleChecksExportColumnKeys.value = nextKeys;
+        return;
+    }
+
+    visibleChecksExportColumnKeys.value = sanitizeChecksExportColumnKeys([
+        ...visibleChecksExportColumnKeys.value,
+        key,
+    ]);
+};
+
 const queryFromAppliedFilters = computed(() => buildQueryFromFilters(createFilters(props.filters ?? {})));
 const exportCsvUrl = computed(() =>
     route('admin.asistencias.export', {
@@ -318,6 +414,36 @@ const exportExcelUrl = computed(() =>
         format: 'excel',
     }),
 );
+const exportChecksCsvUrl = computed(() =>
+    route('admin.asistencias.export-checks', {
+        ...queryFromAppliedFilters.value,
+        columns: visibleChecksExportColumns.value,
+        format: 'csv',
+        scope: 'filtered',
+    }),
+);
+const exportChecksXlsxUrl = computed(() =>
+    route('admin.asistencias.export-checks', {
+        ...queryFromAppliedFilters.value,
+        columns: visibleChecksExportColumns.value,
+        format: 'xlsx',
+        scope: 'filtered',
+    }),
+);
+
+const startDownload = (url, stateKey) => {
+    exportState[stateKey] = true;
+
+    if (typeof window !== 'undefined') {
+        window.location.href = url;
+        window.setTimeout(() => {
+            exportState[stateKey] = false;
+        }, 1600);
+        return;
+    }
+
+    exportState[stateKey] = false;
+};
 
 const annulForm = useForm({
     reason: '',
@@ -419,6 +545,23 @@ const closeGroupedDetail = () => {
     groupedDetailState.loading = false;
     groupedDetailState.error = null;
     groupedDetailState.payload = null;
+};
+
+const exportGroupedDetailChecks = () => {
+    if (!groupedDetailState.payload?.employee?.id || !groupedDetailState.payload?.local_date) {
+        return;
+    }
+
+    const url = route('admin.asistencias.export-checks', {
+        ...queryFromAppliedFilters.value,
+        employee_id: groupedDetailState.payload.employee.id,
+        local_date: groupedDetailState.payload.local_date,
+        scope: 'employee_day',
+        format: 'xlsx',
+        columns: visibleChecksExportColumns.value,
+    });
+
+    startDownload(url, 'detailChecks');
 };
 
 useBodyScrollLock(() => showAdjustmentModal.value || groupedDetailState.open);
@@ -752,7 +895,7 @@ const detailLabelForColumn = (record, key) => {
                         <button
                             type="button"
                             class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
-                            @click="showColumnsPanel = !showColumnsPanel"
+                            @click="showColumnsPanel = !showColumnsPanel; showChecksExportColumnsPanel = false"
                         >
                             Columnas
                         </button>
@@ -794,19 +937,93 @@ const detailLabelForColumn = (record, key) => {
                         </div>
                     </div>
 
-                    <div v-if="canExport" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
-                        <a
-                            :href="exportCsvUrl"
-                            class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
-                        >
-                            Exportar CSV
-                        </a>
-                        <a
-                            :href="exportExcelUrl"
-                            class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
-                        >
-                            Exportar Excel
-                        </a>
+                    <div v-if="canExport" class="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+                        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                            <button
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:tracking-[0.3em]"
+                                :disabled="exportState.currentCsv"
+                                @click="startDownload(exportCsvUrl, 'currentCsv')"
+                            >
+                                {{ exportState.currentCsv ? 'Generando CSV...' : 'Vista actual CSV' }}
+                            </button>
+                            <button
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:tracking-[0.3em]"
+                                :disabled="exportState.currentExcel"
+                                @click="startDownload(exportExcelUrl, 'currentExcel')"
+                            >
+                                {{ exportState.currentExcel ? 'Generando Excel...' : 'Vista actual Excel' }}
+                            </button>
+                        </div>
+
+                        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                            <div class="relative">
+                                <button
+                                    type="button"
+                                    class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted sm:w-auto sm:tracking-[0.3em]"
+                                    @click="showChecksExportColumnsPanel = !showChecksExportColumnsPanel; showColumnsPanel = false"
+                                >
+                                    Columnas reporte
+                                </button>
+
+                                <div
+                                    v-if="showChecksExportColumnsPanel"
+                                    class="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-app bg-white p-3 shadow-xl dark:bg-slate-900"
+                                >
+                                    <div class="mb-2 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p class="text-sm font-semibold text-app">Reporte completo de checadas</p>
+                                            <p class="text-xs text-soft">Selecciona las columnas del exportable individual.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="text-xs font-semibold text-soft"
+                                            @click="showChecksExportColumnsPanel = false"
+                                        >
+                                            Cerrar
+                                        </button>
+                                    </div>
+
+                                    <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
+                                        <label
+                                            v-for="column in availableChecksExportColumns"
+                                            :key="column.key"
+                                            class="flex items-start gap-2 rounded-2xl px-2 py-1 text-sm text-app hover:bg-slate-50 dark:hover:bg-slate-800"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                :checked="visibleChecksExportColumnKeys.includes(column.key)"
+                                                @change="toggleChecksExportColumn(column.key)"
+                                            />
+                                            <span>{{ column.label }}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:tracking-[0.3em]"
+                                :disabled="exportState.checksCsv"
+                                @click="startDownload(exportChecksCsvUrl, 'checksCsv')"
+                            >
+                                {{ exportState.checksCsv ? 'Generando CSV...' : 'Checadas CSV' }}
+                            </button>
+                            <button
+                                type="button"
+                                class="w-full rounded-2xl border border-app px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.15em] text-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:tracking-[0.3em]"
+                                :disabled="exportState.checksXlsx"
+                                @click="startDownload(exportChecksXlsxUrl, 'checksXlsx')"
+                            >
+                                {{ exportState.checksXlsx ? 'Generando Excel...' : 'Checadas Excel' }}
+                            </button>
+                        </div>
+
+                        <p class="text-right text-[11px] text-soft">
+                            La vista actual respeta el modo agrupado/crudo. El reporte de checadas exporta registros individuales.
+                        </p>
                     </div>
                 </div>
             </section>
@@ -1040,7 +1257,7 @@ const detailLabelForColumn = (record, key) => {
             class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4 py-8"
         >
             <div class="card flex w-full max-w-5xl flex-col overflow-hidden">
-                <div class="flex items-center justify-between border-b border-app px-4 py-4">
+                <div class="flex items-center justify-between gap-3 border-b border-app px-4 py-4">
                     <div class="min-w-0">
                         <h3 class="truncate text-lg font-semibold text-app">Detalle de checadas del colaborador</h3>
                         <p class="text-sm text-soft">
@@ -1048,13 +1265,24 @@ const detailLabelForColumn = (record, key) => {
                             <span v-if="groupedDetailState.payload?.local_date"> · {{ groupedDetailState.payload.local_date }}</span>
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        class="rounded-2xl border border-app px-3 py-1 text-xs font-semibold text-muted"
-                        @click="closeGroupedDetail"
-                    >
-                        Cerrar
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button
+                            v-if="canExport"
+                            type="button"
+                            class="rounded-2xl border border-app px-3 py-1 text-xs font-semibold text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="exportState.detailChecks || groupedDetailState.loading || !groupedDetailState.payload"
+                            @click="exportGroupedDetailChecks"
+                        >
+                            {{ exportState.detailChecks ? 'Exportando...' : 'Exportar checadas' }}
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-2xl border border-app px-3 py-1 text-xs font-semibold text-muted"
+                            @click="closeGroupedDetail"
+                        >
+                            Cerrar
+                        </button>
+                    </div>
                 </div>
 
                 <div class="max-h-[80vh] overflow-y-auto p-4">
