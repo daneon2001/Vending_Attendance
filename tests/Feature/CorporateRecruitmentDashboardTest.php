@@ -185,7 +185,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
         }
     }
 
-    public function test_export_xlsx_generates_operational_attendance_report_with_dynamic_checks_and_pending_rows(): void
     public function test_dashboard_summary_uses_real_local_check_date_instead_of_sync_day(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
