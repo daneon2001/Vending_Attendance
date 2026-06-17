@@ -23,6 +23,7 @@ class CorporateRecruitmentDashboardService
     public const RANGE_CUSTOM = 'custom';
     public const DETAIL_EXPORT_LIMIT = 5000;
     public const MAX_ALERTS = 5;
+    public const ATTENDANCE_SYNC_GRACE_DAYS = 2;
 
     /**
      * @var array<int, string>
@@ -92,23 +93,24 @@ class CorporateRecruitmentDashboardService
             ];
         }
 
-        $attendanceBase = $this->attendanceQuery(
-            from: $normalized['from_storage'],
-            to: $normalized['to_storage'],
+        $attendanceRecords = $this->loadAttendanceRecords(
+            fromLocal: $normalized['from_local'],
+            toLocal: $normalized['to_local'],
             locationIds: $selectedLocationIds,
             clockId: $selectedClockId
         );
         $clocks = $this->clockCollection($selectedLocationIds, $selectedClockId);
-        $attendanceByLocation = $this->attendanceSummaryByLocation(clone $attendanceBase);
-        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation(clone $attendanceBase);
+        $attendanceByLocation = $this->attendanceSummaryByLocation($attendanceRecords);
+        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation($attendanceRecords);
         $employeeCountsByLocation = $this->activeEmployeesByLocation($selectedLocations);
-        $globalAttended = (clone $attendanceBase)
-            ->whereNotNull('employee_id')
-            ->distinct('employee_id')
-            ->count('employee_id');
-        $globalChecks = (clone $attendanceBase)->count();
-        $globalFirstCheckAt = (clone $attendanceBase)->min('log_date');
-        $globalLastCheckAt = (clone $attendanceBase)->max('log_date');
+        $globalAttended = $attendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->pluck('employee_id')
+            ->unique()
+            ->count();
+        $globalChecks = $attendanceRecords->count();
+        $globalFirstCheckAt = $this->firstAttendanceCheckAt($attendanceRecords);
+        $globalLastCheckAt = $this->lastAttendanceCheckAt($attendanceRecords);
 
         $locationPayload = $selectedLocations
             ->map(function (Location $location) use (
@@ -143,8 +145,8 @@ class CorporateRecruitmentDashboardService
                         'entries' => (int) ($attendanceRow['entries'] ?? 0),
                         'exits' => (int) ($attendanceRow['exits'] ?? 0),
                         'unknown' => (int) ($attendanceRow['unknown'] ?? 0),
-                        'first_check_at' => $this->toOperationsIsoString($attendanceRow['first_check_at'] ?? null, $timezone, $storageTimezone),
-                        'last_check_at' => $this->toOperationsIsoString($attendanceRow['last_check_at'] ?? null, $timezone, $storageTimezone),
+                        'first_check_at' => $this->toLocalIsoString($attendanceRow['first_check_at'] ?? null),
+                        'last_check_at' => $this->toLocalIsoString($attendanceRow['last_check_at'] ?? null),
                     ],
                     'clocks' => $clockSummary,
                 ];
@@ -154,8 +156,8 @@ class CorporateRecruitmentDashboardService
         $globalActiveEmployees = (int) array_sum($employeeCountsByLocation);
         $globalPending = max($globalActiveEmployees - $globalAttended, 0);
         $globalClockSummary = $this->summarizeClocks($clocks, $onlineThreshold, $isBusinessHours, $timezone, $storageTimezone);
-        $hourlyActivity = $this->buildHourlyActivity(clone $attendanceBase, $timezone, $storageTimezone);
-        $clockRanking = $this->buildClockRanking($clocks, clone $attendanceBase, $locationPayload, $timezone, $storageTimezone, $onlineThreshold);
+        $hourlyActivity = $this->buildHourlyActivity($attendanceRecords);
+        $clockRanking = $this->buildClockRanking($clocks, $attendanceRecords, $locationPayload, $timezone, $storageTimezone, $onlineThreshold);
         $alerts = $this->buildAlerts($locationPayload, $clockRanking, $globalClockSummary, $isBusinessHours, $timezone, $storageTimezone);
         $meta = $this->buildMeta($normalized['filters'], $normalized['from_local'], $normalized['to_local'], $globalLastCheckAt);
 
@@ -171,8 +173,8 @@ class CorporateRecruitmentDashboardService
                 'entries' => (int) $locationPayload->sum(fn (array $row) => $row['summary']['entries']),
                 'exits' => (int) $locationPayload->sum(fn (array $row) => $row['summary']['exits']),
                 'unknown' => (int) $locationPayload->sum(fn (array $row) => $row['summary']['unknown']),
-                'first_check_at' => $this->toOperationsIsoString($globalFirstCheckAt, $timezone, $storageTimezone),
-                'last_check_at' => $this->toOperationsIsoString($globalLastCheckAt, $timezone, $storageTimezone),
+                'first_check_at' => $this->toLocalIsoString($globalFirstCheckAt),
+                'last_check_at' => $this->toLocalIsoString($globalLastCheckAt),
                 'clocks_total' => $globalClockSummary['total'],
                 'clocks_active' => $globalClockSummary['active'],
                 'clocks_online' => $globalClockSummary['online'],
@@ -387,16 +389,70 @@ class CorporateRecruitmentDashboardService
         ];
     }
 
-    protected function attendanceQuery(Carbon $from, Carbon $to, array $locationIds, ?int $clockId = null): Builder
+    protected function attendanceQuery(array $locationIds, ?int $clockId = null): Builder
     {
         return AttendanceLog::query()
-            ->whereBetween('log_date', [$from, $to])
             ->whereIn('location_id', $locationIds)
             ->when($clockId, fn (Builder $query) => $query->where('device_id', $clockId))
             ->where(function (Builder $query): void {
                 $query->whereNull('attendance_status')
                     ->orWhere('attendance_status', '!=', 'anulada');
             });
+    }
+
+    /**
+     * @return Collection<int, AttendanceLog>
+     */
+    protected function loadAttendanceRecords(
+        Carbon $fromLocal,
+        Carbon $toLocal,
+        array $locationIds,
+        ?int $clockId = null,
+        array $relations = []
+    ): Collection {
+        if ($locationIds === []) {
+            return collect();
+        }
+
+        $query = $this->attendanceQuery($locationIds, $clockId);
+
+        if ($relations !== []) {
+            $query->with($relations);
+        }
+
+        $this->applyAttendanceCandidateWindow($query, $fromLocal, $toLocal);
+
+        return $query
+            ->orderBy('log_date')
+            ->get()
+            ->filter(fn (AttendanceLog $record) => $this->attendanceFallsWithinLocalRange($record, $fromLocal, $toLocal))
+            ->values();
+    }
+
+    protected function applyAttendanceCandidateWindow(Builder $query, Carbon $fromLocal, Carbon $toLocal): void
+    {
+        $storageTimezone = $this->storageTimezone();
+        $candidateFrom = $fromLocal->copy()->setTimezone($storageTimezone)->subDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
+        $candidateTo = $toLocal->copy()->setTimezone($storageTimezone)->addDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
+
+        $query->where(function (Builder $candidateQuery) use ($candidateFrom, $candidateTo): void {
+            $candidateQuery->whereBetween('log_date', [$candidateFrom, $candidateTo]);
+
+            foreach (['ingested_at_utc', 'created_at', 'updated_at'] as $column) {
+                if (Schema::hasColumn('attendance_logs', $column)) {
+                    $candidateQuery->orWhereBetween($column, [$candidateFrom, $candidateTo]);
+                }
+            }
+        });
+    }
+
+    protected function attendanceFallsWithinLocalRange(AttendanceLog $record, Carbon $fromLocal, Carbon $toLocal): bool
+    {
+        $checkedAtLocal = $this->resolvedAttendanceLocalDateTime($record);
+
+        return $checkedAtLocal !== null
+            && $checkedAtLocal->greaterThanOrEqualTo($fromLocal)
+            && $checkedAtLocal->lessThanOrEqualTo($toLocal);
     }
 
     protected function clockCollection(array $locationIds, ?int $clockId = null): Collection
@@ -419,46 +475,34 @@ class CorporateRecruitmentDashboardService
             ]);
     }
 
-    protected function attendanceSummaryByLocation(Builder $attendanceBase): Collection
+    protected function attendanceSummaryByLocation(Collection $attendanceRecords): Collection
     {
         $entryTypes = $this->entryTypes();
         $exitTypes = $this->exitTypes();
-        $entrySql = 'SUM(CASE WHEN log_type IN ('.implode(',', $entryTypes).') THEN 1 ELSE 0 END)';
-        $exitSql = 'SUM(CASE WHEN log_type IN ('.implode(',', $exitTypes).') THEN 1 ELSE 0 END)';
         $knownTypes = array_values(array_unique(array_merge($entryTypes, $exitTypes)));
-        $unknownSql = 'SUM(CASE WHEN log_type NOT IN ('.implode(',', $knownTypes).') THEN 1 ELSE 0 END)';
 
-        return $attendanceBase
-            ->select('location_id')
-            ->selectRaw('COUNT(*) as total_checks')
-            ->selectRaw($entrySql.' as entries')
-            ->selectRaw($exitSql.' as exits')
-            ->selectRaw($unknownSql.' as unknown')
-            ->selectRaw('MIN(log_date) as first_check_at')
-            ->selectRaw('MAX(log_date) as last_check_at')
-            ->groupBy('location_id')
-            ->get()
-            ->mapWithKeys(fn ($row) => [
-                (int) $row->location_id => [
-                    'total_checks' => (int) $row->total_checks,
-                    'entries' => (int) $row->entries,
-                    'exits' => (int) $row->exits,
-                    'unknown' => (int) $row->unknown,
-                    'first_check_at' => $row->first_check_at,
-                    'last_check_at' => $row->last_check_at,
-                ],
-            ]);
+        return $attendanceRecords
+            ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
+            ->mapWithKeys(function (Collection $records, int|string $locationId) use ($entryTypes, $exitTypes, $knownTypes): array {
+                return [
+                    (int) $locationId => [
+                        'total_checks' => $records->count(),
+                        'entries' => $records->filter(fn (AttendanceLog $record) => in_array((int) $record->log_type, $entryTypes, true))->count(),
+                        'exits' => $records->filter(fn (AttendanceLog $record) => in_array((int) $record->log_type, $exitTypes, true))->count(),
+                        'unknown' => $records->filter(fn (AttendanceLog $record) => ! in_array((int) $record->log_type, $knownTypes, true))->count(),
+                        'first_check_at' => $this->firstAttendanceCheckAt($records),
+                        'last_check_at' => $this->lastAttendanceCheckAt($records),
+                    ],
+                ];
+            });
     }
 
-    protected function attendanceDistinctEmployeesByLocation(Builder $attendanceBase): Collection
+    protected function attendanceDistinctEmployeesByLocation(Collection $attendanceRecords): Collection
     {
-        return $attendanceBase
-            ->select('location_id')
-            ->selectRaw('COUNT(DISTINCT employee_id) as attended')
-            ->whereNotNull('employee_id')
-            ->groupBy('location_id')
-            ->get()
-            ->mapWithKeys(fn ($row) => [(int) $row->location_id => (int) $row->attended]);
+        return $attendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
+            ->map(fn (Collection $records) => $records->pluck('employee_id')->unique()->count());
     }
 
     /**
@@ -573,57 +617,66 @@ class CorporateRecruitmentDashboardService
         return ['status' => 'normal', 'label' => 'Operacion normal'];
     }
 
-    protected function buildHourlyActivity(Builder $attendanceBase, string $timezone, string $storageTimezone): array
+    protected function buildHourlyActivity(Collection $attendanceRecords): array
     {
-        $hourExpression = $this->hourBucketExpression('log_date', $timezone, $storageTimezone);
         $entryTypes = $this->entryTypes();
         $exitTypes = $this->exitTypes();
         $knownTypes = array_values(array_unique(array_merge($entryTypes, $exitTypes)));
 
-        $rows = $attendanceBase
-            ->selectRaw($hourExpression.' as hour_key')
-            ->selectRaw('COUNT(*) as total')
-            ->selectRaw('SUM(CASE WHEN log_type IN ('.implode(',', $entryTypes).') THEN 1 ELSE 0 END) as entries')
-            ->selectRaw('SUM(CASE WHEN log_type IN ('.implode(',', $exitTypes).') THEN 1 ELSE 0 END) as exits')
-            ->selectRaw('SUM(CASE WHEN log_type NOT IN ('.implode(',', $knownTypes).') THEN 1 ELSE 0 END) as unknown')
-            ->groupBy('hour_key')
-            ->orderBy('hour_key')
-            ->get()
-            ->mapWithKeys(fn ($row) => [str_pad((string) $row->hour_key, 2, '0', STR_PAD_LEFT) => $row]);
+        $hours = collect(range(0, 23))
+            ->mapWithKeys(fn (int $hour) => [
+                str_pad((string) $hour, 2, '0', STR_PAD_LEFT) => [
+                    'hour' => str_pad((string) $hour, 2, '0', STR_PAD_LEFT).':00',
+                    'total' => 0,
+                    'entries' => 0,
+                    'exits' => 0,
+                    'unknown' => 0,
+                ],
+            ])->all();
 
-        $hours = [];
+        foreach ($attendanceRecords as $record) {
+            $checkedAtLocal = $this->resolvedAttendanceLocalDateTime($record);
 
-        for ($hour = 0; $hour < 24; $hour++) {
-            $key = str_pad((string) $hour, 2, '0', STR_PAD_LEFT);
-            $row = $rows->get($key);
+            if ($checkedAtLocal === null) {
+                continue;
+            }
 
-            $hours[] = [
-                'hour' => $key.':00',
-                'total' => (int) ($row->total ?? 0),
-                'entries' => (int) ($row->entries ?? 0),
-                'exits' => (int) ($row->exits ?? 0),
-                'unknown' => (int) ($row->unknown ?? 0),
-            ];
+            $hourKey = $checkedAtLocal->format('H');
+            $hours[$hourKey]['total']++;
+
+            if (in_array((int) $record->log_type, $entryTypes, true)) {
+                $hours[$hourKey]['entries']++;
+                continue;
+            }
+
+            if (in_array((int) $record->log_type, $exitTypes, true)) {
+                $hours[$hourKey]['exits']++;
+                continue;
+            }
+
+            if (! in_array((int) $record->log_type, $knownTypes, true)) {
+                $hours[$hourKey]['unknown']++;
+            }
         }
 
-        return $hours;
+        return array_values($hours);
     }
 
     protected function buildClockRanking(
         Collection $clocks,
-        Builder $attendanceBase,
+        Collection $attendanceRecords,
         Collection $locationPayload,
         string $timezone,
         string $storageTimezone,
         Carbon $onlineThreshold
     ): array {
-        $attendanceByClock = $attendanceBase
-            ->select('device_id')
-            ->selectRaw('COUNT(*) as total_checks')
-            ->selectRaw('MAX(log_date) as last_check_at')
-            ->groupBy('device_id')
-            ->get()
-            ->keyBy(fn ($row) => (int) $row->device_id);
+        $attendanceByClock = $attendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->device_id !== null)
+            ->groupBy(fn (AttendanceLog $record) => (int) $record->device_id)
+            ->map(fn (Collection $records) => [
+                'total_checks' => $records->count(),
+                'last_check_at' => $this->lastAttendanceCheckAt($records),
+            ]);
         $locationMap = $locationPayload->keyBy('id');
 
         return $clocks
@@ -651,8 +704,8 @@ class CorporateRecruitmentDashboardService
                     'online' => $isOnline,
                     'last_heartbeat_at' => $this->toOperationsIsoString($clock->last_heartbeat_at, $timezone, $storageTimezone),
                     'last_status_message' => $clock->last_status_message,
-                    'total_checks' => (int) ($clockAttendance->total_checks ?? 0),
-                    'last_check_at' => $this->toOperationsIsoString($clockAttendance->last_check_at ?? null, $timezone, $storageTimezone),
+                    'total_checks' => (int) ($clockAttendance['total_checks'] ?? 0),
+                    'last_check_at' => $this->toLocalIsoString($clockAttendance['last_check_at'] ?? null),
                     'clock_catalog_url' => route('clocks.index'),
                 ];
             })
@@ -866,7 +919,9 @@ class CorporateRecruitmentDashboardService
             'from' => $fromLocal->toIso8601String(),
             'to' => $toLocal->toIso8601String(),
             'generated_at' => now($this->operationsTimezone())->toIso8601String(),
-            'latest_check_at' => $this->toOperationsIsoString($lastCheckAt, $this->operationsTimezone(), $this->storageTimezone()),
+            'latest_check_at' => $lastCheckAt instanceof Carbon
+                ? $this->toLocalIsoString($lastCheckAt)
+                : $this->toOperationsIsoString($lastCheckAt, $this->operationsTimezone(), $this->storageTimezone()),
         ];
     }
 
@@ -1045,14 +1100,15 @@ class CorporateRecruitmentDashboardService
         $locations = $this->resolveScopedLocations();
         $normalized = $this->normalizeFilters($filters, $locations);
         $selectedLocationIds = $normalized['selected_locations']->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $attendanceBase = $this->attendanceQuery(
-            $normalized['from_storage'],
-            $normalized['to_storage'],
+        $records = $this->loadAttendanceRecords(
+            $normalized['from_local'],
+            $normalized['to_local'],
             $selectedLocationIds,
-            $normalized['clock_id']
+            $normalized['clock_id'],
+            ['location:id,name', 'clock:id,clock_name,serial_number']
         );
 
-        if ((clone $attendanceBase)->count() > self::DETAIL_EXPORT_LIMIT) {
+        if ($records->count() > self::DETAIL_EXPORT_LIMIT) {
             return [];
         }
 
@@ -1066,14 +1122,13 @@ class CorporateRecruitmentDashboardService
             'Fuente',
         ]];
 
-        $records = $attendanceBase
-            ->with(['location:id,name', 'clock:id,clock_name,serial_number'])
-            ->orderBy('log_date')
-            ->get(['id', 'employee_id', 'location_id', 'device_id', 'log_date', 'log_type', 'source']);
+        $records = $records
+            ->sortBy(fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record)?->getTimestamp() ?? PHP_INT_MAX)
+            ->values();
 
         foreach ($records as $record) {
             $rows[] = [
-                $this->toOperationsIsoString($record->log_date, $this->operationsTimezone(), $this->storageTimezone()),
+                $this->toLocalIsoString($this->resolvedAttendanceLocalDateTime($record)),
                 $record->location?->name,
                 $record->clock?->clock_name,
                 $record->clock?->serial_number,
@@ -1266,5 +1321,111 @@ class CorporateRecruitmentDashboardService
         }
 
         return Carbon::parse((string) $value, $storageTimezone)->setTimezone($timezone);
+    }
+
+    protected function toLocalIsoString(?Carbon $value): ?string
+    {
+        return $value?->copy()->setTimezone($this->operationsTimezone())->toIso8601String();
+    }
+
+    protected function firstAttendanceCheckAt(Collection $records): ?Carbon
+    {
+        return $records
+            ->map(fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record))
+            ->filter()
+            ->sortBy(fn (Carbon $value) => $value->getTimestamp())
+            ->first();
+    }
+
+    protected function lastAttendanceCheckAt(Collection $records): ?Carbon
+    {
+        return $records
+            ->map(fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record))
+            ->filter()
+            ->sortByDesc(fn (Carbon $value) => $value->getTimestamp())
+            ->first();
+    }
+
+    protected function resolvedAttendanceLocalDateTime(AttendanceLog $record): ?Carbon
+    {
+        $cached = $record->getAttribute('_resolved_local_check_at');
+
+        if ($cached instanceof Carbon) {
+            return $cached;
+        }
+
+        $timezone = $this->operationsTimezone();
+        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $rawLocal = $rawPayload['punched_at_local']
+            ?? $rawPayload['event_time_local']
+            ?? null;
+
+        if ($resolved = $this->parseDateTimeInTimezone($rawLocal, $timezone)) {
+            $record->setAttribute('_resolved_local_check_at', $resolved);
+
+            return $resolved;
+        }
+
+        $rawUtc = $rawPayload['punched_at_utc']
+            ?? $rawPayload['event_time_utc']
+            ?? null;
+
+        if ($resolved = $this->parseUtcDateTimeForTimezone($rawUtc, $timezone)) {
+            $record->setAttribute('_resolved_local_check_at', $resolved);
+
+            return $resolved;
+        }
+
+        $resolved = $this->convertToTimezone($record->log_date, $timezone);
+        $record->setAttribute('_resolved_local_check_at', $resolved);
+
+        return $resolved;
+    }
+
+    protected function parseDateTimeInTimezone(mixed $value, string $timezone): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value, $timezone);
+        } catch (\Throwable) {
+            try {
+                return Carbon::parse($value)->setTimezone($timezone);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+
+    protected function parseUtcDateTimeForTimezone(mixed $value, string $timezone): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value, 'UTC')->setTimezone($timezone);
+        } catch (\Throwable) {
+            try {
+                return Carbon::parse($value)->utc()->setTimezone($timezone);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+
+    protected function convertToTimezone(mixed $value, string $timezone): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof Carbon) {
+            return Carbon::parse($value->format('Y-m-d H:i:s'), $this->storageTimezone())->setTimezone($timezone);
+        }
+
+        return Carbon::parse((string) $value, $this->storageTimezone())->setTimezone($timezone);
     }
 }
