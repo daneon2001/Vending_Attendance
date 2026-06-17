@@ -221,6 +221,37 @@ class CorporateRecruitmentDashboardService
 
     /**
      * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function buildAttendanceWorkbookData(array $filters = []): array
+    {
+        $locations = $this->resolveScopedLocations();
+        $normalized = $this->normalizeFilters($filters, $locations);
+        $selectedLocations = $normalized['selected_locations'];
+        $activeEmployees = $this->activeEmployeesForAttendanceWorkbook($selectedLocations);
+        $detailRecords = $this->buildAttendanceWorkbookDetailRecords($normalized, $activeEmployees);
+        $generatedAt = now($this->operationsTimezone());
+        $reportDates = $this->reportDateRange($normalized['from_local'], $normalized['to_local']);
+        $maxChecks = max(0, (int) $detailRecords
+            ->groupBy(fn (array $record) => $record['employee_id'].'|'.$record['date_key'])
+            ->map(fn (Collection $records) => $records->count())
+            ->max());
+
+        return [
+            'filters' => $normalized['filters'],
+            'generated_at' => $generatedAt->toIso8601String(),
+            'sheets' => [
+                'report' => $this->buildAttendanceWorkbookReportRows($activeEmployees, $detailRecords, $reportDates, $maxChecks),
+                'summary' => $this->buildAttendanceWorkbookSummaryRows($normalized, $selectedLocations, $activeEmployees, $detailRecords, $generatedAt),
+                'raw' => $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT
+                    ? $this->buildAttendanceWorkbookRawRows($detailRecords)
+                    : [],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
      */
     public function buildExportFilename(array $filters, string $generatedAt): string
     {
@@ -228,6 +259,32 @@ class CorporateRecruitmentDashboardService
         $date = Carbon::parse($generatedAt)->setTimezone($this->operationsTimezone())->format('Ymd_His');
 
         return 'dashboard_corporativo_reclutamiento_'.$range.'_'.$date;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function buildAttendanceWorkbookFilename(array $filters, string $generatedAt): string
+    {
+        $selectedUnitId = $filters['unit_id'] ?? null;
+        $date = Carbon::parse($generatedAt)->setTimezone($this->operationsTimezone())->format('Ymd_His');
+
+        if ($selectedUnitId !== null) {
+            $scope = $this->resolveScopedLocations()
+                ->firstWhere('id', (int) $selectedUnitId);
+
+            $preferredCode = (string) ($scope?->code ?: $scope?->fortia_location_id ?: '');
+
+            if ($preferredCode === '87') {
+                return 'reporte_corporativo_checadas_'.$date;
+            }
+
+            if ($preferredCode === '171') {
+                return 'reporte_reclutamiento_checadas_'.$date;
+            }
+        }
+
+        return 'reporte_corporativo_reclutamiento_checadas_'.$date;
     }
 
     /**
@@ -1084,6 +1141,293 @@ class CorporateRecruitmentDashboardService
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  Collection<int, Location>  $locations
+     * @return Collection<int, array<string, mixed>>
+     */
+    protected function activeEmployeesForAttendanceWorkbook(Collection $locations): Collection
+    {
+        $candidateMap = [];
+
+        foreach ($locations as $location) {
+            $candidateMap[(int) $location->id] = collect($this->employeeLocationCandidates($location))
+                ->map(fn ($value) => (string) $value)
+                ->all();
+        }
+
+        $allCandidates = collect($candidateMap)->flatten(1)->unique()->values()->all();
+
+        if ($allCandidates === []) {
+            return collect();
+        }
+
+        return Employee::query()
+            ->select('id', 'fortia_employee_id', 'name', 'full_name', 'status', 'base_location_id', 'can_check_all_branches')
+            ->whereIn('status', ['A', 'ACTIVE', 'active'])
+            ->whereIn('base_location_id', $allCandidates)
+            ->orderBy('full_name')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Employee $employee) use ($locations, $candidateMap): ?array {
+                $baseLocation = (string) $employee->base_location_id;
+                $matchedLocation = $locations->first(function (Location $location) use ($candidateMap, $baseLocation): bool {
+                    return in_array($baseLocation, $candidateMap[(int) $location->id] ?? [], true);
+                });
+
+                if (! $matchedLocation) {
+                    return null;
+                }
+
+                return [
+                    'employee_id' => (int) $employee->id,
+                    'employee_number' => $employee->visibleEmployeeKey() ?? (string) $employee->id,
+                    'employee_name' => $employee->full_name ?: ($employee->name ?: 'Empleado #'.$employee->id),
+                    'base_location_id' => (int) $matchedLocation->id,
+                    'base_location_name' => $matchedLocation->name,
+                    'can_check_all_branches' => (bool) $employee->can_check_all_branches,
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * @param  array<string, mixed>  $normalized
+     * @param  Collection<int, array<string, mixed>>  $activeEmployees
+     * @return Collection<int, array<string, mixed>>
+     */
+    protected function buildAttendanceWorkbookDetailRecords(array $normalized, Collection $activeEmployees): Collection
+    {
+        $selectedLocationIds = $normalized['selected_locations']->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $employeeIndex = $activeEmployees->keyBy('employee_id');
+        $employeeIds = $employeeIndex->keys()->map(fn ($id) => (int) $id)->all();
+
+        if ($selectedLocationIds === [] || $employeeIds === []) {
+            return collect();
+        }
+
+        return $this->attendanceQuery(
+            $normalized['from_storage'],
+            $normalized['to_storage'],
+            $selectedLocationIds,
+            $normalized['clock_id']
+        )
+            ->whereIn('employee_id', $employeeIds)
+            ->with([
+                'employee:id,fortia_employee_id,name,full_name',
+                'location:id,name,code,fortia_location_id',
+                'clock:id,clock_name,serial_number',
+            ])
+            ->orderBy('employee_id')
+            ->orderBy('log_date')
+            ->get([
+                'id',
+                'employee_id',
+                'location_id',
+                'device_id',
+                'log_date',
+                'log_type',
+                'source',
+                'attendance_status',
+            ])
+            ->map(function (AttendanceLog $record) use ($employeeIndex): ?array {
+                $employee = $employeeIndex->get((int) $record->employee_id);
+                if ($employee === null) {
+                    return null;
+                }
+
+                $localDateTime = $this->toOperationsDateTime(
+                    $record->log_date,
+                    $this->operationsTimezone(),
+                    $this->storageTimezone()
+                );
+
+                if (! $localDateTime) {
+                    return null;
+                }
+
+                return [
+                    'employee_id' => (int) $record->employee_id,
+                    'employee_number' => $employee['employee_number'],
+                    'employee_name' => $employee['employee_name'],
+                    'base_location_name' => $employee['base_location_name'],
+                    'date_key' => $localDateTime->format('Y-m-d'),
+                    'date_display' => $localDateTime->format('d/m/Y'),
+                    'time_display' => $localDateTime->format('H:i:s'),
+                    'datetime_display' => $localDateTime->format('d/m/Y H:i:s'),
+                    'unit_name' => $record->location?->name ?? $employee['base_location_name'],
+                    'clock_name' => $record->clock?->clock_name ?? ($record->device_id ? 'Reloj #'.$record->device_id : 'Sin reloj'),
+                    'clock_serial' => $record->clock?->serial_number,
+                    'type_label' => $this->logTypeLabel((int) $record->log_type),
+                    'source' => strtoupper((string) $record->source),
+                    'status' => $record->attendance_status ? ucfirst((string) $record->attendance_status) : '',
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $activeEmployees
+     * @param  Collection<int, array<string, mixed>>  $detailRecords
+     * @param  Collection<int, string>  $reportDates
+     * @return array<int, array<int, mixed>>
+     */
+    protected function buildAttendanceWorkbookReportRows(
+        Collection $activeEmployees,
+        Collection $detailRecords,
+        Collection $reportDates,
+        int $maxChecks
+    ): array {
+        $heading = [
+            'Numero de empleado',
+            'Nombre completo del empleado',
+            'Unidad',
+            'Fecha',
+            'Total de checadas',
+            'Primera checada',
+            'Ultima checada',
+        ];
+
+        for ($index = 1; $index <= $maxChecks; $index++) {
+            $heading[] = 'Checada '.$index;
+        }
+
+        $rows = [$heading];
+        $grouped = $detailRecords->groupBy(fn (array $record) => $record['employee_id'].'|'.$record['date_key']);
+
+        foreach ($activeEmployees as $employee) {
+            foreach ($reportDates as $dateKey) {
+                /** @var Collection<int, array<string, mixed>> $records */
+                $records = $grouped->get($employee['employee_id'].'|'.$dateKey, collect())
+                    ->sortBy('time_display')
+                    ->values();
+
+                $checks = $records->pluck('time_display')->values()->all();
+                $totalChecks = count($checks);
+                $uniqueUnits = $records->pluck('unit_name')->filter()->unique()->values();
+                $unitLabel = $records->isEmpty()
+                    ? $employee['base_location_name']
+                    : ($uniqueUnits->count() > 1 ? 'Multiples' : ($uniqueUnits->first() ?? $employee['base_location_name']));
+                $dateDisplay = Carbon::createFromFormat('Y-m-d', $dateKey, $this->operationsTimezone())->format('d/m/Y');
+
+                $row = [
+                    $employee['employee_number'],
+                    $employee['employee_name'],
+                    $unitLabel,
+                    $dateDisplay,
+                    (string) $totalChecks,
+                    $checks[0] ?? '',
+                    $checks !== [] ? $checks[array_key_last($checks)] : '',
+                ];
+
+                for ($index = 0; $index < $maxChecks; $index++) {
+                    $row[] = $checks[$index] ?? '';
+                }
+
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $normalized
+     * @param  Collection<int, Location>  $selectedLocations
+     * @param  Collection<int, array<string, mixed>>  $activeEmployees
+     * @param  Collection<int, array<string, mixed>>  $detailRecords
+     * @return array<int, array<int, mixed>>
+     */
+    protected function buildAttendanceWorkbookSummaryRows(
+        array $normalized,
+        Collection $selectedLocations,
+        Collection $activeEmployees,
+        Collection $detailRecords,
+        Carbon $generatedAt
+    ): array {
+        $employeesWithChecks = $detailRecords->pluck('employee_id')->unique()->count();
+        $totalEmployees = $activeEmployees->count();
+        $pendingEmployees = max($totalEmployees - $employeesWithChecks, 0);
+        $clockLabels = $this->clockCollection(
+            $selectedLocations->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $normalized['clock_id']
+        )
+            ->map(fn (Clock $clock) => trim($clock->clock_name.($clock->serial_number ? ' ('.$clock->serial_number.')' : '')))
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            ['Concepto', 'Valor'],
+            ['Fecha de generacion', $generatedAt->format('d/m/Y H:i:s')],
+            ['Timezone', $this->operationsTimezone()],
+            ['Rango', (string) $normalized['filters']['range']],
+            ['Desde', Carbon::parse($normalized['filters']['from_date'], $this->operationsTimezone())->format('d/m/Y')],
+            ['Hasta', Carbon::parse($normalized['filters']['to_date'], $this->operationsTimezone())->format('d/m/Y')],
+            ['Unidades incluidas', $selectedLocations->map(fn (Location $location) => trim($location->name.' ('.$this->preferredLocationCode($location).')'))->implode(', ')],
+            ['Total empleados', $totalEmployees],
+            ['Total con checada', $employeesWithChecks],
+            ['Total pendientes', $pendingEmployees],
+            ['Total checadas', $detailRecords->count()],
+            ['Cobertura', $this->percentage($employeesWithChecks, $totalEmployees).'%'],
+            ['Relojes incluidos', $clockLabels !== [] ? implode(', ', $clockLabels) : 'Todos'],
+            ['Detalle crudo incluido', $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT ? 'Si' : 'No'],
+        ];
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $detailRecords
+     * @return array<int, array<int, mixed>>
+     */
+    protected function buildAttendanceWorkbookRawRows(Collection $detailRecords): array
+    {
+        $rows = [[
+            'Numero de empleado',
+            'Nombre completo del empleado',
+            'Fecha hora local',
+            'Unidad',
+            'Reloj',
+            'Serie',
+            'Tipo',
+            'Fuente',
+            'Status',
+        ]];
+
+        foreach ($detailRecords as $record) {
+            $rows[] = [
+                $record['employee_number'],
+                $record['employee_name'],
+                $record['datetime_display'],
+                $record['unit_name'],
+                $record['clock_name'],
+                $record['clock_serial'],
+                $record['type_label'],
+                $record['source'],
+                $record['status'],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    protected function reportDateRange(Carbon $fromLocal, Carbon $toLocal): Collection
+    {
+        $dates = collect();
+        $cursor = $fromLocal->copy()->startOfDay();
+        $end = $toLocal->copy()->startOfDay();
+
+        while ($cursor->lte($end)) {
+            $dates->push($cursor->format('Y-m-d'));
+            $cursor->addDay();
+        }
+
+        return $dates;
     }
 
     protected function logTypeLabel(int $type): string

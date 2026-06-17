@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Dashboard;
 
-use App\Exports\CorporateRecruitmentDashboardExport;
+use App\Exports\CorporateRecruitmentAttendanceWorkbookExport;
 use App\Http\Controllers\Controller;
 use App\Services\Dashboard\CorporateRecruitmentDashboardService;
 use Illuminate\Http\JsonResponse;
@@ -44,15 +44,19 @@ class CorporateRecruitmentDashboardController extends Controller
     public function export(Request $request): BinaryFileResponse|StreamedResponse
     {
         $filters = $this->validateFilters($request, true);
-        $exportData = $this->service->buildExportData($filters);
-        $filename = $this->service->buildExportFilename($exportData['filters'], $exportData['generated_at']);
 
         if (($filters['format'] ?? 'xlsx') === 'csv') {
+            $exportData = $this->service->buildExportData($filters);
+            $filename = $this->service->buildExportFilename($exportData['filters'], $exportData['generated_at']);
+
             return $this->service->streamCsvExport($exportData, $filename.'.csv');
         }
 
+        $workbookData = $this->service->buildAttendanceWorkbookData($filters);
+        $filename = $this->service->buildAttendanceWorkbookFilename($workbookData['filters'], $workbookData['generated_at']);
+
         return Excel::download(
-            new CorporateRecruitmentDashboardExport($exportData),
+            new CorporateRecruitmentAttendanceWorkbookExport($workbookData),
             $filename.'.xlsx'
         );
     }

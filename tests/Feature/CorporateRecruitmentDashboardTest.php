@@ -13,6 +13,8 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 
 class CorporateRecruitmentDashboardTest extends TestCase
@@ -178,6 +180,188 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
             $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             $response->assertHeader('content-disposition');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_export_xlsx_generates_operational_attendance_report_with_dynamic_checks_and_pending_rows(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 5005,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-16 13:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 5006,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-17 20:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'custom',
+                    'from_date' => '2026-06-16',
+                    'to_date' => '2026-06-17',
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+            $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+            $workbook = $this->exportWorkbook($response);
+
+            $this->assertSame(
+                ['Reporte checadas', 'Resumen', 'Detalle crudo'],
+                $workbook->getSheetNames()
+            );
+
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $this->assertSame(
+                ['Numero de empleado', 'Nombre completo del empleado', 'Unidad', 'Fecha', 'Total de checadas', 'Primera checada', 'Ultima checada', 'Checada 1', 'Checada 2', 'Checada 3'],
+                $reportRows[0]
+            );
+
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 10, '')
+                ))
+                ->all();
+
+            $this->assertContains(
+                ['1001', 'Ana Lopez', 'Corporativo Central', '16/06/2026', '1', '07:00:00', '07:00:00', '07:00:00', '', ''],
+                $reportBody
+            );
+            $this->assertContains(
+                ['1001', 'Ana Lopez', 'Corporativo Central', '17/06/2026', '3', '08:00:00', '14:30:00', '08:00:00', '12:00:00', '14:30:00'],
+                $reportBody
+            );
+            $this->assertContains(
+                ['1002', 'Luis Perez', 'Corporativo Central', '17/06/2026', '0', '', '', '', '', ''],
+                $reportBody
+            );
+            $this->assertContains(
+                ['1003', 'Maria Soto', 'Reclutamiento Norte', '17/06/2026', '1', '07:30:00', '07:30:00', '07:30:00', '', ''],
+                $reportBody
+            );
+            $this->assertFalse(collect($reportBody)->contains(fn (array $row) => $row[0] === '1004'));
+
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('2', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('5', (string) $summaryMap->get('Total checadas'));
+            $this->assertStringContainsString('Corporativo Central (87)', (string) $summaryMap->get('Unidades incluidas'));
+            $this->assertStringContainsString('Reclutamiento Norte (171)', (string) $summaryMap->get('Unidades incluidas'));
+
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $this->assertSame(
+                ['Numero de empleado', 'Nombre completo del empleado', 'Fecha hora local', 'Unidad', 'Reloj', 'Serie', 'Tipo', 'Fuente', 'Status'],
+                $rawRows[0]
+            );
+            $this->assertCount(6, $rawRows);
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_export_xlsx_respects_unit_and_clock_filters(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 5101,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_offline']->id,
+                'log_date' => '2026-06-17 19:00:00',
+                'log_type' => 2,
+                'source' => 'manual',
+                'attendance_status' => 'corregida',
+            ]);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'today',
+                    'unit_id' => $fixture['corporate']->id,
+                    'clock_id' => $fixture['corporate_clock_online']->id,
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+
+            $workbook = $this->exportWorkbook($response);
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 9, '')
+                ))
+                ->all();
+
+            $this->assertCount(2, $reportBody);
+            $this->assertContains(
+                ['1001', 'Ana Lopez', 'Corporativo Central', '17/06/2026', '2', '08:00:00', '12:00:00', '08:00:00', '12:00:00'],
+                $reportBody
+            );
+            $this->assertContains(
+                ['1002', 'Luis Perez', 'Corporativo Central', '17/06/2026', '0', '', '', '', ''],
+                $reportBody
+            );
+
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('2', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('2', (string) $summaryMap->get('Total checadas'));
+            $this->assertStringContainsString('Corpo 1 (COR-1)', (string) $summaryMap->get('Relojes incluidos'));
+            $this->assertStringNotContainsString('Corpo 2 (COR-2)', (string) $summaryMap->get('Relojes incluidos'));
+
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
+                ->all();
+            $this->assertCount(2, $rawBody);
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[4] ?? '') === 'Corpo 2'));
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[1] ?? '') === 'Maria Soto'));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
         } finally {
             Carbon::setTestNow();
         }
@@ -389,5 +573,17 @@ class CorporateRecruitmentDashboardTest extends TestCase
         $user->roles()->sync([$role->id]);
 
         return $user;
+    }
+
+    private function exportWorkbook($response): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $binaryResponse = $response->baseResponse;
+        $this->assertInstanceOf(BinaryFileResponse::class, $binaryResponse);
+
+        $path = $binaryResponse->getFile()->getPathname();
+        $this->assertFileExists($path);
+        $this->assertGreaterThan(0, filesize($path));
+
+        return IOFactory::load($path);
     }
 }
