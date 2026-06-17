@@ -410,6 +410,37 @@ class AttendanceCentralModuleTest extends TestCase
         $this->assertSame(['Empleado Demo', '2026-04-26', '08:15:00', 'Clock Main', 'Valida'], $rows[0]);
     }
 
+    public function test_full_checks_export_xlsx_returns_excel_download_without_type_error(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2710,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-06-17 08:10:00',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->get(route('admin.asistencias.export-checks', [
+            'from' => '2026-06-17',
+            'to' => '2026-06-17',
+            'format' => 'xlsx',
+            'columns' => ['empleado', 'fortia_employee_id', 'fecha_local', 'hora_local'],
+        ]));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringContainsString('.xlsx', (string) $response->headers->get('content-disposition'));
+    }
+
     public function test_full_checks_employee_day_scope_returns_individual_rows_for_local_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
