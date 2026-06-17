@@ -268,14 +268,13 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ]));
 
             $summary->assertOk()
-                ->assertJsonPath('global.attended', 1)
-                ->assertJsonPath('global.total_checks', 1);
+                ->assertJsonPath('global.attended', 2)
+                ->assertJsonPath('global.total_checks', 2);
 
             $response = $this->actingAs($user)
                 ->get(route('dashboard.corporativo-reclutamiento.export', [
                     'range' => 'custom',
                     'from_date' => '2026-06-16',
-                    'to_date' => '2026-06-17',
                     'to_date' => '2026-06-16',
                     'format' => 'xlsx',
                 ]));
@@ -292,31 +291,27 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
             $this->assertSame(
-                ['Numero de empleado', 'Nombre completo del empleado', 'Unidad', 'Fecha', 'Total de checadas', 'Primera checada', 'Ultima checada', 'Checada 1', 'Checada 2', 'Checada 3'],
+                ['Numero de empleado', 'Nombre completo del empleado', 'Unidad', 'Fecha', 'Total de checadas', 'Primera checada', 'Ultima checada', 'Checada 1'],
                 $reportRows[0]
             );
 
             $reportBody = collect(array_slice($reportRows, 1))
                 ->map(fn (array $row) => array_map(
                     fn ($value) => $value === null ? '' : (string) $value,
-                    array_pad($row, 10, '')
+                    array_pad($row, 8, '')
                 ))
                 ->all();
 
             $this->assertContains(
-                ['1001', 'Ana Lopez', 'Corporativo Central', '16/06/2026', '1', '07:00:00', '07:00:00', '07:00:00', '', ''],
+                ['1001', 'Ana Lopez', 'Corporativo Central', '16/06/2026', '1', '07:00:00', '07:00:00', '07:00:00'],
                 $reportBody
             );
             $this->assertContains(
-                ['1001', 'Ana Lopez', 'Corporativo Central', '17/06/2026', '3', '08:00:00', '14:30:00', '08:00:00', '12:00:00', '14:30:00'],
+                ['1002', 'Luis Perez', 'Corporativo Central', '16/06/2026', '1', '18:00:00', '18:00:00', '18:00:00'],
                 $reportBody
             );
             $this->assertContains(
-                ['1002', 'Luis Perez', 'Corporativo Central', '17/06/2026', '0', '', '', '', '', ''],
-                $reportBody
-            );
-            $this->assertContains(
-                ['1003', 'Maria Soto', 'Reclutamiento Norte', '17/06/2026', '1', '07:30:00', '07:30:00', '07:30:00', '', ''],
+                ['1003', 'Maria Soto', 'Reclutamiento Norte', '16/06/2026', '0', '', '', ''],
                 $reportBody
             );
             $this->assertFalse(collect($reportBody)->contains(fn (array $row) => $row[0] === '1004'));
@@ -329,7 +324,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
             $this->assertSame('2', (string) $summaryMap->get('Total con checada'));
             $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
-            $this->assertSame('5', (string) $summaryMap->get('Total checadas'));
+            $this->assertSame('2', (string) $summaryMap->get('Total checadas'));
             $this->assertStringContainsString('Corporativo Central (87)', (string) $summaryMap->get('Unidades incluidas'));
             $this->assertStringContainsString('Reclutamiento Norte (171)', (string) $summaryMap->get('Unidades incluidas'));
 
@@ -338,30 +333,15 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ['Numero de empleado', 'Nombre completo del empleado', 'Fecha hora local', 'Unidad', 'Reloj', 'Serie', 'Tipo', 'Fuente', 'Status'],
                 $rawRows[0]
             );
-            $this->assertCount(6, $rawRows);
+            $this->assertCount(3, $rawRows);
 
             $workbook->disconnectWorksheets();
             unset($workbook);
-            $globalRows = $this->exportSheetRows($response, 'Resumen global');
-            $detailRows = $this->exportSheetRows($response, 'Detalle checadas');
-
-            $globalMap = collect($globalRows)
-                ->filter(fn (array $row) => isset($row[0], $row[1]) && is_string($row[0]) && $row[0] !== '')
-                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1]])
-                ->all();
-
-            $this->assertSame('1', (string) ($globalMap['Asistieron'] ?? null));
-            $this->assertSame('1', (string) ($globalMap['Total checadas'] ?? null));
-            $this->assertCount(2, $detailRows);
-            $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[1][0] ?? null);
-            $this->assertSame((string) $fixture['corporate_employee_pending']->id, (string) ($detailRows[1][4] ?? null));
         } finally {
             Carbon::setTestNow();
         }
     }
 
-<<<<<<< HEAD
-=======
     public function test_export_xlsx_yesterday_route_with_explicit_dates_returns_file_and_uses_real_check_date(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
@@ -382,23 +362,29 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
             $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
-            $globalRows = $this->exportSheetRows($response, 'Resumen global');
-            $detailRows = $this->exportSheetRows($response, 'Detalle checadas');
-
-            $globalMap = collect($globalRows)
-                ->filter(fn (array $row) => isset($row[0], $row[1]) && is_string($row[0]) && $row[0] !== '')
-                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1]])
+            $workbook = $this->exportWorkbook($response);
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
                 ->all();
 
-            $this->assertSame('1', (string) ($globalMap['Asistieron'] ?? null));
-            $this->assertSame('1', (string) ($globalMap['Total checadas'] ?? null));
-            $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[1][0] ?? null);
-            $this->assertSame((string) $fixture['corporate_employee_pending']->id, (string) ($detailRows[1][4] ?? null));
+            $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
+            $this->assertTrue(collect($rawBody)->contains(
+                fn (array $row) => ($row[2] ?? '') === '16/06/2026 18:00:00'
+                    && ($row[0] ?? '') === '1002'
+            ));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
         } finally {
             Carbon::setTestNow();
         }
     }
->>>>>>> qa
 
     public function test_export_csv_uses_real_local_check_date_in_detail_rows(): void
     {
@@ -721,10 +707,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
         ]);
     }
 
-    /**
-     * @return array<int, array<int, mixed>>
-     */
-    protected function exportSheetRows($response, string $sheetName): array
+    protected function exportWorkbook($response)
     {
         $binaryResponse = $response->baseResponse;
         $this->assertInstanceOf(BinaryFileResponse::class, $binaryResponse);
@@ -734,7 +717,14 @@ class CorporateRecruitmentDashboardTest extends TestCase
         $this->assertGreaterThan(0, filesize($path));
 
         return IOFactory::load($path);
-        $spreadsheet = IOFactory::load($path);
+    }
+
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    protected function exportSheetRows($response, string $sheetName): array
+    {
+        $spreadsheet = $this->exportWorkbook($response);
         $sheet = $spreadsheet->getSheetByName($sheetName);
         $this->assertNotNull($sheet, "No se encontro la hoja {$sheetName} en el export.");
         $rows = $sheet->toArray(null, true, true, false);

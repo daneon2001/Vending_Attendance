@@ -1263,41 +1263,30 @@ class CorporateRecruitmentDashboardService
             return collect();
         }
 
-        return $this->attendanceQuery(
-            $normalized['from_storage'],
-            $normalized['to_storage'],
+        return $this->loadAttendanceRecords(
+            $normalized['from_local'],
+            $normalized['to_local'],
             $selectedLocationIds,
-            $normalized['clock_id']
-        )
-            ->whereIn('employee_id', $employeeIds)
-            ->with([
+            $normalized['clock_id'],
+            [
                 'employee:id,fortia_employee_id,name,full_name',
                 'location:id,name,code,fortia_location_id',
                 'clock:id,clock_name,serial_number',
+            ]
+        )
+            ->filter(fn (AttendanceLog $record) => in_array((int) $record->employee_id, $employeeIds, true))
+            ->sortBy([
+                fn (AttendanceLog $record) => (int) $record->employee_id,
+                fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record)?->getTimestamp() ?? PHP_INT_MAX,
             ])
-            ->orderBy('employee_id')
-            ->orderBy('log_date')
-            ->get([
-                'id',
-                'employee_id',
-                'location_id',
-                'device_id',
-                'log_date',
-                'log_type',
-                'source',
-                'attendance_status',
-            ])
+            ->values()
             ->map(function (AttendanceLog $record) use ($employeeIndex): ?array {
                 $employee = $employeeIndex->get((int) $record->employee_id);
                 if ($employee === null) {
                     return null;
                 }
 
-                $localDateTime = $this->toOperationsDateTime(
-                    $record->log_date,
-                    $this->operationsTimezone(),
-                    $this->storageTimezone()
-                );
+                $localDateTime = $this->resolvedAttendanceLocalDateTime($record);
 
                 if (! $localDateTime) {
                     return null;
