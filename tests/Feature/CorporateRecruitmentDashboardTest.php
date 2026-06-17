@@ -661,10 +661,6 @@ class CorporateRecruitmentDashboardTest extends TestCase
         return $user;
     }
 
-    private function exportWorkbook($response): \PhpOffice\PhpSpreadsheet\Spreadsheet
-    /**
-     * @param  array<string, mixed>  $fixture
-     */
     protected function createLateSyncedAttendanceLog(array $fixture): AttendanceLog
     {
         return AttendanceLog::query()->create([
