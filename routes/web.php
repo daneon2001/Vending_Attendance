@@ -8,6 +8,7 @@ use App\Http\Controllers\CompanyCatalogController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\AttendanceCardController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Dashboard\CorporateRecruitmentDashboardController;
 use App\Http\Controllers\Employees\EmployeeCatalogExportController;
 use App\Http\Controllers\Employees\EmployeeCatalogPageController;
 use App\Http\Controllers\ProfileController;
@@ -46,6 +47,18 @@ Route::get('/dashboard', function () {
         'locations' => $locations,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::middleware(['auth', 'verified'])->group(function (): void {
+    Route::get('/dashboard/corporativo-reclutamiento', [CorporateRecruitmentDashboardController::class, 'index'])
+        ->middleware('perm:dashboard,view')
+        ->name('dashboard.corporativo-reclutamiento');
+    Route::get('/dashboard/corporativo-reclutamiento/summary', [CorporateRecruitmentDashboardController::class, 'summary'])
+        ->middleware('perm:dashboard,view')
+        ->name('dashboard.corporativo-reclutamiento.summary');
+    Route::get('/dashboard/corporativo-reclutamiento/export', [CorporateRecruitmentDashboardController::class, 'export'])
+        ->middleware('perm:dashboard,export')
+        ->name('dashboard.corporativo-reclutamiento.export');
+});
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

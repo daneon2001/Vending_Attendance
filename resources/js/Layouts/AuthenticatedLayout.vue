@@ -41,6 +41,13 @@ const navGroups = [
                 icon: 'dashboard',
             },
             {
+                label: 'Corpo y Reclutamiento',
+                description: 'Seguimiento puntual de unidades 87 y 171',
+                routeName: 'dashboard.corporativo-reclutamiento',
+                icon: 'dashboard',
+                requiredPermission: { module: 'dashboard', action: 'view' },
+            },
+            {
                 label: 'Relojes biometricos',
                 description: 'Catalogo y monitoreo',
                 routeName: 'clocks.index',
