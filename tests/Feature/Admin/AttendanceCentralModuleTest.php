@@ -203,6 +203,130 @@ class AttendanceCentralModuleTest extends TestCase
         );
     }
 
+    public function test_grouped_view_filters_by_real_local_check_date_instead_of_utc_day(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2405,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-17 05:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-16 23:30:00',
+                    'punched_at_utc' => '2026-06-17 05:30:00',
+                ]),
+                'created_at' => '2026-06-17 08:00:00',
+                'updated_at' => '2026-06-17 08:00:00',
+            ],
+            [
+                'log_id' => 2406,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-17 14:00:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-17 08:00:00',
+                    'punched_at_utc' => '2026-06-17 14:00:00',
+                ]),
+                'created_at' => '2026-06-17 14:05:00',
+                'updated_at' => '2026-06-17 14:05:00',
+            ],
+        ]);
+
+        $juneSixteenthResponse = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+        ]));
+
+        $juneSixteenthResponse->assertOk();
+        $juneSixteenthResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.local_date', '2026-06-16')
+            ->where('initialRecords.data.0.total_checks', 1)
+            ->where('initialRecords.data.0.first_check_display', '2026-06-16 23:30:00')
+        );
+
+        $juneSeventeenthResponse = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-17',
+            'to' => '2026-06-17',
+        ]));
+
+        $juneSeventeenthResponse->assertOk();
+        $juneSeventeenthResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.local_date', '2026-06-17')
+            ->where('initialRecords.data.0.total_checks', 1)
+            ->where('initialRecords.data.0.first_check_display', '2026-06-17 08:00:00')
+        );
+    }
+
+    public function test_raw_view_filters_by_real_local_date_using_utc_fallback(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2407,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-06-17 05:30:00',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => json_encode([
+                'punched_at_utc' => '2026-06-17 05:30:00',
+            ]),
+            'created_at' => '2026-06-17 08:00:00',
+            'updated_at' => '2026-06-17 08:00:00',
+        ]);
+
+        $juneSixteenthResponse = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'view_mode' => 'raw',
+        ]));
+
+        $juneSixteenthResponse->assertOk();
+        $juneSixteenthResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('viewMode', 'raw')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.log_id', 2407)
+            ->where('initialRecords.data.0.log_date_display', '2026-06-16 23:30:00')
+        );
+
+        $juneSeventeenthResponse = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-17',
+            'to' => '2026-06-17',
+            'view_mode' => 'raw',
+        ]));
+
+        $juneSeventeenthResponse->assertOk();
+        $juneSeventeenthResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('viewMode', 'raw')
+            ->where('initialRecords.meta.total', 0)
+            ->where('initialRecords.data', [])
+        );
+    }
+
     public function test_grouped_detail_returns_all_employee_checks_for_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
@@ -408,6 +532,78 @@ class AttendanceCentralModuleTest extends TestCase
         $this->assertSame(['Empleado', 'Fecha local', 'Hora local', 'Reloj', 'Status'], $heading);
         $this->assertCount(1, $rows);
         $this->assertSame(['Empleado Demo', '2026-04-26', '08:15:00', 'Clock Main', 'Valida'], $rows[0]);
+    }
+
+    public function test_full_checks_export_filters_by_real_local_check_date(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2703,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-17 05:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-16 23:30:00',
+                    'punched_at_utc' => '2026-06-17 05:30:00',
+                ]),
+                'created_at' => '2026-06-17 08:00:00',
+                'updated_at' => '2026-06-17 08:00:00',
+            ],
+            [
+                'log_id' => 2704,
+                'company_id' => 1,
+                'employee_id' => $employeeId,
+                'fortia_employee_id' => 88001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-17 14:15:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-17 08:15:00',
+                    'punched_at_utc' => '2026-06-17 14:15:00',
+                ]),
+                'created_at' => '2026-06-17 14:20:00',
+                'updated_at' => '2026-06-17 14:20:00',
+            ],
+        ]);
+
+        $csvResponse = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'csv',
+            'scope' => 'filtered',
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'columns' => ['empleado', 'fecha_local', 'hora_local', 'tipo'],
+        ]));
+
+        $csvResponse->assertOk();
+
+        [$heading, $rows] = $this->parseExportCsvDataSection($csvResponse->streamedContent());
+
+        $this->assertSame(['Empleado', 'Fecha local', 'Hora local', 'Tipo'], $heading);
+        $this->assertCount(1, $rows);
+        $this->assertSame(['Empleado Demo', '2026-06-16', '23:30:00', 'IN'], $rows[0]);
+
+        $xlsxResponse = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'xlsx',
+            'scope' => 'filtered',
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'columns' => ['empleado', 'fecha_local', 'hora_local', 'tipo'],
+        ]));
+
+        $xlsxResponse->assertOk();
+        $xlsxResponse->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringContainsString('.xlsx', (string) $xlsxResponse->headers->get('content-disposition'));
     }
 
     public function test_full_checks_export_xlsx_returns_excel_download_without_type_error(): void

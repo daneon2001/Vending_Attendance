@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -92,8 +93,8 @@ class AttendanceRecord extends Model
     public function scopeWithinDateRange(Builder $query, ?string $from, ?string $to): Builder
     {
         return $query
-            ->when($from, fn (Builder $builder) => $builder->where('log_date', '>=', $from.' 00:00:00'))
-            ->when($to, fn (Builder $builder) => $builder->where('log_date', '<=', $to.' 23:59:59'));
+            ->when($from, fn (Builder $builder) => $builder->where('log_date', '>=', Carbon::parse($from)->subDay()->startOfDay()->format('Y-m-d H:i:s')))
+            ->when($to, fn (Builder $builder) => $builder->where('log_date', '<=', Carbon::parse($to)->addDay()->endOfDay()->format('Y-m-d H:i:s')));
     }
 
     public function scopeByStatus(Builder $query, ?string $status): Builder

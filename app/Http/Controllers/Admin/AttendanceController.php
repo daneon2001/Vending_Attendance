@@ -301,10 +301,13 @@ class AttendanceController extends Controller
                     fputcsv($output, $this->exportValuesForGroupedRow($row, $columns));
                 }
             } else {
-                $records = $this->buildFilteredQuery($filters)
-                    ->with($this->rawRecordRelations())
-                    ->orderByDesc('log_date')
-                    ->get();
+                $records = $this->filterCollectionByResolvedDateRange(
+                    $this->buildFilteredQuery($filters)
+                        ->with($this->rawRecordRelations())
+                        ->orderByDesc('log_date')
+                        ->get(),
+                    $filters
+                );
 
                 foreach ($records as $record) {
                     fputcsv($output, $this->exportValuesForRawRecord($this->transformIndexRecord($record), $columns));
@@ -360,52 +363,28 @@ class AttendanceController extends Controller
         );
 
         $summaryRows = $this->buildChecksExportSummaryRows($filters, $columns, $scope, $includeTechnicalColumns);
-
-        if ($scope === 'employee_day') {
-            $records = $this->buildChecksExportCollection($filters, $scope);
-
-            if ($format === 'csv') {
-                return $this->streamChecksCsvExport(
-                    records: $records,
-                    columns: $columns,
-                    summaryRows: $summaryRows,
-                    filename: $filenameBase.'.csv'
-                );
-            }
-
-            $detailRows = [
-                $this->checksExportFormatter->headings($columns, $includeTechnicalColumns),
-                ...$records->map(fn (AttendanceRecord $record) => $this->checksExportFormatter->exportValuesForRecord($record, $columns))->all(),
-            ];
-
-            return Excel::download(
-                new AttendanceChecksWorkbookExport(
-                    summaryRows: $summaryRows,
-                    columns: $columns,
-                    formatter: $this->checksExportFormatter,
-                    detailRows: $detailRows
-                ),
-                $filenameBase.'.xlsx'
-            );
-        }
-
-        $query = $this->buildChecksExportQuery($filters);
+        $records = $this->buildChecksExportCollection($filters, $scope);
 
         if ($format === 'csv') {
             return $this->streamChecksCsvExport(
-                query: $query,
+                records: $records,
                 columns: $columns,
                 summaryRows: $summaryRows,
                 filename: $filenameBase.'.csv'
             );
         }
 
+        $detailRows = [
+            $this->checksExportFormatter->headings($columns, $includeTechnicalColumns),
+            ...$records->map(fn (AttendanceRecord $record) => $this->checksExportFormatter->exportValuesForRecord($record, $columns))->all(),
+        ];
+
         return Excel::download(
             new AttendanceChecksWorkbookExport(
                 summaryRows: $summaryRows,
                 columns: $columns,
                 formatter: $this->checksExportFormatter,
-                query: $query
+                detailRows: $detailRows
             ),
             $filenameBase.'.xlsx'
         );
@@ -450,17 +429,32 @@ class AttendanceController extends Controller
     {
         $perPage = (int) ($filters['per_page'] ?? 25);
 
-        $records = $this->buildFilteredQuery($filters)
-            ->with($this->rawRecordRelations())
-            ->orderByDesc('log_date')
-            ->paginate($perPage)
-            ->withQueryString();
+        $records = $this->filterCollectionByResolvedDateRange(
+            $this->buildFilteredQuery($filters)
+                ->with($this->rawRecordRelations())
+                ->orderByDesc('log_date')
+                ->get(),
+            $filters
+        );
+
+        $currentPage = max(1, (int) request()->integer('page', 1));
+        $paginated = new LengthAwarePaginator(
+            $records->slice(($currentPage - 1) * $perPage, $perPage)->values(),
+            $records->count(),
+            $perPage,
+            $currentPage,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
 
         return [
-            'data' => $records->getCollection()
+            'data' => $paginated->getCollection()
                 ->map(fn (AttendanceRecord $record) => $this->transformIndexRecord($record))
-                ->values(),
-            'meta' => $this->transformPaginatorMeta($records),
+                ->values()
+                ->all(),
+            'meta' => $this->transformPaginatorMeta($paginated),
         ];
     }
 
@@ -487,11 +481,14 @@ class AttendanceController extends Controller
 
     protected function buildGroupedRows(array $filters): Collection
     {
-        $records = $this->buildFilteredQuery($filters)
-            ->with($this->rawRecordRelations())
-            ->orderBy('employee_id')
-            ->orderBy('log_date')
-            ->get();
+        $records = $this->filterCollectionByResolvedDateRange(
+            $this->buildFilteredQuery($filters)
+                ->with($this->rawRecordRelations())
+                ->orderBy('employee_id')
+                ->orderBy('log_date')
+                ->get(),
+            $filters
+        );
 
         $groups = [];
 
@@ -782,19 +779,23 @@ class AttendanceController extends Controller
 
     protected function buildChecksExportCollection(array $filters, string $scope): Collection
     {
-        $query = $this->buildFilteredQuery($filters)
-            ->with($this->rawRecordRelations())
-            ->orderBy('log_date');
+        $records = $this->filterCollectionByResolvedDateRange(
+            $this->buildFilteredQuery($filters)
+                ->with($this->rawRecordRelations())
+                ->orderBy('log_date')
+                ->get(),
+            $filters
+        );
 
         if ($scope === 'employee_day' && ! empty($filters['employee_id']) && ! empty($filters['local_date'])) {
             $localDate = Carbon::parse($filters['local_date'], $this->attendanceFallbackTimezone())->toDateString();
 
-            return $query->get()
+            return $records
                 ->filter(fn (AttendanceRecord $record) => $this->resolveRecordLocalDate($record)?->toDateString() === $localDate)
                 ->values();
         }
 
-        return $query->get();
+        return $records->values();
     }
 
     /**
@@ -872,6 +873,39 @@ class AttendanceController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    protected function filterCollectionByResolvedDateRange(Collection $records, array $filters): Collection
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+
+        if (! $from && ! $to) {
+            return $records->values();
+        }
+
+        return $records
+            ->filter(fn (AttendanceRecord $record) => $this->recordMatchesResolvedDateRange($record, $from, $to))
+            ->values();
+    }
+
+    protected function recordMatchesResolvedDateRange(AttendanceRecord $record, ?string $from, ?string $to): bool
+    {
+        $localDate = $this->resolveRecordLocalDate($record)?->toDateString();
+
+        if ($localDate === null) {
+            return false;
+        }
+
+        if ($from !== null && $localDate < $from) {
+            return false;
+        }
+
+        if ($to !== null && $localDate > $to) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function transformPaginatorMeta(LengthAwarePaginator $paginator): array
