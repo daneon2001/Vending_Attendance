@@ -1274,8 +1274,8 @@ class AttendanceController extends Controller
     protected function transformIndexRecord(AttendanceRecord $record): array
     {
         $resolvedLocation = $record->location ?? $record->clock?->location;
-        $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
-        $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+        $timezone = $record->attendanceOperationsTimezone();
+        $logDateLocal = $record->resolvedAttendanceLocalDateTime();
         $logDateUtc = $this->resolveRecordUtcDate($record);
 
         return [
@@ -1309,7 +1309,7 @@ class AttendanceController extends Controller
                 'id' => $resolvedLocation?->id ?? $record->location_id ?? $record->clock?->location_id,
                 'name' => $resolvedLocation?->name ?? 'Sin unidad',
                 'code' => $resolvedLocation?->code,
-                'timezone' => $timezone,
+                'timezone' => $resolvedLocation?->timezone ?: $timezone,
             ],
             'clock' => [
                 'id' => $record->clock?->id ?? $record->device_id,
@@ -1376,105 +1376,27 @@ class AttendanceController extends Controller
         }
     }
 
-    private function resolveRecordTimezone(AttendanceRecord $record, ?string $fallbackTimezone = null): string
-    {
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawTimezone = $rawPayload['timezone']
-            ?? $rawPayload['tz']
-            ?? null;
-
-        return $this->normalizeTimezone(
-            is_string($rawTimezone) ? $rawTimezone : null,
-            $fallbackTimezone
-        );
-    }
-
     private function resolveRecordLocalDate(AttendanceRecord $record, ?string $timezone = null): ?Carbon
     {
-        $tz = $this->normalizeTimezone($timezone);
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawLocal = $rawPayload['punched_at_local']
-            ?? $rawPayload['event_time_local']
-            ?? null;
-
-        if ($localDate = $this->parseDateTimeInTimezone($rawLocal, $tz)) {
-            return $localDate;
-        }
-
-        $rawUtc = $rawPayload['punched_at_utc']
-            ?? $rawPayload['event_time_utc']
-            ?? null;
-
-        if ($utcDate = $this->parseUtcDateTimeForTimezone($rawUtc, $tz)) {
-            return $utcDate;
-        }
-
-        return $this->convertToTimezone($record->log_date, $tz);
+        return $record->resolvedAttendanceLocalDateTime();
     }
 
     private function resolveRecordUtcDate(AttendanceRecord $record): ?Carbon
     {
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawUtc = $rawPayload['punched_at_utc']
-            ?? $rawPayload['event_time_utc']
-            ?? null;
-
-        if ($utcDate = $this->parseUtcDateTimeForTimezone($rawUtc, 'UTC')) {
-            return $utcDate;
-        }
-
-        return $record->log_date?->copy()->utc();
+        return $record->resolvedAttendanceUtcDateTime();
     }
 
-    private function parseDateTimeInTimezone(mixed $value, string $timezone): ?Carbon
+    private function normalizeTimezone(?string $timezone): string
     {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, $timezone);
-        } catch (\Throwable $exception) {
-            try {
-                return Carbon::parse($value)->setTimezone($timezone);
-            } catch (\Throwable $exception) {
-                return null;
-            }
-        }
-    }
-
-    private function parseUtcDateTimeForTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, 'UTC')->setTimezone($timezone);
-        } catch (\Throwable $exception) {
-            try {
-                return Carbon::parse($value)->utc()->setTimezone($timezone);
-            } catch (\Throwable $exception) {
-                return null;
-            }
-        }
-    }
-
-    private function normalizeTimezone(?string $timezone, ?string $fallbackTimezone = null): string
-    {
-        foreach ([$timezone, $fallbackTimezone, $this->attendanceFallbackTimezone()] as $candidate) {
-            if (! is_string($candidate) || trim($candidate) === '') {
-                continue;
-            }
-
-            $trimmedCandidate = trim($candidate);
+        if (is_string($timezone) && trim($timezone) !== '') {
+            $candidate = trim($timezone);
 
             try {
-                new \DateTimeZone($trimmedCandidate);
+                new \DateTimeZone($candidate);
 
-                return $trimmedCandidate;
-            } catch (\Throwable $exception) {
-                continue;
+                return $candidate;
+            } catch (\Throwable) {
+                // Fallback handled below.
             }
         }
 

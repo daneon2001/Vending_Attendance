@@ -118,8 +118,8 @@ class AttendanceChecksExportFormatter
     public function transformRecord(AttendanceRecord $record): array
     {
         $resolvedLocation = $record->location ?? $record->clock?->location;
-        $timezone = $this->resolveRecordTimezone($record, $resolvedLocation?->timezone);
-        $logDateLocal = $this->resolveRecordLocalDate($record, $timezone);
+        $timezone = $record->attendanceOperationsTimezone();
+        $logDateLocal = $record->resolvedAttendanceLocalDateTime();
 
         return [
             'empleado' => $record->employee?->full_name ?? $record->employee?->name ?? 'N/A',
@@ -223,76 +223,6 @@ class AttendanceChecksExportFormatter
             return $dateTime->copy()->setTimezone($resolvedTimezone);
         } catch (\Throwable) {
             return $dateTime->copy()->setTimezone($this->attendanceFallbackTimezone());
-        }
-    }
-
-    protected function resolveRecordTimezone(AttendanceRecord $record, ?string $fallbackTimezone = null): string
-    {
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawTimezone = $rawPayload['timezone']
-            ?? $rawPayload['tz']
-            ?? null;
-
-        return $this->normalizeTimezone(
-            is_string($rawTimezone) ? $rawTimezone : null,
-            $fallbackTimezone
-        );
-    }
-
-    protected function resolveRecordLocalDate(AttendanceRecord $record, ?string $timezone = null): ?Carbon
-    {
-        $tz = $this->normalizeTimezone($timezone);
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawLocal = $rawPayload['punched_at_local']
-            ?? $rawPayload['event_time_local']
-            ?? null;
-
-        if ($localDate = $this->parseDateTimeInTimezone($rawLocal, $tz)) {
-            return $localDate;
-        }
-
-        $rawUtc = $rawPayload['punched_at_utc']
-            ?? $rawPayload['event_time_utc']
-            ?? null;
-
-        if ($utcDate = $this->parseUtcDateTimeForTimezone($rawUtc, $tz)) {
-            return $utcDate;
-        }
-
-        return $this->convertToTimezone($record->log_date, $tz);
-    }
-
-    protected function parseDateTimeInTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, $timezone);
-        } catch (\Throwable) {
-            try {
-                return Carbon::parse($value)->setTimezone($timezone);
-            } catch (\Throwable) {
-                return null;
-            }
-        }
-    }
-
-    protected function parseUtcDateTimeForTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, 'UTC')->setTimezone($timezone);
-        } catch (\Throwable) {
-            try {
-                return Carbon::parse($value)->utc()->setTimezone($timezone);
-            } catch (\Throwable) {
-                return null;
-            }
         }
     }
 

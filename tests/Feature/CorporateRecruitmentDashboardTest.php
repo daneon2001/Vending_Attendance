@@ -205,8 +205,8 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $day16->assertOk()
                 ->assertJsonPath('global.attended', 1)
                 ->assertJsonPath('global.total_checks', 1)
-                ->assertJsonPath('global.first_check_at', '2026-06-16T18:00:00-06:00')
-                ->assertJsonPath('global.last_check_at', '2026-06-16T18:00:00-06:00')
+                ->assertJsonPath('global.first_check_at', '2026-06-16T18:38:45-06:00')
+                ->assertJsonPath('global.last_check_at', '2026-06-16T18:38:45-06:00')
                 ->assertJsonPath('locations.0.summary.attended', 1)
                 ->assertJsonPath('locations.0.summary.total_checks', 1)
                 ->assertJsonPath('locations.1.summary.total_checks', 0);
@@ -308,7 +308,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 $reportBody
             );
             $this->assertContains(
-                ['1002', 'Luis Perez', 'Corporativo Central', '16/06/2026', '1', '18:00:00', '18:00:00', '18:00:00'],
+                ['1002', 'Luis Perez', 'Corporativo Central', '16/06/2026', '1', '18:38:45', '18:38:45', '18:38:45'],
                 $reportBody
             );
             $this->assertContains(
@@ -322,10 +322,14 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
                 ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
 
+            $reportCheckTotal = collect($reportBody)
+                ->sum(fn (array $row) => (int) ($row[4] ?? 0));
+
             $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
             $this->assertSame('2', (string) $summaryMap->get('Total con checada'));
             $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
             $this->assertSame('2', (string) $summaryMap->get('Total checadas'));
+            $this->assertSame((int) $summary->json('global.total_checks'), $reportCheckTotal);
             $this->assertStringContainsString('Corporativo Central (87)', (string) $summaryMap->get('Unidades incluidas'));
             $this->assertStringContainsString('Reclutamiento Norte (171)', (string) $summaryMap->get('Unidades incluidas'));
 
@@ -376,7 +380,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
             $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
             $this->assertTrue(collect($rawBody)->contains(
-                fn (array $row) => ($row[2] ?? '') === '16/06/2026 18:00:00'
+                fn (array $row) => ($row[2] ?? '') === '16/06/2026 18:38:45'
                     && ($row[0] ?? '') === '1002'
             ));
 
@@ -487,7 +491,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 fn (array $row) => $row !== []
             ));
 
-            $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[0][0] ?? null);
+            $this->assertSame('2026-06-16T18:38:45-06:00', $detailRows[0][0] ?? null);
             $this->assertSame('1002', $detailRows[0][4] ?? null);
             $this->assertNotSame((string) $fixture['corporate_employee_pending']->id, $detailRows[0][4] ?? null);
         } finally {
@@ -741,15 +745,15 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $fixture['company']->id,
             'location_id' => $fixture['corporate']->id,
             'device_id' => $fixture['corporate_clock_online']->id,
-            'log_date' => '2026-06-17 14:00:00',
+            'log_date' => '2026-06-17 00:38:45',
             'log_type' => 1,
             'source' => 'api',
             'attendance_status' => 'valida',
-            'ingested_at_utc' => '2026-06-17 14:05:00',
+            'ingested_at_utc' => '2026-06-17 00:43:45',
             'raw_payload' => [
                 'timezone' => 'America/Mexico_City',
-                'punched_at_local' => '2026-06-16 18:00:00',
-                'punched_at_utc' => '2026-06-17 00:00:00',
+                'punched_at_local' => '2026-06-16 18:38:45',
+                'punched_at_utc' => '2026-06-17 00:38:45',
             ],
         ]);
     }

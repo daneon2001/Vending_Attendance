@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ResolvesAttendanceLocalDateTime;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class AttendanceLog extends Model
 {
     use HasFactory;
+    use ResolvesAttendanceLocalDateTime;
 
     protected $fillable = [
         'log_id',

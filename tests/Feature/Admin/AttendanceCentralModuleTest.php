@@ -157,8 +157,8 @@ class AttendanceCentralModuleTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Attendance/Index')
             ->where('initialRecords.data.0.total_checks', 2)
-            ->where('initialRecords.data.0.first_check_display', '2026-04-26 14:30:20')
-            ->where('initialRecords.data.0.last_check_display', '2026-04-26 23:15:40')
+            ->where('initialRecords.data.0.first_check_display', '2026-04-26 08:30:20')
+            ->where('initialRecords.data.0.last_check_display', '2026-04-26 17:15:40')
             ->where('initialRecords.data.0.entry_count', 1)
             ->where('initialRecords.data.0.exit_count', 1)
         );
@@ -327,6 +327,71 @@ class AttendanceCentralModuleTest extends TestCase
         );
     }
 
+    public function test_central_filters_and_exports_required_mexico_city_case_by_real_check_date(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2408,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-06-17 00:38:45',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => json_encode([
+                'punched_at_local' => '2026-06-16 18:38:45',
+                'punched_at_utc' => '2026-06-17 00:38:45',
+            ]),
+            'created_at' => '2026-06-17 08:00:00',
+            'updated_at' => '2026-06-17 08:00:00',
+        ]);
+
+        $day16Response = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+        ]));
+
+        $day16Response->assertOk();
+        $day16Response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.local_date', '2026-06-16')
+            ->where('initialRecords.data.0.first_check_display', '2026-06-16 18:38:45')
+        );
+
+        $day17Response = $this->get(route('admin.asistencias.index', [
+            'from' => '2026-06-17',
+            'to' => '2026-06-17',
+        ]));
+
+        $day17Response->assertOk();
+        $day17Response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.meta.total', 0)
+            ->where('initialRecords.data', [])
+        );
+
+        $exportResponse = $this->get(route('admin.asistencias.export-checks', [
+            'format' => 'csv',
+            'scope' => 'filtered',
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'columns' => ['empleado', 'fecha_local', 'hora_local'],
+        ]));
+
+        $exportResponse->assertOk();
+
+        [$heading, $rows] = $this->parseExportCsvDataSection($exportResponse->streamedContent());
+
+        $this->assertSame(['Empleado', 'Fecha local', 'Hora local'], $heading);
+        $this->assertCount(1, $rows);
+        $this->assertSame(['Empleado Demo', '2026-06-16', '18:38:45'], $rows[0]);
+    }
+
     public function test_grouped_detail_returns_all_employee_checks_for_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
@@ -427,7 +492,7 @@ class AttendanceCentralModuleTest extends TestCase
 
         $this->assertStringContainsString('Empleado,"Hora local / Fecha local","Primera checada"', $content);
         $this->assertStringContainsString('"Total checadas"', $content);
-        $this->assertStringContainsString('"Empleado Demo",2026-04-26,"2026-04-26 14:30:20","2026-04-26 22:30:20",2', $content);
+        $this->assertStringContainsString('"Empleado Demo",2026-04-26,"2026-04-26 08:30:20","2026-04-26 16:30:20",2', $content);
         $this->assertStringNotContainsString('Acciones', $content);
         $this->assertStringNotContainsString('Fuente', $content);
     }
@@ -531,7 +596,7 @@ class AttendanceCentralModuleTest extends TestCase
 
         $this->assertSame(['Empleado', 'Fecha local', 'Hora local', 'Reloj', 'Status'], $heading);
         $this->assertCount(1, $rows);
-        $this->assertSame(['Empleado Demo', '2026-04-26', '08:15:00', 'Clock Main', 'Valida'], $rows[0]);
+        $this->assertSame(['Empleado Demo', '2026-04-26', '02:15:00', 'Clock Main', 'Valida'], $rows[0]);
     }
 
     public function test_full_checks_export_filters_by_real_local_check_date(): void
@@ -807,9 +872,9 @@ class AttendanceCentralModuleTest extends TestCase
         [, $rows] = $this->parseExportCsvDataSection($response->streamedContent());
 
         $this->assertCount(3, $rows);
-        $this->assertSame(['08:00:00', 'IN'], $rows[0]);
-        $this->assertSame(['12:00:00', 'IN'], $rows[1]);
-        $this->assertSame(['18:00:00', 'OUT'], $rows[2]);
+        $this->assertSame(['02:00:00', 'IN'], $rows[0]);
+        $this->assertSame(['06:00:00', 'IN'], $rows[1]);
+        $this->assertSame(['12:00:00', 'OUT'], $rows[2]);
     }
 
     public function test_manual_adjustment_creates_audit_record(): void

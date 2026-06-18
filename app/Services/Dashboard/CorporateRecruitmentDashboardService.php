@@ -23,7 +23,7 @@ class CorporateRecruitmentDashboardService
     public const RANGE_CUSTOM = 'custom';
     public const DETAIL_EXPORT_LIMIT = 5000;
     public const MAX_ALERTS = 5;
-    public const ATTENDANCE_SYNC_GRACE_DAYS = 2;
+    public const ATTENDANCE_SYNC_GRACE_DAYS = 1;
 
     /**
      * @var array<int, string>
@@ -492,15 +492,7 @@ class CorporateRecruitmentDashboardService
         $candidateFrom = $fromLocal->copy()->setTimezone($storageTimezone)->subDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
         $candidateTo = $toLocal->copy()->setTimezone($storageTimezone)->addDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
 
-        $query->where(function (Builder $candidateQuery) use ($candidateFrom, $candidateTo): void {
-            $candidateQuery->whereBetween('log_date', [$candidateFrom, $candidateTo]);
-
-            foreach (['ingested_at_utc', 'created_at', 'updated_at'] as $column) {
-                if (Schema::hasColumn('attendance_logs', $column)) {
-                    $candidateQuery->orWhereBetween($column, [$candidateFrom, $candidateTo]);
-                }
-            }
-        });
+        $query->whereBetween('log_date', [$candidateFrom, $candidateTo]);
     }
 
     protected function attendanceFallsWithinLocalRange(AttendanceLog $record, Carbon $fromLocal, Carbon $toLocal): bool
@@ -1712,85 +1704,7 @@ class CorporateRecruitmentDashboardService
 
     protected function resolvedAttendanceLocalDateTime(AttendanceLog $record): ?Carbon
     {
-        $cached = $record->getAttribute('_resolved_local_check_at');
-
-        if ($cached instanceof Carbon) {
-            return $cached;
-        }
-
-        $timezone = $this->operationsTimezone();
-        $rawPayload = is_array($record->raw_payload) ? $record->raw_payload : [];
-        $rawLocal = $rawPayload['punched_at_local']
-            ?? $rawPayload['event_time_local']
-            ?? null;
-
-        if ($resolved = $this->parseDateTimeInTimezone($rawLocal, $timezone)) {
-            $record->setAttribute('_resolved_local_check_at', $resolved);
-
-            return $resolved;
-        }
-
-        $rawUtc = $rawPayload['punched_at_utc']
-            ?? $rawPayload['event_time_utc']
-            ?? null;
-
-        if ($resolved = $this->parseUtcDateTimeForTimezone($rawUtc, $timezone)) {
-            $record->setAttribute('_resolved_local_check_at', $resolved);
-
-            return $resolved;
-        }
-
-        $resolved = $this->convertToTimezone($record->log_date, $timezone);
-        $record->setAttribute('_resolved_local_check_at', $resolved);
-
-        return $resolved;
-    }
-
-    protected function parseDateTimeInTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, $timezone);
-        } catch (\Throwable) {
-            try {
-                return Carbon::parse($value)->setTimezone($timezone);
-            } catch (\Throwable) {
-                return null;
-            }
-        }
-    }
-
-    protected function parseUtcDateTimeForTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value, 'UTC')->setTimezone($timezone);
-        } catch (\Throwable) {
-            try {
-                return Carbon::parse($value)->utc()->setTimezone($timezone);
-            } catch (\Throwable) {
-                return null;
-            }
-        }
-    }
-
-    protected function convertToTimezone(mixed $value, string $timezone): ?Carbon
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if ($value instanceof Carbon) {
-            return Carbon::parse($value->format('Y-m-d H:i:s'), $this->storageTimezone())->setTimezone($timezone);
-        }
-
-        return Carbon::parse((string) $value, $this->storageTimezone())->setTimezone($timezone);
+        return $record->resolvedAttendanceLocalDateTime();
     }
 
     protected function resolveVisibleEmployeeNumber(?Employee $employee, mixed $fallbackId): string
