@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Location;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Dashboard\CorporateRecruitmentDashboardService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -469,13 +470,59 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
             $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
-            $content = $response->streamedContent();
+            $rows = $this->exportCsvRows($response);
+            $detailHeaderIndex = collect($rows)->search(fn (array $row) => $row === [
+                'Fecha hora',
+                'Unidad',
+                'Reloj',
+                'Serie',
+                'Numero de empleado',
+                'Tipo',
+                'Fuente',
+            ]);
 
-            $this->assertStringContainsString('2026-06-16T18:00:00-06:00', $content);
-            $this->assertStringContainsString((string) $fixture['corporate_employee_pending']->id, $content);
+            $this->assertNotFalse($detailHeaderIndex);
+            $detailRows = array_values(array_filter(
+                array_slice($rows, $detailHeaderIndex + 1),
+                fn (array $row) => $row !== []
+            ));
+
+            $this->assertSame('2026-06-16T18:00:00-06:00', $detailRows[0][0] ?? null);
+            $this->assertSame('1002', $detailRows[0][4] ?? null);
+            $this->assertNotSame((string) $fixture['corporate_employee_pending']->id, $detailRows[0][4] ?? null);
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_service_prefers_operational_employee_number_before_internal_id(): void
+    {
+        $service = new class extends CorporateRecruitmentDashboardService
+        {
+            public function exposeVisibleEmployeeNumber(?Employee $employee, mixed $fallbackId): string
+            {
+                return $this->resolveVisibleEmployeeNumber($employee, $fallbackId);
+            }
+        };
+
+        $fortiaEmployee = (new Employee())->forceFill([
+            'id' => 504,
+            'fortia_employee_id' => 12015,
+            'employee_code' => 'EMP-504',
+        ]);
+        $employeeCodeEmployee = (new Employee())->forceFill([
+            'id' => 505,
+            'fortia_employee_id' => null,
+            'employee_code' => 'EMP-505',
+        ]);
+        $fallbackEmployee = (new Employee())->forceFill([
+            'id' => 506,
+            'fortia_employee_id' => null,
+        ]);
+
+        $this->assertSame('12015', $service->exposeVisibleEmployeeNumber($fortiaEmployee, 504));
+        $this->assertSame('EMP-505', $service->exposeVisibleEmployeeNumber($employeeCodeEmployee, 505));
+        $this->assertSame('506', $service->exposeVisibleEmployeeNumber($fallbackEmployee, 506));
     }
 
     /**
@@ -717,6 +764,23 @@ class CorporateRecruitmentDashboardTest extends TestCase
         $this->assertGreaterThan(0, filesize($path));
 
         return IOFactory::load($path);
+    }
+
+    /**
+     * @return array<int, array<int, string>>
+     */
+    protected function exportCsvRows($response): array
+    {
+        $content = ltrim($response->streamedContent(), "\xEF\xBB\xBF");
+        $lines = preg_split("/\r\n|\n|\r/", $content) ?: [];
+
+        return array_map(
+            fn (string $line) => $line === '' ? [] : array_map(
+                fn ($value) => (string) $value,
+                str_getcsv($line)
+            ),
+            $lines
+        );
     }
 
     /**

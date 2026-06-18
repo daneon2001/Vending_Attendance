@@ -1162,7 +1162,11 @@ class CorporateRecruitmentDashboardService
             $normalized['to_local'],
             $selectedLocationIds,
             $normalized['clock_id'],
-            ['location:id,name', 'clock:id,clock_name,serial_number']
+            [
+                'employee:'.implode(',', $this->employeeIdentifierSelectColumns()),
+                'location:id,name',
+                'clock:id,clock_name,serial_number',
+            ]
         );
 
         if ($records->count() > self::DETAIL_EXPORT_LIMIT) {
@@ -1174,7 +1178,7 @@ class CorporateRecruitmentDashboardService
             'Unidad',
             'Reloj',
             'Serie',
-            'Empleado ID',
+            'Numero de empleado',
             'Tipo',
             'Fuente',
         ]];
@@ -1189,7 +1193,7 @@ class CorporateRecruitmentDashboardService
                 $record->location?->name,
                 $record->clock?->clock_name,
                 $record->clock?->serial_number,
-                $record->employee_id,
+                $this->resolveVisibleEmployeeNumber($record->employee, $record->employee_id),
                 $this->logTypeLabel((int) $record->log_type),
                 $record->source,
             ];
@@ -1219,7 +1223,7 @@ class CorporateRecruitmentDashboardService
         }
 
         return Employee::query()
-            ->select('id', 'fortia_employee_id', 'name', 'full_name', 'status', 'base_location_id', 'can_check_all_branches')
+            ->select($this->activeEmployeeSelectColumns())
             ->whereIn('status', ['A', 'ACTIVE', 'active'])
             ->whereIn('base_location_id', $allCandidates)
             ->orderBy('full_name')
@@ -1237,7 +1241,7 @@ class CorporateRecruitmentDashboardService
 
                 return [
                     'employee_id' => (int) $employee->id,
-                    'employee_number' => $employee->visibleEmployeeKey() ?? (string) $employee->id,
+                    'employee_number' => $this->resolveVisibleEmployeeNumber($employee, $employee->id),
                     'employee_name' => $employee->full_name ?: ($employee->name ?: 'Empleado #'.$employee->id),
                     'base_location_id' => (int) $matchedLocation->id,
                     'base_location_name' => $matchedLocation->name,
@@ -1472,6 +1476,33 @@ class CorporateRecruitmentDashboardService
         }
 
         return $dates;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function employeeIdentifierSelectColumns(): array
+    {
+        $columns = ['id', 'fortia_employee_id'];
+
+        foreach (['employee_code', 'code', 'clave_empleado'] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return array_values(array_unique($columns));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function activeEmployeeSelectColumns(): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->employeeIdentifierSelectColumns(),
+            ['name', 'full_name', 'status', 'base_location_id', 'can_check_all_branches']
+        )));
     }
 
     protected function logTypeLabel(int $type): string
@@ -1760,5 +1791,16 @@ class CorporateRecruitmentDashboardService
         }
 
         return Carbon::parse((string) $value, $this->storageTimezone())->setTimezone($timezone);
+    }
+
+    protected function resolveVisibleEmployeeNumber(?Employee $employee, mixed $fallbackId): string
+    {
+        $visibleKey = $employee?->visibleEmployeeKey();
+
+        if (is_string($visibleKey) && trim($visibleKey) !== '') {
+            return trim($visibleKey);
+        }
+
+        return trim((string) $fallbackId);
     }
 }
