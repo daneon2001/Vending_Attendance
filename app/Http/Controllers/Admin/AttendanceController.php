@@ -47,7 +47,7 @@ class AttendanceController extends Controller
             : $this->buildRawIndexPayload($filters);
 
         $employees = Employee::query()
-            ->select('id', 'full_name', 'name', 'fortia_employee_id')
+            ->select($this->employeeFilterSelectColumns())
             ->orderBy('full_name')
             ->limit(300)
             ->get();
@@ -70,7 +70,8 @@ class AttendanceController extends Controller
             'employees' => $employees->map(fn (Employee $employee) => [
                 'id' => $employee->id,
                 'name' => $employee->full_name ?? $employee->name ?? ('Empleado #'.$employee->id),
-                'code' => (string) ($employee->fortia_employee_id ?? $employee->id),
+                'code' => $employee->visibleEmployeeKey() ?? (string) $employee->id,
+                'value' => $employee->visibleEmployeeKey() ?? (string) $employee->id,
             ])->values(),
             'locations' => $locations->map(fn (Location $location) => [
                 'id' => $location->id,
@@ -397,16 +398,26 @@ class AttendanceController extends Controller
             ->byStatus($filters['status'] ?? null)
             ->bySource($filters['source'] ?? null);
 
-        if (! empty($filters['employee_id'])) {
-            $query->where('employee_id', (int) $filters['employee_id']);
+        if (! empty($filters['internal_employee_id'])) {
+            $query->where('employee_id', (int) $filters['internal_employee_id']);
+        }
+
+        if (! empty($filters['employee_exact'])) {
+            $employeeIds = $this->resolveOperationalEmployeeIds((string) $filters['employee_exact']);
+
+            if ($employeeIds === []) {
+                $query->whereRaw('1 = 0');
+
+                return $query;
+            }
+
+            $query->whereIn('employee_id', $employeeIds);
         }
 
         if (! empty($filters['employee'])) {
             $search = trim((string) $filters['employee']);
             $query->whereHas('employee', function (Builder $employeeQuery) use ($search): void {
-                $employeeQuery->where('full_name', 'like', '%'.$search.'%')
-                    ->orWhere('name', 'like', '%'.$search.'%')
-                    ->orWhere('fortia_employee_id', 'like', '%'.$search.'%');
+                $this->applyOperationalEmployeeSearch($employeeQuery, $search);
             });
         }
 
@@ -504,7 +515,7 @@ class AttendanceController extends Controller
                     'group_key' => $groupKey,
                     'employee_id' => $record->employee?->id ?? $record->employee_id,
                     'fortia_employee_id' => (string) ($record->employee?->fortia_employee_id ?? $record->fortia_employee_id ?? ''),
-                    'employee_code' => (string) ($record->employee?->fortia_employee_id ?? $record->fortia_employee_id ?? $record->employee_id ?? ''),
+                    'employee_code' => $record->employee?->visibleEmployeeKey() ?? (string) ($record->fortia_employee_id ?? $record->employee_id ?? ''),
                     'employee_name' => $record->employee?->full_name ?? $record->employee?->name ?? 'N/A',
                     'department' => $this->resolveEmployeeDepartment($record),
                     'position' => $this->resolveEmployeePosition($record),
@@ -681,6 +692,10 @@ class AttendanceController extends Controller
             $filters['device_id'] = $filters['clock_id'];
         }
 
+        if (empty($filters['internal_employee_id']) && ! empty($filters['employee_id'])) {
+            $filters['internal_employee_id'] = $filters['employee_id'];
+        }
+
         if (empty($filters['from']) && empty($filters['to'])) {
             $filters['from'] = now()->subDays(6)->toDateString();
             $filters['to'] = now()->toDateString();
@@ -814,7 +829,8 @@ class AttendanceController extends Controller
             'from' => $filters['from'] ?? null,
             'to' => $filters['to'] ?? null,
             'employee' => $filters['employee'] ?? null,
-            'employee_id' => $filters['employee_id'] ?? null,
+            'employee_exact' => $filters['employee_exact'] ?? null,
+            'internal_employee_id' => $filters['internal_employee_id'] ?? null,
             'location_id' => $filters['location_id'] ?? null,
             'clock_id' => $filters['device_id'] ?? null,
             'type' => $filters['type'] ?? null,
@@ -1081,7 +1097,7 @@ class AttendanceController extends Controller
             'employee' => [
                 'id' => $firstRecord->employee?->id ?? $firstRecord->employee_id,
                 'name' => $firstRecord->employee?->full_name ?? $firstRecord->employee?->name ?? 'N/A',
-                'code' => (string) ($firstRecord->employee?->fortia_employee_id ?? $firstRecord->fortia_employee_id ?? $firstRecord->employee_id),
+                'code' => $firstRecord->employee?->visibleEmployeeKey() ?? (string) ($firstRecord->fortia_employee_id ?? $firstRecord->employee_id),
             ],
             'local_date' => $grouped['local_date'] ?? ($filters['local_date'] ?? null),
             'range' => [
@@ -1303,7 +1319,7 @@ class AttendanceController extends Controller
             'employee' => [
                 'id' => $record->employee?->id ?? $record->employee_id,
                 'name' => $record->employee?->full_name ?? $record->employee?->name ?? 'N/A',
-                'code' => (string) ($record->employee?->fortia_employee_id ?? $record->employee_id ?? 'N/A'),
+                'code' => $record->employee?->visibleEmployeeKey() ?? (string) ($record->fortia_employee_id ?? $record->employee_id ?? 'N/A'),
             ],
             'location' => [
                 'id' => $resolvedLocation?->id ?? $record->location_id ?? $record->clock?->location_id,
@@ -1406,5 +1422,89 @@ class AttendanceController extends Controller
     private function attendanceFallbackTimezone(): string
     {
         return 'America/Mexico_City';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function employeeFilterSelectColumns(): array
+    {
+        $columns = ['id', 'full_name', 'name', 'fortia_employee_id'];
+
+        foreach (['employee_code', 'code', 'clave_empleado'] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return array_values(array_unique($columns));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function operationalEmployeeReferenceColumns(): array
+    {
+        return collect(['employee_code', 'code', 'clave_empleado'])
+            ->filter(fn (string $column) => Schema::hasColumn('employees', $column))
+            ->values()
+            ->all();
+    }
+
+    private function applyOperationalEmployeeSearch(Builder $employeeQuery, string $search): void
+    {
+        $trimmedSearch = trim($search);
+
+        if ($trimmedSearch === '') {
+            return;
+        }
+
+        if (ctype_digit($trimmedSearch)) {
+            $employeeQuery->where(function (Builder $numericQuery) use ($trimmedSearch): void {
+                $numericQuery->where('fortia_employee_id', (int) $trimmedSearch);
+
+                foreach ($this->operationalEmployeeReferenceColumns() as $column) {
+                    $numericQuery->orWhere($column, $trimmedSearch);
+                }
+            });
+
+            return;
+        }
+
+        $employeeQuery->where(function (Builder $textQuery) use ($trimmedSearch): void {
+            $textQuery->where('full_name', 'like', '%'.$trimmedSearch.'%')
+                ->orWhere('name', 'like', '%'.$trimmedSearch.'%');
+
+            foreach ($this->operationalEmployeeReferenceColumns() as $column) {
+                $textQuery->orWhere($column, 'like', '%'.$trimmedSearch.'%');
+            }
+        });
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function resolveOperationalEmployeeIds(string $reference): array
+    {
+        $trimmedReference = trim($reference);
+
+        if ($trimmedReference === '') {
+            return [];
+        }
+
+        return Employee::query()
+            ->where(function (Builder $builder) use ($trimmedReference): void {
+                if (ctype_digit($trimmedReference)) {
+                    $builder->where('fortia_employee_id', (int) $trimmedReference);
+                }
+
+                foreach ($this->operationalEmployeeReferenceColumns() as $column) {
+                    $builder->orWhere($column, $trimmedReference);
+                }
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
     }
 }

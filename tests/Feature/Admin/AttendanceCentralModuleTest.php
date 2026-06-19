@@ -392,6 +392,166 @@ class AttendanceCentralModuleTest extends TestCase
         $this->assertSame(['Empleado Demo', '2026-06-16', '18:38:45'], $rows[0]);
     }
 
+    public function test_numeric_employee_search_filters_by_fortia_employee_id_and_not_internal_employee_id(): void
+    {
+        [, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('employees')->insert([
+            'id' => 1363,
+            'fortia_employee_id' => 99001,
+            'company_id' => 1,
+            'base_location_id' => $locationId,
+            'full_name' => 'Empleado Interno 1363',
+            'name' => 'Interno',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'id' => 2400,
+            'fortia_employee_id' => 1363,
+            'company_id' => 1,
+            'base_location_id' => $locationId,
+            'full_name' => 'BARRON URIOSTEGUI JESUS ALEJANDRO',
+            'name' => 'BARRON',
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendance_logs')->insert([
+            [
+                'log_id' => 2410,
+                'company_id' => 1,
+                'employee_id' => 1363,
+                'fortia_employee_id' => 99001,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-16 14:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-16 08:00:00',
+                    'punched_at_utc' => '2026-06-16 14:00:00',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2411,
+                'company_id' => 1,
+                'employee_id' => 2400,
+                'fortia_employee_id' => 1363,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-16 15:22:01',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-16 09:22:01',
+                    'punched_at_utc' => '2026-06-16 15:22:01',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'log_id' => 2412,
+                'company_id' => 1,
+                'employee_id' => 2400,
+                'fortia_employee_id' => 1363,
+                'location_id' => $locationId,
+                'device_id' => $clockId,
+                'log_date' => '2026-06-17 00:09:31',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+                'raw_payload' => json_encode([
+                    'punched_at_local' => '2026-06-16 18:09:31',
+                    'punched_at_utc' => '2026-06-17 00:09:31',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('admin.asistencias.index', [
+            'employee' => '1363',
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'view_mode' => 'grouped',
+        ]));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.employee_id', 2400)
+            ->where('initialRecords.data.0.fortia_employee_id', '1363')
+            ->where('initialRecords.data.0.employee_name', 'BARRON URIOSTEGUI JESUS ALEJANDRO')
+            ->where('initialRecords.data.0.first_check_display', '2026-06-16 09:22:01')
+            ->where('initialRecords.data.0.last_check_display', '2026-06-16 18:09:31')
+            ->where('initialRecords.data.0.total_checks', 2)
+        );
+
+        $detailResponse = $this->getJson(route('admin.asistencias.grouped-detail', [
+            'employee' => '1363',
+            'employee_id' => 2400,
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+            'local_date' => '2026-06-16',
+        ]));
+
+        $detailResponse->assertOk()
+            ->assertJsonPath('data.employee.id', 2400)
+            ->assertJsonPath('data.employee.code', '1363')
+            ->assertJsonPath('data.records.0.log_id', 2411)
+            ->assertJsonPath('data.records.1.log_id', 2412);
+    }
+
+    public function test_exact_employee_selector_uses_operational_value_not_internal_employee_id(): void
+    {
+        [$employeeId, $locationId, $clockId] = $this->createBaseReferences();
+
+        DB::table('attendance_logs')->insert([
+            'log_id' => 2413,
+            'company_id' => 1,
+            'employee_id' => $employeeId,
+            'fortia_employee_id' => 88001,
+            'location_id' => $locationId,
+            'device_id' => $clockId,
+            'log_date' => '2026-06-16 15:30:00',
+            'log_type' => 1,
+            'source' => 'api',
+            'attendance_status' => 'valida',
+            'raw_payload' => json_encode([
+                'punched_at_local' => '2026-06-16 09:30:00',
+                'punched_at_utc' => '2026-06-16 15:30:00',
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->get(route('admin.asistencias.index', [
+            'employee_exact' => '88001',
+            'from' => '2026-06-16',
+            'to' => '2026-06-16',
+        ]));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Attendance/Index')
+            ->where('employees.0.id', $employeeId)
+            ->where('employees.0.code', '88001')
+            ->where('employees.0.value', '88001')
+            ->where('initialRecords.meta.total', 1)
+            ->where('initialRecords.data.0.employee_id', $employeeId)
+            ->where('initialRecords.data.0.fortia_employee_id', '88001')
+        );
+    }
+
     public function test_grouped_detail_returns_all_employee_checks_for_day(): void
     {
         [$employeeId, $locationId, $clockId] = $this->createBaseReferences();

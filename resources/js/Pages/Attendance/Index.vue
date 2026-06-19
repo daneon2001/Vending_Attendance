@@ -83,7 +83,8 @@ const createFilters = (value = {}) => ({
     from: value.from ?? '',
     to: value.to ?? '',
     employee: value.employee ?? '',
-    employee_id: value.employee_id ? String(value.employee_id) : '',
+    employee_exact: value.employee_exact ?? '',
+    internal_employee_id: value.internal_employee_id ? String(value.internal_employee_id) : '',
     location_id: value.location_id ? String(value.location_id) : '',
     device_id: value.device_id ? String(value.device_id) : '',
     type: value.type ?? '',
@@ -108,7 +109,8 @@ const buildQueryFromFilters = (sourceFilters, extra = {}) => {
         from: sourceFilters.from || undefined,
         to: sourceFilters.to || undefined,
         employee: sourceFilters.employee || undefined,
-        employee_id: sourceFilters.employee_id || undefined,
+        employee_exact: sourceFilters.employee_exact || undefined,
+        internal_employee_id: sourceFilters.internal_employee_id || undefined,
         location_id: sourceFilters.location_id || undefined,
         device_id: sourceFilters.device_id || undefined,
         type: sourceFilters.type || undefined,
@@ -554,7 +556,7 @@ const exportGroupedDetailChecks = () => {
 
     const url = route('admin.asistencias.export-checks', {
         ...queryFromAppliedFilters.value,
-        employee_id: groupedDetailState.payload.employee.id,
+        internal_employee_id: groupedDetailState.payload.employee.id,
         local_date: groupedDetailState.payload.local_date,
         scope: 'employee_day',
         format: 'xlsx',
@@ -743,10 +745,11 @@ const detailLabelForColumn = (record, key) => {
                     <label class="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.15em] text-soft sm:tracking-[0.3em]">
                         Empleado exacto
                         <SearchableSelect
-                            v-model="filterForm.employee_id"
+                            v-model="filterForm.employee_exact"
                             :options="employeeSelectOptions"
+                            option-value="value"
                             placeholder="Todos"
-                            search-placeholder="Buscar por nombre, código o ID"
+                            search-placeholder="Buscar por nombre o codigo"
                             :searchable="true"
                             input-class="w-full min-w-0 max-w-full rounded-2xl border border-app bg-white px-3 py-2 text-sm text-app dark:bg-slate-900"
                         />
