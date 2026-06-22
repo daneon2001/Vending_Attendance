@@ -464,6 +464,48 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('2026-06-19', data_get($statusChange->meta, 'remote_updated_at') ? substr((string) data_get($statusChange->meta, 'remote_updated_at'), 0, 10) : null);
     }
 
+    public function test_termination_import_does_not_fail_when_existing_employee_has_no_company_for_status_history(): void
+    {
+        $user = $this->createAdminImporter();
+
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 26003,
+            'company_id' => null,
+            'name' => 'Empleado Sin Empresa',
+            'full_name' => 'Empleado Sin Empresa',
+            'status' => 'A',
+        ]);
+
+        $file = $this->makeExcelUpload($this->headers(), [
+            $this->employeeRow([
+                'CLA_TRAB' => '26003',
+                'ESTATUS_TRABAJADOR' => 'BAJA',
+                'FECHA_BAJA' => '21/06/2026',
+            ]),
+        ]);
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('created_count', 0)
+            ->assertJsonPath('updated_count', 1)
+            ->assertJsonPath('termination_applied_count', 1)
+            ->assertJsonPath('termination_skipped_not_found_count', 0);
+
+        $employee->refresh();
+
+        $this->assertSame('B', $employee->status);
+        $this->assertDatabaseCount('employee_status_changes', 0);
+        $this->assertDatabaseHas('employee_import_metadata', [
+            'employee_id' => $employee->id,
+            'source' => 'employees_excel',
+        ]);
+    }
+
     public function test_termination_for_missing_employee_is_skipped_without_creating_record(): void
     {
         $user = $this->createAdminImporter();

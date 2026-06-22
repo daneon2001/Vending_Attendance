@@ -7,11 +7,19 @@ use App\Models\EmployeeStatusChange;
 use App\Support\TabularDataReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class EmployeeExcelImportService
 {
+    private ?bool $hasEmployeeDetailsTable = null;
+
+    private ?bool $hasEmployeeImportMetadataTable = null;
+
+    private ?bool $hasEmployeeStatusChangesTable = null;
+
     public function __construct(
         private readonly TabularDataReader $reader,
         private readonly EmployeeExcelCatalogResolutionService $catalogResolutionService
@@ -61,44 +69,99 @@ class EmployeeExcelImportService
         $updatedCount = 0;
         $terminationAppliedCount = 0;
         $terminationSkippedNotFoundCount = 0;
+        $persistedRows = 0;
+        $preparedRows = $analysis['prepared_rows'];
+        $hasEmployeeDetailsTable = $this->hasEmployeeDetailsTable();
+        $hasEmployeeImportMetadataTable = $this->hasEmployeeImportMetadataTable();
+        $hasEmployeeStatusChangesTable = $this->hasEmployeeStatusChangesTable();
+        $employeeCache = $this->loadEmployeesForImport($preparedRows);
 
-        DB::transaction(function () use (
-            $analysis,
-            $file,
-            &$createdCount,
-            &$updatedCount,
-            &$terminationAppliedCount,
-            &$terminationSkippedNotFoundCount
-        ): void {
-            foreach ($analysis['prepared_rows'] as $preparedRow) {
-                if (($preparedRow['errors'] ?? []) !== []) {
-                    continue;
+        Log::info('employees.import.started', [
+            'file_name' => $file->getClientOriginalName(),
+            'total_rows' => (int) ($analysis['summary']['total_rows'] ?? 0),
+            'valid_rows' => collect($preparedRows)->filter(function (array $row): bool {
+                return ($row['errors'] ?? []) === []
+                    && (($row['blocked_by_catalogs'] ?? false) === false);
+            })->count(),
+            'table_support' => [
+                'employee_details' => $hasEmployeeDetailsTable,
+                'employee_import_metadata' => $hasEmployeeImportMetadataTable,
+                'employee_status_changes' => $hasEmployeeStatusChangesTable,
+            ],
+        ]);
+
+        try {
+            DB::transaction(function () use (
+                $preparedRows,
+                $file,
+                &$createdCount,
+                &$updatedCount,
+                &$terminationAppliedCount,
+                &$terminationSkippedNotFoundCount,
+                &$persistedRows,
+                &$employeeCache,
+                $hasEmployeeDetailsTable,
+                $hasEmployeeImportMetadataTable,
+                $hasEmployeeStatusChangesTable
+            ): void {
+                foreach ($preparedRows as $preparedRow) {
+                    if (($preparedRow['errors'] ?? []) !== []) {
+                        continue;
+                    }
+
+                    if (($preparedRow['blocked_by_catalogs'] ?? false) === true) {
+                        continue;
+                    }
+
+                    $persistedRows++;
+                    $persisted = $this->persistRow(
+                        preparedRow: $preparedRow,
+                        fileName: $file->getClientOriginalName(),
+                        employeeCache: $employeeCache,
+                        hasEmployeeDetailsTable: $hasEmployeeDetailsTable,
+                        hasEmployeeImportMetadataTable: $hasEmployeeImportMetadataTable,
+                        hasEmployeeStatusChangesTable: $hasEmployeeStatusChangesTable
+                    );
+
+                    if ($persisted === 'termination_skipped') {
+                        $terminationSkippedNotFoundCount++;
+                    } elseif ($persisted === 'termination_applied') {
+                        $terminationAppliedCount++;
+                        $updatedCount++;
+                    } elseif ($persisted === 'created') {
+                        $createdCount++;
+                    } else {
+                        $updatedCount++;
+                    }
+
+                    if ($persistedRows % 500 === 0) {
+                        Log::info('employees.import.progress', [
+                            'file_name' => $file->getClientOriginalName(),
+                            'processed_rows' => $persistedRows,
+                            'created_count' => $createdCount,
+                            'updated_count' => $updatedCount,
+                            'termination_applied_count' => $terminationAppliedCount,
+                            'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
+                        ]);
+                    }
                 }
+            });
+        } catch (\Throwable $exception) {
+            Log::error('employees.import.failed', [
+                'file_name' => $file->getClientOriginalName(),
+                'processed_rows' => $persistedRows,
+                'created_count' => $createdCount,
+                'updated_count' => $updatedCount,
+                'termination_applied_count' => $terminationAppliedCount,
+                'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
+                'exception_class' => $exception::class,
+                'exception_message' => $exception->getMessage(),
+                'exception_file' => $exception->getFile(),
+                'exception_line' => $exception->getLine(),
+            ]);
 
-                if (($preparedRow['blocked_by_catalogs'] ?? false) === true) {
-                    continue;
-                }
-
-                $persisted = $this->persistRow($preparedRow, $file->getClientOriginalName());
-                if ($persisted === 'termination_skipped') {
-                    $terminationSkippedNotFoundCount++;
-                    continue;
-                }
-
-                if ($persisted === 'termination_applied') {
-                    $terminationAppliedCount++;
-                    $updatedCount++;
-                    continue;
-                }
-
-                if ($persisted === 'created') {
-                    $createdCount++;
-                    continue;
-                }
-
-                $updatedCount++;
-            }
-        });
+            throw $exception;
+        }
 
         $result['message'] = 'Importacion completada correctamente.';
         $result['created_count'] = $createdCount;
@@ -115,6 +178,15 @@ class EmployeeExcelImportService
         $result['summary']['termination_skipped_not_found_count'] = $terminationSkippedNotFoundCount;
         $result['summary']['normal_created_count'] = $createdCount;
         $result['summary']['normal_updated_count'] = max($updatedCount - $terminationAppliedCount, 0);
+
+        Log::info('employees.import.completed', [
+            'file_name' => $file->getClientOriginalName(),
+            'processed_rows' => $persistedRows,
+            'created_count' => $createdCount,
+            'updated_count' => $updatedCount,
+            'termination_applied_count' => $terminationAppliedCount,
+            'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
+        ]);
 
         return $result;
     }
@@ -519,17 +591,47 @@ class EmployeeExcelImportService
     }
 
     /**
+     * @param  array<int, array<string, mixed>>  $preparedRows
+     * @return Collection<string, Employee>
+     */
+    private function loadEmployeesForImport(array $preparedRows): Collection
+    {
+        $lookupIds = collect($preparedRows)
+            ->map(fn (array $row) => $row['employee_attributes']['fortia_employee_id'] ?? null)
+            ->filter(fn ($value) => $value !== null)
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($lookupIds === []) {
+            return collect();
+        }
+
+        return Employee::query()
+            ->whereIn('fortia_employee_id', $lookupIds)
+            ->get()
+            ->keyBy(fn (Employee $employee) => (string) $employee->fortia_employee_id);
+    }
+
+    /**
      * @param  array<string, mixed>  $preparedRow
      */
-    private function persistRow(array $preparedRow, string $fileName): string
+    private function persistRow(
+        array $preparedRow,
+        string $fileName,
+        Collection &$employeeCache,
+        bool $hasEmployeeDetailsTable,
+        bool $hasEmployeeImportMetadataTable,
+        bool $hasEmployeeStatusChangesTable
+    ): string
     {
         if (($preparedRow['skip_import'] ?? false) === true) {
             return 'termination_skipped';
         }
 
-        $employee = Employee::query()
-            ->where('fortia_employee_id', $preparedRow['employee_attributes']['fortia_employee_id'])
-            ->first();
+        $fortiaEmployeeId = (string) ($preparedRow['employee_attributes']['fortia_employee_id'] ?? '');
+        $employee = $employeeCache->get($fortiaEmployeeId);
 
         if (($preparedRow['operation'] ?? null) === 'termination') {
             if (! $employee instanceof Employee) {
@@ -546,10 +648,12 @@ class EmployeeExcelImportService
                 employee: $employee,
                 oldStatus: $oldStatus,
                 newStatus: $employee->status,
-                effectiveDate: $preparedRow['metadata_payload']['fecha_baja'] ?? null
+                effectiveDate: $preparedRow['metadata_payload']['fecha_baja'] ?? null,
+                hasEmployeeStatusChangesTable: $hasEmployeeStatusChangesTable
             );
 
-            $this->persistImportMetadata($employee, $preparedRow, $fileName);
+            $this->persistImportMetadata($employee, $preparedRow, $fileName, $hasEmployeeImportMetadataTable);
+            $employeeCache->put($fortiaEmployeeId, $employee);
 
             return 'termination_applied';
         }
@@ -571,8 +675,9 @@ class EmployeeExcelImportService
 
         $employee->fill($attributes);
         $employee->save();
+        $employeeCache->put((string) $employee->fortia_employee_id, $employee);
 
-        if (Schema::hasTable('employee_details')) {
+        if ($hasEmployeeDetailsTable) {
             DB::table('employee_details')->updateOrInsert(
                 ['employee_id' => $employee->id],
                 array_merge($preparedRow['detail_attributes'], [
@@ -583,7 +688,7 @@ class EmployeeExcelImportService
             );
         }
 
-        $this->persistImportMetadata($employee, $preparedRow, $fileName);
+        $this->persistImportMetadata($employee, $preparedRow, $fileName, $hasEmployeeImportMetadataTable);
 
         return $action;
     }
@@ -591,9 +696,9 @@ class EmployeeExcelImportService
     /**
      * @param  array<string, mixed>  $preparedRow
      */
-    private function persistImportMetadata(Employee $employee, array $preparedRow, string $fileName): void
+    private function persistImportMetadata(Employee $employee, array $preparedRow, string $fileName, bool $hasEmployeeImportMetadataTable): void
     {
-        if (! Schema::hasTable('employee_import_metadata')) {
+        if (! $hasEmployeeImportMetadataTable) {
             return;
         }
 
@@ -610,11 +715,17 @@ class EmployeeExcelImportService
         );
     }
 
-    private function recordStatusChange(Employee $employee, ?string $oldStatus, ?string $newStatus, ?string $effectiveDate): void
+    private function recordStatusChange(
+        Employee $employee,
+        ?string $oldStatus,
+        ?string $newStatus,
+        ?string $effectiveDate,
+        bool $hasEmployeeStatusChangesTable
+    ): void
     {
         if (
             $oldStatus === $newStatus
-            || ! Schema::hasTable('employee_status_changes')
+            || ! $hasEmployeeStatusChangesTable
             || ! is_numeric($employee->company_id)
             || ! is_numeric($employee->fortia_employee_id)
         ) {
@@ -637,6 +748,21 @@ class EmployeeExcelImportService
                 'remote_updated_at' => $effectiveAt->toIso8601String(),
             ],
         ]);
+    }
+
+    private function hasEmployeeDetailsTable(): bool
+    {
+        return $this->hasEmployeeDetailsTable ??= Schema::hasTable('employee_details');
+    }
+
+    private function hasEmployeeImportMetadataTable(): bool
+    {
+        return $this->hasEmployeeImportMetadataTable ??= Schema::hasTable('employee_import_metadata');
+    }
+
+    private function hasEmployeeStatusChangesTable(): bool
+    {
+        return $this->hasEmployeeStatusChangesTable ??= Schema::hasTable('employee_status_changes');
     }
 
     private function isImportCandidateRow(array $values): bool
