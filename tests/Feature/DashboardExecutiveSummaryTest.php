@@ -7,6 +7,7 @@ use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeStatusChange;
 use App\Models\Location;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -269,6 +270,114 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('executive_summary.clocks.stale', 1)
                 ->assertJsonPath('executive_summary.clocks.is_business_hours', true)
                 ->assertJsonCount(3, 'executive_summary.alerts');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_summary_excludes_terminated_employee_from_active_base_on_effective_date(): void
+    {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+        Carbon::setTestNow(Carbon::parse('2026-06-19 10:15:00', 'America/Mexico_City'));
+
+        try {
+            $company = Company::query()->create([
+                'name' => 'Medical Life',
+                'code' => 'ML',
+                'status' => 1,
+            ]);
+
+            $location = Location::query()->create([
+                'company_id' => $company->id,
+                'name' => 'Unidad Centro',
+                'code' => 'CTR',
+                'timezone' => 'America/Mexico_City',
+                'status' => 1,
+            ]);
+
+            Employee::query()->create([
+                'fortia_employee_id' => 1101,
+                'company_id' => $company->id,
+                'base_location_id' => $location->id,
+                'name' => 'Ana',
+                'last_name' => 'Vigente',
+                'full_name' => 'Ana Vigente',
+                'status' => 'A',
+                'has_fingerprint' => true,
+                'has_face_enrollment' => true,
+            ]);
+
+            $terminatedEmployee = Employee::query()->create([
+                'fortia_employee_id' => 1102,
+                'company_id' => $company->id,
+                'base_location_id' => $location->id,
+                'name' => 'Luis',
+                'last_name' => 'Baja',
+                'full_name' => 'Luis Baja',
+                'status' => 'B',
+                'has_fingerprint' => false,
+                'has_face_enrollment' => false,
+            ]);
+
+            $this->recordStatusChange($terminatedEmployee, 'A', 'B', '2026-06-19T08:00:00-06:00');
+
+            $clock = Clock::query()->create([
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'clock_name' => 'Reloj Centro',
+                'serial_number' => 'CTR-1',
+                'status' => 1,
+                'monitoring_status' => 'online',
+                'program_status' => 'online',
+                'last_heartbeat_at' => Carbon::now('UTC')->subMinutes(2)->format('Y-m-d H:i:s'),
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 7101,
+                'employee_id' => $terminatedEmployee->id,
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'device_id' => $clock->id,
+                'log_date' => '2026-06-19 15:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $day18 = $this->getJson(route('dashboard.summary', [
+                'range' => 'custom',
+                'from_date' => '18/06/2026',
+                'to_date' => '18/06/2026',
+                'company_id' => $company->id,
+                'unit_id' => $location->id,
+            ]));
+
+            $day18->assertOk()
+                ->assertJsonPath('summary.employees_active', 2)
+                ->assertJsonPath('summary.attendance_registered', 0)
+                ->assertJsonPath('locations.0.employees_active', 2);
+
+            $day19 = $this->getJson(route('dashboard.summary', [
+                'range' => 'custom',
+                'from_date' => '19/06/2026',
+                'to_date' => '19/06/2026',
+                'company_id' => $company->id,
+                'unit_id' => $location->id,
+            ]));
+
+            $day19->assertOk()
+                ->assertJsonPath('summary.employees_active', 1)
+                ->assertJsonPath('summary.attendance_registered', 0)
+                ->assertJsonPath('summary.attendance_pending', 1)
+                ->assertJsonPath('summary.attendance_coverage', 0)
+                ->assertJsonPath('locations.0.employees_active', 1)
+                ->assertJsonPath('locations.0.attendance_registered', 0)
+                ->assertJsonPath('charts.attendance_donut.present', 0)
+                ->assertJsonPath('charts.attendance_donut.pending', 1)
+                ->assertJsonPath('charts.employees_status.values.0', 1)
+                ->assertJsonPath('charts.employees_status.values.1', 1)
+                ->assertJsonPath('charts.people_present_by_day.values.0', 0);
         } finally {
             Carbon::setTestNow();
         }
@@ -653,5 +762,21 @@ class DashboardExecutiveSummaryTest extends TestCase
         $this->assertNotNull($nineAmBucket);
         $this->assertSame(1, (int) ($nineAmBucket['entries'] ?? 0));
         $this->assertSame(1, (int) ($nineAmBucket['total'] ?? 0));
+    }
+
+    protected function recordStatusChange(Employee $employee, string $oldStatus, string $newStatus, string $effectiveAtLocal): EmployeeStatusChange
+    {
+        return EmployeeStatusChange::query()->create([
+            'employee_id' => $employee->id,
+            'company_id' => $employee->company_id,
+            'fortia_employee_id' => $employee->fortia_employee_id,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'changed_at' => Carbon::parse($effectiveAtLocal)->utc(),
+            'source' => 'test',
+            'meta' => [
+                'remote_updated_at' => Carbon::parse($effectiveAtLocal)->toIso8601String(),
+            ],
+        ]);
     }
 }

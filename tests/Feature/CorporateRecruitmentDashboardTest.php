@@ -7,6 +7,7 @@ use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeStatusChange;
 use App\Models\Location;
 use App\Models\Role;
 use App\Models\User;
@@ -391,6 +392,106 @@ class CorporateRecruitmentDashboardTest extends TestCase
         }
     }
 
+    public function test_dashboard_and_workbook_exclude_employee_after_effective_termination_date_but_keep_raw_check(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-19 10:00:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+            $terminatedEmployee = $fixture['corporate_employee_pending'];
+
+            $terminatedEmployee->forceFill(['status' => 'B'])->save();
+            $this->recordStatusChange($terminatedEmployee, 'A', 'B', '2026-06-19T08:00:00-06:00');
+
+            AttendanceLog::query()->create([
+                'log_id' => 9201,
+                'employee_id' => $terminatedEmployee->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-19 15:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $day18 = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'custom',
+                    'from_date' => '2026-06-18',
+                    'to_date' => '2026-06-18',
+                ]));
+
+            $day18->assertOk()
+                ->assertJsonPath('global.active_employees', 3)
+                ->assertJsonPath('locations.0.summary.active_employees', 2)
+                ->assertJsonPath('locations.1.summary.active_employees', 1);
+
+            $day19 = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'custom',
+                    'from_date' => '2026-06-19',
+                    'to_date' => '2026-06-19',
+                ]));
+
+            $day19->assertOk()
+                ->assertJsonPath('global.active_employees', 2)
+                ->assertJsonPath('global.attended', 0)
+                ->assertJsonPath('global.pending', 2)
+                ->assertJsonPath('global.total_checks', 1)
+                ->assertJsonPath('locations.0.summary.active_employees', 1)
+                ->assertJsonPath('locations.0.summary.attended', 0)
+                ->assertJsonPath('locations.0.summary.total_checks', 1);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'custom',
+                    'from_date' => '2026-06-19',
+                    'to_date' => '2026-06-19',
+                    'format' => 'xlsx',
+            ]));
+
+            $response->assertOk();
+
+            $workbook = $this->exportWorkbook($response);
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 8, '')
+                ))
+                ->all();
+
+            $this->assertFalse(collect($reportBody)->contains(fn (array $row) => ($row[0] ?? '') === '1002'));
+
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('2', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('0', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('2', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
+
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
+                ->all();
+
+            $this->assertTrue(collect($rawBody)->contains(
+                fn (array $row) => ($row[0] ?? '') === '1002'
+                    && ($row[2] ?? '') === '19/06/2026 09:00:00'
+            ));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_export_csv_uses_real_local_check_date_in_detail_rows(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
@@ -754,6 +855,22 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'timezone' => 'America/Mexico_City',
                 'punched_at_local' => '2026-06-16 18:38:45',
                 'punched_at_utc' => '2026-06-17 00:38:45',
+            ],
+        ]);
+    }
+
+    protected function recordStatusChange(Employee $employee, string $oldStatus, string $newStatus, string $effectiveAtLocal): EmployeeStatusChange
+    {
+        return EmployeeStatusChange::query()->create([
+            'employee_id' => $employee->id,
+            'company_id' => $employee->company_id,
+            'fortia_employee_id' => $employee->fortia_employee_id,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'changed_at' => Carbon::parse($effectiveAtLocal)->utc(),
+            'source' => 'test',
+            'meta' => [
+                'remote_updated_at' => Carbon::parse($effectiveAtLocal)->toIso8601String(),
             ],
         ]);
     }

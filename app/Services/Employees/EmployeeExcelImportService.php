@@ -3,6 +3,7 @@
 namespace App\Services\Employees;
 
 use App\Models\Employee;
+use App\Models\EmployeeStatusChange;
 use App\Support\TabularDataReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
@@ -58,8 +59,17 @@ class EmployeeExcelImportService
 
         $createdCount = 0;
         $updatedCount = 0;
+        $terminationAppliedCount = 0;
+        $terminationSkippedNotFoundCount = 0;
 
-        DB::transaction(function () use ($analysis, $file, &$createdCount, &$updatedCount): void {
+        DB::transaction(function () use (
+            $analysis,
+            $file,
+            &$createdCount,
+            &$updatedCount,
+            &$terminationAppliedCount,
+            &$terminationSkippedNotFoundCount
+        ): void {
             foreach ($analysis['prepared_rows'] as $preparedRow) {
                 if (($preparedRow['errors'] ?? []) !== []) {
                     continue;
@@ -70,6 +80,17 @@ class EmployeeExcelImportService
                 }
 
                 $persisted = $this->persistRow($preparedRow, $file->getClientOriginalName());
+                if ($persisted === 'termination_skipped') {
+                    $terminationSkippedNotFoundCount++;
+                    continue;
+                }
+
+                if ($persisted === 'termination_applied') {
+                    $terminationAppliedCount++;
+                    $updatedCount++;
+                    continue;
+                }
+
                 if ($persisted === 'created') {
                     $createdCount++;
                     continue;
@@ -83,9 +104,17 @@ class EmployeeExcelImportService
         $result['created_count'] = $createdCount;
         $result['updated_count'] = $updatedCount;
         $result['imported_count'] = $createdCount + $updatedCount;
+        $result['termination_applied_count'] = $terminationAppliedCount;
+        $result['termination_skipped_not_found_count'] = $terminationSkippedNotFoundCount;
+        $result['normal_created_count'] = $createdCount;
+        $result['normal_updated_count'] = max($updatedCount - $terminationAppliedCount, 0);
         $result['summary']['created_count'] = $createdCount;
         $result['summary']['updated_count'] = $updatedCount;
         $result['summary']['imported_count'] = $createdCount + $updatedCount;
+        $result['summary']['termination_applied_count'] = $terminationAppliedCount;
+        $result['summary']['termination_skipped_not_found_count'] = $terminationSkippedNotFoundCount;
+        $result['summary']['normal_created_count'] = $createdCount;
+        $result['summary']['normal_updated_count'] = max($updatedCount - $terminationAppliedCount, 0);
 
         return $result;
     }
@@ -140,8 +169,19 @@ class EmployeeExcelImportService
         $validRows = collect($preparedRows)->filter(function (array $row): bool {
             return $row['errors'] === [] && ($row['blocked_by_catalogs'] ?? false) === false;
         });
-        $newRows = $validRows->where('action', 'create')->count();
-        $updateRows = $validRows->where('action', 'update')->count();
+        $newRows = $validRows
+            ->filter(fn (array $row) => ($row['action'] ?? null) === 'create' && ($row['operation'] ?? 'normal') === 'normal')
+            ->count();
+        $normalUpdateRows = $validRows
+            ->filter(fn (array $row) => ($row['action'] ?? null) === 'update' && ($row['operation'] ?? 'normal') === 'normal')
+            ->count();
+        $terminationAppliedRows = $validRows
+            ->filter(fn (array $row) => ($row['operation'] ?? null) === 'termination' && ($row['skip_import'] ?? false) === false)
+            ->count();
+        $terminationSkippedRows = $validRows
+            ->filter(fn (array $row) => ($row['operation'] ?? null) === 'termination' && ($row['skip_import'] ?? false) === true)
+            ->count();
+        $updateRows = $normalUpdateRows + $terminationAppliedRows;
 
         return [
             'file_name' => $file->getClientOriginalName(),
@@ -159,6 +199,10 @@ class EmployeeExcelImportService
                 'catalog_creatable_records' => (int) ($catalogSummary['creatable_total'] ?? 0),
                 'employees_pending_by_catalogs' => $pendingByCatalogs,
                 'employees_resolvable_after_catalog_creation' => (int) ($catalogSummary['employees_resolvable_if_created'] ?? 0),
+                'termination_applied_count' => $terminationAppliedRows,
+                'termination_skipped_not_found_count' => $terminationSkippedRows,
+                'normal_created_count' => $newRows,
+                'normal_updated_count' => $normalUpdateRows,
             ],
             'catalogs' => $catalogSummary,
             'prepared_rows' => $preparedRows,
@@ -261,6 +305,27 @@ class EmployeeExcelImportService
             $errors[] = 'CLA_TRAB duplicado dentro del archivo.';
         }
 
+        $status = $this->normalizeEmployeeStatus($values['estatus_trabajador'] ?? null);
+        if (($values['estatus_trabajador'] ?? null) !== null && $status === null) {
+            $errors[] = 'ESTATUS_TRABAJADOR debe ser ACTIVO o BAJA.';
+        }
+
+        $existing = $claTrab !== null ? $existingEmployees->get((string) $claTrab) : null;
+        $isTermination = $this->isTerminationStatus($status);
+        $fechaBaja = $this->normalizeDate($values['fecha_baja'] ?? null, 'FECHA_BAJA', $errors);
+
+        if ($isTermination) {
+            return $this->prepareTerminationRow(
+                preRow: $preRow,
+                values: $values,
+                existing: $existing,
+                claTrab: $claTrab,
+                status: $status,
+                fechaBaja: $fechaBaja,
+                errors: $errors
+            );
+        }
+
         $name = $this->cleanText($values['nombre'] ?? null);
         if ($name === null) {
             $errors[] = 'NOMBRE es requerido.';
@@ -280,14 +345,6 @@ class EmployeeExcelImportService
         $fechaIngresoGrupo = $this->normalizeDate($values['fecha_ing_grupo'] ?? null, 'FECHA_ING_GRUPO', $errors);
         $inicioContrato = $this->normalizeDate($values['inicio_contrato'] ?? null, 'INICIO_CONTRATO', $errors);
         $fechaNacimiento = $this->normalizeDate($values['fecha_nacimiento'] ?? null, 'FECHA_NACIMIENTO', $errors);
-        $fechaBaja = $this->normalizeDate($values['fecha_baja'] ?? null, 'FECHA_BAJA', $errors);
-
-        $status = $this->normalizeEmployeeStatus($values['estatus_trabajador'] ?? null);
-        if (($values['estatus_trabajador'] ?? null) !== null && $status === null) {
-            $errors[] = 'ESTATUS_TRABAJADOR debe ser ACTIVO o BAJA.';
-        }
-
-        $existing = $claTrab !== null ? $existingEmployees->get((string) $claTrab) : null;
         $catalogResolution = $this->catalogResolutionService->resolveRowDependencies($values);
         $dependencies = $catalogResolution['dependencies'];
 
@@ -379,6 +436,7 @@ class EmployeeExcelImportService
         return [
             'row_number' => $preRow['row_number'],
             'action' => $existing ? 'update' : 'create',
+            'operation' => 'normal',
             'errors' => array_values(array_unique($errors)),
             'warnings' => $warnings,
             'values' => $values,
@@ -390,6 +448,59 @@ class EmployeeExcelImportService
             'can_be_resolved_by_catalog_creation' => (bool) ($catalogResolution['resolvable'] ?? false),
             'missing_catalogs' => $missingCatalogs,
             'catalog_missing_types' => $catalogMissingTypes,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $preRow
+     * @param  array<string, string|null>  $values
+     * @param  array<int, string>  $errors
+     * @return array<string, mixed>
+     */
+    private function prepareTerminationRow(
+        array $preRow,
+        array $values,
+        ?Employee $existing,
+        ?int $claTrab,
+        ?string $status,
+        ?string $fechaBaja,
+        array $errors
+    ): array {
+        $effectiveTerminationDate = $fechaBaja ?? CarbonImmutable::now()->format('Y-m-d');
+        $warnings = [];
+        $skipImport = false;
+        $action = 'update';
+
+        if (! $existing) {
+            $skipImport = true;
+            $action = 'skip';
+            $warnings[] = 'Baja omitida: empleado no encontrado.';
+        }
+
+        return [
+            'row_number' => $preRow['row_number'],
+            'action' => $action,
+            'operation' => 'termination',
+            'skip_import' => $skipImport,
+            'errors' => array_values(array_unique($errors)),
+            'warnings' => $warnings,
+            'values' => $values,
+            'employee_id' => $existing?->id,
+            'employee_attributes' => [
+                'fortia_employee_id' => $claTrab,
+                'status' => $status ?? 'B',
+            ],
+            'detail_attributes' => [],
+            'metadata_payload' => array_filter([
+                'cla_trab' => $claTrab !== null ? (string) $claTrab : null,
+                'estatus_trabajador' => $status ?? 'B',
+                'fecha_baja' => $effectiveTerminationDate,
+                'causa_baja' => $this->cleanText($values['causa_baja'] ?? null),
+            ], fn ($value) => $value !== null && $value !== ''),
+            'blocked_by_catalogs' => false,
+            'can_be_resolved_by_catalog_creation' => false,
+            'missing_catalogs' => [],
+            'catalog_missing_types' => [],
         ];
     }
 
@@ -412,9 +523,36 @@ class EmployeeExcelImportService
      */
     private function persistRow(array $preparedRow, string $fileName): string
     {
+        if (($preparedRow['skip_import'] ?? false) === true) {
+            return 'termination_skipped';
+        }
+
         $employee = Employee::query()
             ->where('fortia_employee_id', $preparedRow['employee_attributes']['fortia_employee_id'])
             ->first();
+
+        if (($preparedRow['operation'] ?? null) === 'termination') {
+            if (! $employee instanceof Employee) {
+                return 'termination_skipped';
+            }
+
+            $oldStatus = $employee->status;
+            $employee->fill([
+                'status' => $preparedRow['employee_attributes']['status'] ?? 'B',
+            ]);
+            $employee->save();
+
+            $this->recordStatusChange(
+                employee: $employee,
+                oldStatus: $oldStatus,
+                newStatus: $employee->status,
+                effectiveDate: $preparedRow['metadata_payload']['fecha_baja'] ?? null
+            );
+
+            $this->persistImportMetadata($employee, $preparedRow, $fileName);
+
+            return 'termination_applied';
+        }
 
         $action = 'updated';
         if ($employee === null) {
@@ -445,21 +583,60 @@ class EmployeeExcelImportService
             );
         }
 
-        if (Schema::hasTable('employee_import_metadata')) {
-            DB::table('employee_import_metadata')->updateOrInsert(
-                ['employee_id' => $employee->id],
-                [
-                    'source' => 'employees_excel',
-                    'source_file_name' => $fileName,
-                    'payload' => json_encode($preparedRow['metadata_payload'], JSON_UNESCAPED_UNICODE),
-                    'imported_at' => now(),
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
-        }
+        $this->persistImportMetadata($employee, $preparedRow, $fileName);
 
         return $action;
+    }
+
+    /**
+     * @param  array<string, mixed>  $preparedRow
+     */
+    private function persistImportMetadata(Employee $employee, array $preparedRow, string $fileName): void
+    {
+        if (! Schema::hasTable('employee_import_metadata')) {
+            return;
+        }
+
+        DB::table('employee_import_metadata')->updateOrInsert(
+            ['employee_id' => $employee->id],
+            [
+                'source' => 'employees_excel',
+                'source_file_name' => $fileName,
+                'payload' => json_encode($preparedRow['metadata_payload'], JSON_UNESCAPED_UNICODE),
+                'imported_at' => now(),
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+    }
+
+    private function recordStatusChange(Employee $employee, ?string $oldStatus, ?string $newStatus, ?string $effectiveDate): void
+    {
+        if (
+            $oldStatus === $newStatus
+            || ! Schema::hasTable('employee_status_changes')
+            || ! is_numeric($employee->company_id)
+            || ! is_numeric($employee->fortia_employee_id)
+        ) {
+            return;
+        }
+
+        $effectiveAt = $effectiveDate !== null
+            ? CarbonImmutable::parse($effectiveDate)
+            : CarbonImmutable::now();
+
+        EmployeeStatusChange::query()->create([
+            'employee_id' => $employee->id,
+            'company_id' => $employee->company_id,
+            'fortia_employee_id' => $employee->fortia_employee_id,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'changed_at' => $effectiveAt->toDateTimeString(),
+            'source' => 'employees_excel',
+            'meta' => [
+                'remote_updated_at' => $effectiveAt->toIso8601String(),
+            ],
+        ]);
     }
 
     private function isImportCandidateRow(array $values): bool
@@ -674,6 +851,11 @@ class EmployeeExcelImportService
             'B', 'BAJA', 'INACTIVO', 'INACTIVE' => 'B',
             default => null,
         };
+    }
+
+    private function isTerminationStatus(?string $status): bool
+    {
+        return $status === 'B';
     }
 
     private function formatStatusLabel(mixed $value): ?string

@@ -6,6 +6,7 @@ use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\Location;
+use App\Services\Employees\EmployeeOperationalStatusResolver;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -99,12 +100,20 @@ class CorporateRecruitmentDashboardService
             locationIds: $selectedLocationIds,
             clockId: $selectedClockId
         );
+        $eligibleEmployees = $this->eligibleEmployeesForLocations(
+            $selectedLocations,
+            $normalized['from_local'],
+            $normalized['to_local']
+        );
         $clocks = $this->clockCollection($selectedLocationIds, $selectedClockId);
         $attendanceByLocation = $this->attendanceSummaryByLocation($attendanceRecords);
-        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation($attendanceRecords);
-        $employeeCountsByLocation = $this->activeEmployeesByLocation($selectedLocations);
+        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation(
+            $attendanceRecords,
+            $eligibleEmployees['eligibility']
+        );
+        $employeeCountsByLocation = $eligibleEmployees['counts_by_location'];
         $globalAttended = $attendanceRecords
-            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->filter(fn (AttendanceLog $record) => $this->recordCountsForCoverage($record, $eligibleEmployees['eligibility']))
             ->pluck('employee_id')
             ->unique()
             ->count();
@@ -230,11 +239,22 @@ class CorporateRecruitmentDashboardService
         $locations = $this->resolveScopedLocations();
         $normalized = $this->normalizeFilters($filters, $locations);
         $selectedLocations = $normalized['selected_locations'];
-        $activeEmployees = $this->activeEmployeesForAttendanceWorkbook($selectedLocations);
+        $activeEmployees = $this->activeEmployeesForAttendanceWorkbook(
+            $selectedLocations,
+            $normalized['from_local'],
+            $normalized['to_local']
+        );
         $detailRecords = $this->buildAttendanceWorkbookDetailRecords($normalized, $activeEmployees);
+        $eligibleDetailRecords = $detailRecords->filter(
+            fn (array $record) => $this->employeeDateIsEligible(
+                (int) $record['employee_id'],
+                (string) $record['date_key'],
+                $activeEmployees
+            )
+        )->values();
         $generatedAt = now($this->operationsTimezone());
         $reportDates = $this->reportDateRange($normalized['from_local'], $normalized['to_local']);
-        $maxChecks = max(0, (int) $detailRecords
+        $maxChecks = max(0, (int) $eligibleDetailRecords
             ->groupBy(fn (array $record) => $record['employee_id'].'|'.$record['date_key'])
             ->map(fn (Collection $records) => $records->count())
             ->max());
@@ -243,8 +263,15 @@ class CorporateRecruitmentDashboardService
             'filters' => $normalized['filters'],
             'generated_at' => $generatedAt->toIso8601String(),
             'sheets' => [
-                'report' => $this->buildAttendanceWorkbookReportRows($activeEmployees, $detailRecords, $reportDates, $maxChecks),
-                'summary' => $this->buildAttendanceWorkbookSummaryRows($normalized, $selectedLocations, $activeEmployees, $detailRecords, $generatedAt),
+                'report' => $this->buildAttendanceWorkbookReportRows($activeEmployees, $eligibleDetailRecords, $reportDates, $maxChecks),
+                'summary' => $this->buildAttendanceWorkbookSummaryRows(
+                    $normalized,
+                    $selectedLocations,
+                    $activeEmployees,
+                    $eligibleDetailRecords,
+                    $detailRecords->count(),
+                    $generatedAt
+                ),
                 'raw' => $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT
                     ? $this->buildAttendanceWorkbookRawRows($detailRecords)
                     : [],
@@ -546,10 +573,10 @@ class CorporateRecruitmentDashboardService
             });
     }
 
-    protected function attendanceDistinctEmployeesByLocation(Collection $attendanceRecords): Collection
+    protected function attendanceDistinctEmployeesByLocation(Collection $attendanceRecords, array $eligibilityMap): Collection
     {
         return $attendanceRecords
-            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->filter(fn (AttendanceLog $record) => $this->recordCountsForCoverage($record, $eligibilityMap))
             ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
             ->map(fn (Collection $records) => $records->pluck('employee_id')->unique()->count());
     }
@@ -558,36 +585,9 @@ class CorporateRecruitmentDashboardService
      * @param  Collection<int, Location>  $locations
      * @return array<int, int>
      */
-    protected function activeEmployeesByLocation(Collection $locations): array
+    protected function activeEmployeesByLocation(Collection $locations, Carbon $fromLocal, Carbon $toLocal): array
     {
-        $candidateMap = [];
-
-        foreach ($locations as $location) {
-            $candidateMap[(int) $location->id] = $this->employeeLocationCandidates($location);
-        }
-
-        $allCandidates = collect($candidateMap)->flatten(1)->unique()->values()->all();
-
-        if ($allCandidates === []) {
-            return [];
-        }
-
-        $rows = Employee::query()
-            ->select('base_location_id', DB::raw('COUNT(*) as total'))
-            ->whereIn('status', ['A', 'ACTIVE', 'active'])
-            ->whereIn('base_location_id', $allCandidates)
-            ->groupBy('base_location_id')
-            ->get()
-            ->mapWithKeys(fn ($row) => [(string) $row->base_location_id => (int) $row->total]);
-
-        $counts = [];
-
-        foreach ($candidateMap as $locationId => $candidates) {
-            $counts[$locationId] = collect($candidates)
-                ->sum(fn ($candidate) => (int) ($rows[(string) $candidate] ?? 0));
-        }
-
-        return $counts;
+        return $this->eligibleEmployeesForLocations($locations, $fromLocal, $toLocal)['counts_by_location'];
     }
 
     /**
@@ -603,6 +603,129 @@ class CorporateRecruitmentDashboardService
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  Collection<int, Location>  $locations
+     * @return array{
+     *     payload: Collection<int, array<string, mixed>>,
+     *     counts_by_location: array<int, int>,
+     *     eligibility: array<int, array<string, bool>>
+     * }
+     */
+    protected function eligibleEmployeesForLocations(Collection $locations, Carbon $fromLocal, Carbon $toLocal): array
+    {
+        $candidateMap = [];
+
+        foreach ($locations as $location) {
+            $candidateMap[(int) $location->id] = collect($this->employeeLocationCandidates($location))
+                ->map(fn ($value) => (string) $value)
+                ->all();
+        }
+
+        $allCandidates = collect($candidateMap)->flatten(1)->unique()->values()->all();
+
+        if ($allCandidates === []) {
+            return [
+                'payload' => collect(),
+                'counts_by_location' => [],
+                'eligibility' => [],
+            ];
+        }
+
+        $employees = Employee::query()
+            ->select($this->activeEmployeeSelectColumns())
+            ->whereIn('base_location_id', $allCandidates)
+            ->orderBy('full_name')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Employee $employee) use ($locations, $candidateMap): ?array {
+                $baseLocation = (string) $employee->base_location_id;
+                $matchedLocation = $locations->first(function (Location $location) use ($candidateMap, $baseLocation): bool {
+                    return in_array($baseLocation, $candidateMap[(int) $location->id] ?? [], true);
+                });
+
+                if (! $matchedLocation) {
+                    return null;
+                }
+
+                return [
+                    'employee' => $employee,
+                    'location' => $matchedLocation,
+                ];
+            })
+            ->filter()
+            ->values();
+
+        $snapshot = $this->employeeOperationalStatusResolver()->buildEligibilitySnapshot(
+            $employees->pluck('employee'),
+            $fromLocal,
+            $toLocal
+        );
+        $eligibility = $snapshot['by_employee_date'] ?? [];
+        $eligibleIds = collect($snapshot['eligible_employee_ids'] ?? [])->map(fn ($id) => (int) $id)->all();
+
+        $payload = $employees
+            ->filter(fn (array $row) => in_array((int) $row['employee']->id, $eligibleIds, true))
+            ->map(function (array $row) use ($eligibility): array {
+                /** @var Employee $employee */
+                $employee = $row['employee'];
+                /** @var Location $location */
+                $location = $row['location'];
+                $employeeEligibility = $eligibility[(int) $employee->id] ?? [];
+                $eligibleDates = array_keys(array_filter($employeeEligibility));
+
+                return [
+                    'employee_id' => (int) $employee->id,
+                    'employee_number' => $this->resolveVisibleEmployeeNumber($employee, $employee->id),
+                    'employee_name' => $employee->full_name ?: ($employee->name ?: 'Empleado #'.$employee->id),
+                    'base_location_id' => (int) $location->id,
+                    'base_location_name' => $location->name,
+                    'can_check_all_branches' => (bool) $employee->can_check_all_branches,
+                    'eligible_dates' => array_values($eligibleDates),
+                ];
+            })
+            ->values();
+
+        $countsByLocation = $payload
+            ->groupBy('base_location_id')
+            ->map(fn (Collection $rows) => $rows->count())
+            ->all();
+
+        return [
+            'payload' => $payload,
+            'counts_by_location' => $countsByLocation,
+            'eligibility' => $eligibility,
+        ];
+    }
+
+    protected function recordCountsForCoverage(AttendanceLog $record, array $eligibilityMap): bool
+    {
+        if ($record->employee_id === null) {
+            return false;
+        }
+
+        $localDateTime = $this->resolvedAttendanceLocalDateTime($record);
+
+        if (! $localDateTime) {
+            return false;
+        }
+
+        return (bool) ($eligibilityMap[(int) $record->employee_id][$localDateTime->format('Y-m-d')] ?? false);
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $activeEmployees
+     */
+    protected function employeeDateIsEligible(int $employeeId, string $dateKey, Collection $activeEmployees): bool
+    {
+        $employee = $activeEmployees->firstWhere('employee_id', $employeeId);
+
+        if (! is_array($employee)) {
+            return false;
+        }
+
+        return in_array($dateKey, $employee['eligible_dates'] ?? [], true);
     }
 
     protected function summarizeClocks(
@@ -1198,50 +1321,13 @@ class CorporateRecruitmentDashboardService
      * @param  Collection<int, Location>  $locations
      * @return Collection<int, array<string, mixed>>
      */
-    protected function activeEmployeesForAttendanceWorkbook(Collection $locations): Collection
+    protected function activeEmployeesForAttendanceWorkbook(
+        Collection $locations,
+        Carbon $fromLocal,
+        Carbon $toLocal
+    ): Collection
     {
-        $candidateMap = [];
-
-        foreach ($locations as $location) {
-            $candidateMap[(int) $location->id] = collect($this->employeeLocationCandidates($location))
-                ->map(fn ($value) => (string) $value)
-                ->all();
-        }
-
-        $allCandidates = collect($candidateMap)->flatten(1)->unique()->values()->all();
-
-        if ($allCandidates === []) {
-            return collect();
-        }
-
-        return Employee::query()
-            ->select($this->activeEmployeeSelectColumns())
-            ->whereIn('status', ['A', 'ACTIVE', 'active'])
-            ->whereIn('base_location_id', $allCandidates)
-            ->orderBy('full_name')
-            ->orderBy('name')
-            ->get()
-            ->map(function (Employee $employee) use ($locations, $candidateMap): ?array {
-                $baseLocation = (string) $employee->base_location_id;
-                $matchedLocation = $locations->first(function (Location $location) use ($candidateMap, $baseLocation): bool {
-                    return in_array($baseLocation, $candidateMap[(int) $location->id] ?? [], true);
-                });
-
-                if (! $matchedLocation) {
-                    return null;
-                }
-
-                return [
-                    'employee_id' => (int) $employee->id,
-                    'employee_number' => $this->resolveVisibleEmployeeNumber($employee, $employee->id),
-                    'employee_name' => $employee->full_name ?: ($employee->name ?: 'Empleado #'.$employee->id),
-                    'base_location_id' => (int) $matchedLocation->id,
-                    'base_location_name' => $matchedLocation->name,
-                    'can_check_all_branches' => (bool) $employee->can_check_all_branches,
-                ];
-            })
-            ->filter()
-            ->values();
+        return $this->eligibleEmployeesForLocations($locations, $fromLocal, $toLocal)['payload'];
     }
 
     /**
@@ -1253,11 +1339,15 @@ class CorporateRecruitmentDashboardService
     {
         $selectedLocationIds = $normalized['selected_locations']->pluck('id')->map(fn ($id) => (int) $id)->all();
         $employeeIndex = $activeEmployees->keyBy('employee_id');
-        $employeeIds = $employeeIndex->keys()->map(fn ($id) => (int) $id)->all();
 
-        if ($selectedLocationIds === [] || $employeeIds === []) {
+        if ($selectedLocationIds === []) {
             return collect();
         }
+
+        $employeeRelationColumns = implode(',', array_values(array_unique(array_merge(
+            $this->employeeIdentifierSelectColumns(),
+            ['name', 'full_name']
+        ))));
 
         return $this->loadAttendanceRecords(
             $normalized['from_local'],
@@ -1265,20 +1355,22 @@ class CorporateRecruitmentDashboardService
             $selectedLocationIds,
             $normalized['clock_id'],
             [
-                'employee:id,fortia_employee_id,name,full_name',
+                'employee:'.$employeeRelationColumns,
                 'location:id,name,code,fortia_location_id',
                 'clock:id,clock_name,serial_number',
             ]
         )
-            ->filter(fn (AttendanceLog $record) => in_array((int) $record->employee_id, $employeeIds, true))
             ->sortBy([
-                fn (AttendanceLog $record) => (int) $record->employee_id,
+                fn (AttendanceLog $record) => (int) ($record->employee_id ?? 0),
                 fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record)?->getTimestamp() ?? PHP_INT_MAX,
             ])
             ->values()
             ->map(function (AttendanceLog $record) use ($employeeIndex): ?array {
-                $employee = $employeeIndex->get((int) $record->employee_id);
-                if ($employee === null) {
+                $employee = $employeeIndex->get((int) ($record->employee_id ?? 0));
+                $employeeModel = $record->employee;
+                $employeeId = (int) ($record->employee_id ?? $employeeModel?->id ?? 0);
+
+                if ($employeeId <= 0) {
                     return null;
                 }
 
@@ -1289,15 +1381,15 @@ class CorporateRecruitmentDashboardService
                 }
 
                 return [
-                    'employee_id' => (int) $record->employee_id,
-                    'employee_number' => $employee['employee_number'],
-                    'employee_name' => $employee['employee_name'],
-                    'base_location_name' => $employee['base_location_name'],
+                    'employee_id' => $employeeId,
+                    'employee_number' => $employee['employee_number'] ?? $this->resolveVisibleEmployeeNumber($employeeModel, $employeeId),
+                    'employee_name' => $employee['employee_name'] ?? ($employeeModel?->full_name ?: ($employeeModel?->name ?: 'Empleado #'.$employeeId)),
+                    'base_location_name' => $employee['base_location_name'] ?? '',
                     'date_key' => $localDateTime->format('Y-m-d'),
                     'date_display' => $localDateTime->format('d/m/Y'),
                     'time_display' => $localDateTime->format('H:i:s'),
                     'datetime_display' => $localDateTime->format('d/m/Y H:i:s'),
-                    'unit_name' => $record->location?->name ?? $employee['base_location_name'],
+                    'unit_name' => $record->location?->name ?? ($employee['base_location_name'] ?? 'Sin unidad'),
                     'clock_name' => $record->clock?->clock_name ?? ($record->device_id ? 'Reloj #'.$record->device_id : 'Sin reloj'),
                     'clock_serial' => $record->clock?->serial_number,
                     'type_label' => $this->logTypeLabel((int) $record->log_type),
@@ -1340,6 +1432,10 @@ class CorporateRecruitmentDashboardService
 
         foreach ($activeEmployees as $employee) {
             foreach ($reportDates as $dateKey) {
+                if (! in_array($dateKey, $employee['eligible_dates'] ?? [], true)) {
+                    continue;
+                }
+
                 /** @var Collection<int, array<string, mixed>> $records */
                 $records = $grouped->get($employee['employee_id'].'|'.$dateKey, collect())
                     ->sortBy('time_display')
@@ -1386,6 +1482,7 @@ class CorporateRecruitmentDashboardService
         Collection $selectedLocations,
         Collection $activeEmployees,
         Collection $detailRecords,
+        int $rawDetailCount,
         Carbon $generatedAt
     ): array {
         $employeesWithChecks = $detailRecords->pluck('employee_id')->unique()->count();
@@ -1408,13 +1505,13 @@ class CorporateRecruitmentDashboardService
             ['Desde', Carbon::parse($normalized['filters']['from_date'], $this->operationsTimezone())->format('d/m/Y')],
             ['Hasta', Carbon::parse($normalized['filters']['to_date'], $this->operationsTimezone())->format('d/m/Y')],
             ['Unidades incluidas', $selectedLocations->map(fn (Location $location) => trim($location->name.' ('.$this->preferredLocationCode($location).')'))->implode(', ')],
-            ['Total empleados', $totalEmployees],
-            ['Total con checada', $employeesWithChecks],
-            ['Total pendientes', $pendingEmployees],
-            ['Total checadas', $detailRecords->count()],
+            ['Total empleados', (string) $totalEmployees],
+            ['Total con checada', (string) $employeesWithChecks],
+            ['Total pendientes', (string) $pendingEmployees],
+            ['Total checadas', (string) $rawDetailCount],
             ['Cobertura', $this->percentage($employeesWithChecks, $totalEmployees).'%'],
             ['Relojes incluidos', $clockLabels !== [] ? implode(', ', $clockLabels) : 'Todos'],
-            ['Detalle crudo incluido', $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT ? 'Si' : 'No'],
+            ['Detalle crudo incluido', $rawDetailCount <= self::DETAIL_EXPORT_LIMIT ? 'Si' : 'No'],
         ];
     }
 
@@ -1705,6 +1802,11 @@ class CorporateRecruitmentDashboardService
     protected function resolvedAttendanceLocalDateTime(AttendanceLog $record): ?Carbon
     {
         return $record->resolvedAttendanceLocalDateTime();
+    }
+
+    protected function employeeOperationalStatusResolver(): EmployeeOperationalStatusResolver
+    {
+        return app(EmployeeOperationalStatusResolver::class);
     }
 
     protected function resolveVisibleEmployeeNumber(?Employee $employee, mixed $fallbackId): string

@@ -8,6 +8,7 @@ use App\Models\CentroCosto;
 use App\Models\Company;
 use App\Models\Departamento;
 use App\Models\Employee;
+use App\Models\EmployeeStatusChange;
 use App\Models\Location;
 use App\Models\PeriodoPago;
 use App\Models\Permission;
@@ -384,6 +385,127 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('NUAI900101HDFRMR02', $employee->curp);
         $this->assertSame('A', $employee->status);
         $this->assertSame(1, Employee::query()->where('fortia_employee_id', 16001)->count());
+    }
+
+    public function test_can_apply_termination_for_existing_employee_without_curp_rfc_or_catalog_data(): void
+    {
+        $user = $this->createAdminImporter();
+        $company = Company::query()->create([
+            'name' => 'Empresa Baja',
+            'code' => 'EB',
+            'status' => 1,
+        ]);
+
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 26001,
+            'company_id' => $company->id,
+            'name' => 'Empleado',
+            'full_name' => 'Empleado Vigente',
+            'status' => 'A',
+            'rfc' => 'VIGE900101AB1',
+            'curp' => 'VIGE900101HDFRMR01',
+        ]);
+
+        $file = $this->makeExcelUpload($this->headers(), [
+            $this->employeeRow([
+                'CLA_TRAB' => '26001',
+                'NOMBRE' => '',
+                'CURP' => '',
+                'RFC' => '',
+                'NOM_UBICACION' => '',
+                'NOM_PUESTO' => '',
+                'NOM_DEPARTAMENTO' => '',
+                'NOM_RAZON_SOCIAL' => '',
+                'ESTATUS_TRABAJADOR' => 'BAJA',
+                'FECHA_BAJA' => '19/06/2026',
+                'CAUSA_BAJA' => 'Separacion',
+            ]),
+        ]);
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import/preview', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_import', true)
+            ->assertJsonPath('summary.total_rows', 1)
+            ->assertJsonPath('summary.termination_applied_count', 1)
+            ->assertJsonPath('summary.termination_skipped_not_found_count', 0)
+            ->assertJsonPath('summary.error_records', 0)
+            ->assertJsonPath('rows.0.action', 'update');
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('created_count', 0)
+            ->assertJsonPath('updated_count', 1)
+            ->assertJsonPath('termination_applied_count', 1)
+            ->assertJsonPath('termination_skipped_not_found_count', 0)
+            ->assertJsonPath('summary.normal_updated_count', 0);
+
+        $employee->refresh();
+        $this->assertSame('B', $employee->status);
+
+        $statusChange = EmployeeStatusChange::query()
+            ->where('employee_id', $employee->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($statusChange);
+        $this->assertSame('A', $statusChange->old_status);
+        $this->assertSame('B', $statusChange->new_status);
+        $this->assertSame('employees_excel', $statusChange->source);
+        $this->assertSame('2026-06-19', data_get($statusChange->meta, 'remote_updated_at') ? substr((string) data_get($statusChange->meta, 'remote_updated_at'), 0, 10) : null);
+    }
+
+    public function test_termination_for_missing_employee_is_skipped_without_creating_record(): void
+    {
+        $user = $this->createAdminImporter();
+
+        $file = $this->makeExcelUpload($this->headers(), [
+            $this->employeeRow([
+                'CLA_TRAB' => '26002',
+                'ESTATUS_TRABAJADOR' => 'BAJA',
+                'FECHA_BAJA' => '20/06/2026',
+            ]),
+        ]);
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import/preview', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_import', true)
+            ->assertJsonPath('summary.termination_applied_count', 0)
+            ->assertJsonPath('summary.termination_skipped_not_found_count', 1)
+            ->assertJsonPath('rows.0.action', 'skip')
+            ->assertJsonPath('rows.0.warnings.0', 'Baja omitida: empleado no encontrado.');
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('created_count', 0)
+            ->assertJsonPath('updated_count', 0)
+            ->assertJsonPath('termination_applied_count', 0)
+            ->assertJsonPath('termination_skipped_not_found_count', 1)
+            ->assertJsonPath('imported_count', 0);
+
+        $this->assertDatabaseMissing('employees', [
+            'fortia_employee_id' => 26002,
+        ]);
+        $this->assertDatabaseCount('employee_status_changes', 0);
     }
 
     public function test_invalid_file_is_rejected(): void

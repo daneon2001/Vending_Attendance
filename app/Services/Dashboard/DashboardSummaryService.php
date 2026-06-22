@@ -7,6 +7,7 @@ use App\Models\Clock;
 use App\Models\Employee;
 use App\Models\EmployeeSyncState;
 use App\Models\Location;
+use App\Services\Employees\EmployeeOperationalStatusResolver;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -59,15 +60,17 @@ class DashboardSummaryService
             ->all();
 
         $attendanceBase = $this->attendanceQuery($from, $to, $companyId, $unitId);
-        $activeEmployeesQuery = $this->activeEmployeesQuery($companyId, $employeeBaseLocationId);
+        $eligibleEmployees = $this->eligibleEmployeesForRange($companyId, $employeeBaseLocationId, $fromLocal, $toLocal);
+        $coverageAttendanceRecords = $this->coverageAttendanceRecords(clone $attendanceBase, $eligibleEmployees['eligibility']);
         $clocksBase = $this->clocksQuery($companyId, $unitId);
         $onlineThreshold = now($storageTimezone)->subMinutes(self::ONLINE_THRESHOLD_MINUTES);
 
-        $employeesActive = (clone $activeEmployeesQuery)->count();
-        $attendanceRegistered = (clone $attendanceBase)
-            ->whereNotNull('employee_id')
-            ->distinct('employee_id')
-            ->count('employee_id');
+        $employeesActive = $eligibleEmployees['employees']->count();
+        $attendanceRegistered = $coverageAttendanceRecords
+            ->pluck('employee_id')
+            ->filter()
+            ->unique()
+            ->count();
         $pendingAttendance = max($employeesActive - $attendanceRegistered, 0);
         $attendanceCoverage = $this->percentage($attendanceRegistered, $employeesActive);
         $entriesTotal = $this->countAttendanceByTypes(clone $attendanceBase, $entryTypes);
@@ -121,7 +124,8 @@ class DashboardSummaryService
             ? $this->buildLocationRanking(
                 $companyId,
                 $unitId,
-                clone $attendanceBase,
+                $coverageAttendanceRecords,
+                $eligibleEmployees['employees'],
                 $onlineThreshold
             )
             : collect();
@@ -130,7 +134,7 @@ class DashboardSummaryService
             : collect();
 
         $enrollment = $this->shouldIncludeEnrollment($activeTab)
-            ? $this->buildEnrollmentSummary($companyId, $employeeBaseLocationId)
+            ? $this->buildEnrollmentSummary($eligibleEmployees['employees'])
             : null;
 
         $syncState = $this->shouldIncludeAlerts($activeTab)
@@ -190,11 +194,11 @@ class DashboardSummaryService
             : collect();
 
         $presenceSeries = $this->includesTab($activeTab, self::TAB_SUMMARY)
-            ? $this->buildPresenceSeries($fromLocal, $toLocal, clone $attendanceBase, $timezone, $storageTimezone)
+            ? $this->buildPresenceSeries($fromLocal, $toLocal, $coverageAttendanceRecords)
             : null;
 
         $employeeStatus = $this->includesTab($activeTab, self::TAB_SUMMARY)
-            ? $this->buildEmployeeStatusDataset($companyId, $employeeBaseLocationId)
+            ? $this->buildEmployeeStatusDataset($eligibleEmployees['candidates'], $eligibleEmployees['employees'])
             : null;
 
         $hourlyActivity = ($this->includesTab($activeTab, self::TAB_ACTIVITY) || $this->includesTab($activeTab, self::TAB_SUMMARY))
@@ -461,6 +465,64 @@ class DashboardSummaryService
             ->when($employeeBaseLocationId, fn (Builder $query) => $query->where('base_location_id', $employeeBaseLocationId));
     }
 
+    /**
+     * @return array{
+     *     candidates: Collection<int, Employee>,
+     *     employees: Collection<int, Employee>,
+     *     eligibility: array<int, array<string, bool>>
+     * }
+     */
+    protected function eligibleEmployeesForRange(
+        ?int $companyId,
+        ?int $employeeBaseLocationId,
+        Carbon $fromLocal,
+        Carbon $toLocal
+    ): array {
+        $candidates = Employee::query()
+            ->when($companyId, fn (Builder $query) => $query->where('company_id', $companyId))
+            ->when($employeeBaseLocationId, fn (Builder $query) => $query->where('base_location_id', $employeeBaseLocationId))
+            ->get();
+
+        $snapshot = $this->employeeOperationalStatusResolver()->buildEligibilitySnapshot($candidates, $fromLocal, $toLocal);
+        $eligibility = $snapshot['by_employee_date'] ?? [];
+        $eligibleIds = collect($snapshot['eligible_employee_ids'] ?? [])->map(fn ($id) => (int) $id)->all();
+        $employees = $candidates
+            ->filter(fn (Employee $employee) => in_array((int) $employee->id, $eligibleIds, true))
+            ->values();
+
+        return [
+            'candidates' => $candidates,
+            'employees' => $employees,
+            'eligibility' => $eligibility,
+        ];
+    }
+
+    /**
+     * @return Collection<int, AttendanceLog>
+     */
+    protected function coverageAttendanceRecords(Builder $attendanceBase, array $eligibilityMap): Collection
+    {
+        return $attendanceBase
+            ->get()
+            ->filter(fn (AttendanceLog $record) => $this->recordCountsForCoverage($record, $eligibilityMap))
+            ->values();
+    }
+
+    protected function recordCountsForCoverage(AttendanceLog $record, array $eligibilityMap): bool
+    {
+        if ($record->employee_id === null) {
+            return false;
+        }
+
+        $localDateTime = $record->resolvedAttendanceLocalDateTime();
+
+        if (! $localDateTime) {
+            return false;
+        }
+
+        return (bool) ($eligibilityMap[(int) $record->employee_id][$localDateTime->format('Y-m-d')] ?? false);
+    }
+
     protected function clocksQuery(?int $companyId, ?int $unitId): Builder
     {
         return Clock::query()
@@ -507,25 +569,12 @@ class DashboardSummaryService
         return round(($part / $total) * 100, 1);
     }
 
-    protected function buildPresenceSeries(
-        Carbon $from,
-        Carbon $to,
-        Builder $attendanceBase,
-        string $timezone,
-        string $storageTimezone
-    ): array
+    protected function buildPresenceSeries(Carbon $from, Carbon $to, Collection $attendanceRecords): array
     {
-        $dayExpression = $this->dateBucketExpression('log_date', $timezone, $storageTimezone);
-
-        $records = $attendanceBase
-            ->selectRaw($dayExpression.' as day')
-            ->selectRaw('COUNT(DISTINCT employee_id) as total')
-            ->whereNotNull('employee_id')
-            ->groupBy('day')
-            ->orderBy('day')
-            ->get();
-
-        $map = $records->pluck('total', 'day');
+        $map = $attendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->groupBy(fn (AttendanceLog $record) => $record->resolvedAttendanceLocalDateTime()?->format('Y-m-d'))
+            ->map(fn (Collection $records) => $records->pluck('employee_id')->unique()->count());
         $labels = [];
         $values = [];
 
@@ -541,18 +590,10 @@ class DashboardSummaryService
         ];
     }
 
-    protected function buildEmployeeStatusDataset(?int $companyId, ?int $employeeBaseLocationId): array
+    protected function buildEmployeeStatusDataset(Collection $candidateEmployees, Collection $activeEmployees): array
     {
-        $rows = Employee::query()
-            ->select('status', DB::raw('COUNT(*) as total'))
-            ->when($companyId, fn (Builder $query) => $query->where('company_id', $companyId))
-            ->when($employeeBaseLocationId, fn (Builder $query) => $query->where('base_location_id', $employeeBaseLocationId))
-            ->groupBy('status')
-            ->get()
-            ->keyBy(fn ($row) => strtoupper((string) $row->status));
-
-        $active = (int) (($rows['A']->total ?? 0) + ($rows['ACTIVE']->total ?? 0));
-        $inactive = max($rows->sum('total') - $active, 0);
+        $active = $activeEmployees->count();
+        $inactive = max($candidateEmployees->count() - $active, 0);
 
         return [
             'labels' => ['Activos', 'Bajas'],
@@ -612,53 +653,37 @@ class DashboardSummaryService
         return $hours;
     }
 
-    protected function buildEnrollmentSummary(?int $companyId, ?int $employeeBaseLocationId): array
+    protected function buildEnrollmentSummary(Collection $activeEmployees): array
     {
-        $activeEmployees = $this->activeEmployeesQuery($companyId, $employeeBaseLocationId);
-        $employeesActive = (clone $activeEmployees)->count();
-        $withFingerprint = (clone $activeEmployees)
-            ->where('has_fingerprint', true)
+        $employeesActive = $activeEmployees->count();
+        $withFingerprint = $activeEmployees
+            ->filter(fn (Employee $employee) => (bool) $employee->has_fingerprint)
             ->count();
-        $withoutFingerprint = (clone $activeEmployees)
-            ->where(function (Builder $query): void {
-                $query->whereNull('has_fingerprint')
-                    ->orWhere('has_fingerprint', false);
-            })
+        $withoutFingerprint = $activeEmployees
+            ->reject(fn (Employee $employee) => (bool) $employee->has_fingerprint)
             ->count();
 
         $supportsFace = $this->employeesSupportFaceFields();
         $withFace = $supportsFace
-            ? (clone $activeEmployees)
-                ->where('has_face_enrollment', true)
+            ? $activeEmployees
+                ->filter(fn (Employee $employee) => (bool) $employee->has_face_enrollment)
                 ->count()
             : 0;
         $withoutFace = $supportsFace
-            ? (clone $activeEmployees)
-                ->where(function (Builder $query): void {
-                    $query->whereNull('has_face_enrollment')
-                        ->orWhere('has_face_enrollment', false);
-                })
+            ? $activeEmployees
+                ->reject(fn (Employee $employee) => (bool) $employee->has_face_enrollment)
                 ->count()
             : 0;
 
         $withBoth = $supportsFace
-            ? (clone $activeEmployees)
-                ->where('has_fingerprint', true)
-                ->where('has_face_enrollment', true)
+            ? $activeEmployees
+                ->filter(fn (Employee $employee) => (bool) $employee->has_fingerprint && (bool) $employee->has_face_enrollment)
                 ->count()
             : 0;
 
         $withoutAnyBiometric = $supportsFace
-            ? (clone $activeEmployees)
-                ->where(function (Builder $query): void {
-                    $query->where(function (Builder $fingerprint): void {
-                        $fingerprint->whereNull('has_fingerprint')
-                            ->orWhere('has_fingerprint', false);
-                    })->where(function (Builder $face): void {
-                        $face->whereNull('has_face_enrollment')
-                            ->orWhere('has_face_enrollment', false);
-                    });
-                })
+            ? $activeEmployees
+                ->reject(fn (Employee $employee) => (bool) $employee->has_fingerprint || (bool) $employee->has_face_enrollment)
                 ->count()
             : $withoutFingerprint;
 
@@ -686,26 +711,23 @@ class DashboardSummaryService
     protected function buildLocationRanking(
         ?int $companyId,
         ?int $unitId,
-        Builder $attendanceBase,
+        Collection $coverageAttendanceRecords,
+        Collection $activeEmployees,
         Carbon $onlineThreshold
     ): Collection {
-        $attendanceByLocation = $attendanceBase
-            ->select('location_id')
-            ->selectRaw('COUNT(DISTINCT employee_id) as attendance_registered')
-            ->whereNotNull('location_id')
-            ->whereNotNull('employee_id')
-            ->groupBy('location_id')
-            ->get()
-            ->keyBy('location_id');
+        $attendanceByLocation = $coverageAttendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->location_id !== null && $record->employee_id !== null)
+            ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
+            ->map(fn (Collection $records) => $records->pluck('employee_id')->unique()->count());
+        $activeEmployeesByLocation = $activeEmployees
+            ->groupBy(fn (Employee $employee) => (string) $employee->base_location_id)
+            ->map(fn (Collection $employees) => $employees->count());
 
         return Location::query()
-            ->select('id', 'name', 'code', 'company_id')
+            ->select('id', 'name', 'code', 'fortia_location_id', 'company_id')
             ->when($companyId, fn (Builder $query) => $query->where('company_id', $companyId))
             ->when($unitId, fn (Builder $query) => $query->whereKey($unitId))
             ->withCount([
-                'employees as employees_active_count' => function (Builder $query): void {
-                    $query->whereIn('status', ['A', 'ACTIVE', 'active']);
-                },
                 'clocks as clocks_total_count',
                 'clocks as clocks_online_count' => function (Builder $query) use ($onlineThreshold): void {
                     $query->whereNotNull('last_heartbeat_at')
@@ -720,9 +742,9 @@ class DashboardSummaryService
             ])
             ->orderBy('name')
             ->get()
-            ->map(function (Location $location) use ($attendanceByLocation): array {
-                $attendanceRegistered = (int) ($attendanceByLocation->get($location->id)->attendance_registered ?? 0);
-                $employeesActive = (int) ($location->employees_active_count ?? 0);
+            ->map(function (Location $location) use ($attendanceByLocation, $activeEmployeesByLocation): array {
+                $attendanceRegistered = (int) ($attendanceByLocation->get((int) $location->id) ?? 0);
+                $employeesActive = (int) ($activeEmployeesByLocation[(string) $location->id] ?? $activeEmployeesByLocation[(string) ($location->fortia_location_id ?? '')] ?? $activeEmployeesByLocation[(string) ($location->code ?? '')] ?? 0);
                 $coverage = $this->percentage($attendanceRegistered, $employeesActive);
                 $status = $this->resolveLocationStatus(
                     $employeesActive,
@@ -1588,6 +1610,11 @@ class DashboardSummaryService
         }
 
         return Carbon::parse((string) $value, $storageTimezone)->setTimezone($timezone);
+    }
+
+    protected function employeeOperationalStatusResolver(): EmployeeOperationalStatusResolver
+    {
+        return app(EmployeeOperationalStatusResolver::class);
     }
 
     protected function timezoneOffsetMinutes(string $timezone, string $storageTimezone): int
