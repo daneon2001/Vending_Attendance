@@ -91,7 +91,9 @@ class OnPremAttendanceController extends Controller
         foreach ($validated['events'] as $event) {
             $eventValidator = Validator::make($event, [
                 'local_event_id' => ['required', 'uuid'],
-                'collaborator_id' => ['required', 'integer'],
+                'collaborator_id' => ['nullable', 'integer', 'required_without_all:fortia_employee_id,employee_number,meta.fortia_employee_id'],
+                'fortia_employee_id' => ['nullable', 'string', 'max:100'],
+                'employee_number' => ['nullable', 'string', 'max:100'],
                 'punched_at_local' => ['required', 'date'],
                 'timezone' => ['required', 'timezone'],
                 'punched_at_utc' => ['required', 'date'],
@@ -99,6 +101,7 @@ class OnPremAttendanceController extends Controller
                 'source' => ['required', 'string', 'max:80'],
                 'quality' => ['nullable', 'integer', 'min:0', 'max:100'],
                 'meta' => ['nullable', 'array'],
+                'meta.fortia_employee_id' => ['nullable', 'string', 'max:100'],
             ]);
 
             $localEventId = $event['local_event_id'] ?? null;
@@ -132,10 +135,34 @@ class OnPremAttendanceController extends Controller
             $eventData = $eventValidator->validated();
             $localEventId = (string) $eventData['local_event_id'];
 
-            $employee = Employee::query()
-                ->where('id', (int) $eventData['collaborator_id'])
-                ->orWhere('fortia_employee_id', (int) $eventData['collaborator_id'])
-                ->first();
+            $employeeResolution = $this->resolveEmployeeForEvent($eventData);
+            $employee = $employeeResolution['employee'];
+
+            if ($employeeResolution['reason'] === 'AMBIGUOUS_COLLABORATOR') {
+                $results[] = [
+                    'local_event_id' => $localEventId,
+                    'stored' => false,
+                    'remote_id' => null,
+                    'status' => 'REJECTED',
+                    'reason' => 'AMBIGUOUS_COLLABORATOR',
+                ];
+
+                AuditLogger::log(
+                    event: 'onprem.punch.rejected',
+                    auditable: $device,
+                    description: 'Punch rejected',
+                    metadata: [
+                        'device_serial' => $device->device_serial,
+                        'local_event_id' => $localEventId,
+                        'reason' => 'AMBIGUOUS_COLLABORATOR',
+                        'payload_hash' => $payloadHash,
+                        'ip' => $request->ip(),
+                        'resolution_strategy' => $employeeResolution['strategy'],
+                    ],
+                );
+
+                continue;
+            }
 
             if (! $employee) {
                 $results[] = [
@@ -252,6 +279,7 @@ class OnPremAttendanceController extends Controller
                                 ingestIp: $request->ip(),
                                 requestId: (string) ($request->attributes->get('request_id') ?? ''),
                                 authKeyId: 'hmac:'.$device->device_serial,
+                                resolutionStrategy: $employeeResolution['strategy'],
                             ),
                         ],
                     );
@@ -266,6 +294,7 @@ class OnPremAttendanceController extends Controller
                         localEventId: $localEventId,
                         rawRemoteId: (int) $record->remote_event_id,
                         payloadHash: $payloadHash,
+                        resolutionStrategy: $employeeResolution['strategy'],
                     );
 
                     $results[] = [
@@ -310,6 +339,7 @@ class OnPremAttendanceController extends Controller
                         localEventId: $localEventId,
                         rawRemoteId: (int) $record->remote_event_id,
                         payloadHash: $payloadHash,
+                        resolutionStrategy: $employeeResolution['strategy'],
                     );
 
                     $results[] = [
@@ -376,6 +406,7 @@ class OnPremAttendanceController extends Controller
         string $localEventId,
         int $rawRemoteId,
         string $payloadHash,
+        ?string $resolutionStrategy = null,
     ): void {
         if (! Schema::hasTable('attendance_logs')) {
             return;
@@ -437,7 +468,8 @@ class OnPremAttendanceController extends Controller
                 'quality' => $eventData['quality'] ?? null,
                 'raw_remote_id' => $rawRemoteId,
                 'payload_hash' => $payloadHash,
-                'meta' => $eventData['meta'] ?? null,
+                'resolution_strategy' => $resolutionStrategy,
+                'meta' => $this->buildCentralRawPayloadMeta($eventData['meta'] ?? null, $resolutionStrategy),
             ];
         }
         if ($this->hasAttendanceLogsColumn('ingested_at_utc')) {
@@ -505,6 +537,7 @@ class OnPremAttendanceController extends Controller
         ?string $ingestIp,
         ?string $requestId,
         string $authKeyId,
+        ?string $resolutionStrategy = null,
     ): ?array
     {
         $meta = $eventData['meta'] ?? [];
@@ -520,6 +553,12 @@ class OnPremAttendanceController extends Controller
             $meta['_warnings'] = $warnings;
         }
 
+        if ($resolutionStrategy !== null) {
+            $meta['_resolution'] = [
+                'strategy' => $resolutionStrategy,
+            ];
+        }
+
         $meta['_ingest'] = [
             'payload_hash' => $payloadHash,
             'ingest_ip' => $ingestIp,
@@ -529,6 +568,133 @@ class OnPremAttendanceController extends Controller
         ];
 
         return $meta === [] ? null : $meta;
+    }
+
+    /**
+     * @return array{employee:?Employee,strategy:?string,reason:?string}
+     */
+    private function resolveEmployeeForEvent(array $eventData): array
+    {
+        $operationalReference = $this->resolveOperationalEmployeeReference($eventData);
+
+        if ($operationalReference !== null) {
+            $query = Employee::query()->where('fortia_employee_id', $operationalReference);
+
+            if (ctype_digit($operationalReference)) {
+                $query->orWhere('fortia_employee_id', (int) $operationalReference);
+            }
+
+            return [
+                'employee' => $query->first(),
+                'strategy' => $this->resolveOperationalEmployeeStrategy($eventData),
+                'reason' => null,
+            ];
+        }
+
+        if (! isset($eventData['collaborator_id']) || $eventData['collaborator_id'] === null) {
+            return [
+                'employee' => null,
+                'strategy' => null,
+                'reason' => null,
+            ];
+        }
+
+        $collaboratorId = (int) $eventData['collaborator_id'];
+        $byId = Employee::query()->where('id', $collaboratorId)->first();
+        $byFortia = Employee::query()
+            ->where('fortia_employee_id', $collaboratorId)
+            ->first();
+
+        if ($byId && $byFortia && $byId->id !== $byFortia->id) {
+            return [
+                'employee' => null,
+                'strategy' => 'legacy_ambiguous',
+                'reason' => 'AMBIGUOUS_COLLABORATOR',
+            ];
+        }
+
+        if ($byId) {
+            return [
+                'employee' => $byId,
+                'strategy' => 'legacy_collaborator_id_internal',
+                'reason' => null,
+            ];
+        }
+
+        if ($byFortia) {
+            return [
+                'employee' => $byFortia,
+                'strategy' => 'legacy_collaborator_id_fortia',
+                'reason' => null,
+            ];
+        }
+
+        return [
+            'employee' => null,
+            'strategy' => 'legacy_collaborator_id_unresolved',
+            'reason' => null,
+        ];
+    }
+
+    private function resolveOperationalEmployeeReference(array $eventData): ?string
+    {
+        $candidates = [
+            $eventData['fortia_employee_id'] ?? null,
+            $eventData['employee_number'] ?? null,
+            is_array($eventData['meta'] ?? null) ? ($eventData['meta']['fortia_employee_id'] ?? null) : null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            $value = trim((string) $candidate);
+
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveOperationalEmployeeStrategy(array $eventData): ?string
+    {
+        $candidates = [
+            'fortia_employee_id' => $eventData['fortia_employee_id'] ?? null,
+            'employee_number' => $eventData['employee_number'] ?? null,
+            'meta.fortia_employee_id' => is_array($eventData['meta'] ?? null) ? ($eventData['meta']['fortia_employee_id'] ?? null) : null,
+        ];
+
+        foreach ($candidates as $strategy => $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            if (trim((string) $candidate) !== '') {
+                return $strategy;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  mixed  $meta
+     * @return array<string, mixed>|null
+     */
+    private function buildCentralRawPayloadMeta($meta, ?string $resolutionStrategy): ?array
+    {
+        $normalized = is_array($meta) ? $meta : [];
+
+        if ($resolutionStrategy !== null) {
+            $normalized['_resolution'] = [
+                'strategy' => $resolutionStrategy,
+            ];
+        }
+
+        return $normalized === [] ? null : $normalized;
     }
 
     private function isTimestampValidationFailure(\Illuminate\Contracts\Validation\Validator $validator): bool

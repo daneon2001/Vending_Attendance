@@ -48,6 +48,8 @@ class StoreOnPremAttendancesRequest extends FormRequest
             $normalized[] = [
                 'local_event_id' => $event['local_event_id'] ?? null,
                 'collaborator_id' => $event['collaborator_id'] ?? null,
+                'fortia_employee_id' => $event['fortia_employee_id'] ?? null,
+                'employee_number' => $event['employee_number'] ?? null,
                 'punched_at_local' => $event['punched_at_local'] ?? ($event['event_time_local'] ?? null),
                 'timezone' => $event['timezone'] ?? ($event['tz'] ?? null),
                 'punched_at_utc' => $event['punched_at_utc'] ?? ($event['event_time_utc'] ?? null),

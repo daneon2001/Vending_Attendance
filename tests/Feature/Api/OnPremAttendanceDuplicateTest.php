@@ -7,7 +7,7 @@ class OnPremAttendanceDuplicateTest extends OnPremApiTestCase
     public function test_event_returns_duplicate_status_on_retry(): void
     {
         $fixture = $this->seedDeviceFixture('CH-XOCH-002', 'secret-dup');
-        $this->seedCollaborator(88002, $fixture['company_id'], $fixture['unit_id']);
+        $employeeId = $this->seedCollaborator(88002, $fixture['company_id'], $fixture['unit_id']);
 
         $payload = [
             'device_serial' => $fixture['device_serial'],
@@ -15,7 +15,7 @@ class OnPremAttendanceDuplicateTest extends OnPremApiTestCase
             'events' => [
                 [
                     'local_event_id' => '22222222-2222-2222-2222-222222222222',
-                    'collaborator_id' => 88002,
+                    'collaborator_id' => $employeeId,
                     'punched_at_local' => '2026-02-18T09:10:00',
                     'timezone' => 'America/Mexico_City',
                     'punched_at_utc' => '2026-02-18T15:10:00Z',
@@ -57,6 +57,15 @@ class OnPremAttendanceDuplicateTest extends OnPremApiTestCase
             \Illuminate\Support\Facades\DB::table('attendances_raw')
                 ->where('device_serial', $fixture['device_serial'])
                 ->where('local_event_id', '22222222-2222-2222-2222-222222222222')
+                ->count()
+        );
+
+        $this->assertSame(
+            1,
+            \Illuminate\Support\Facades\DB::table('attendance_logs')
+                ->where('device_id', $fixture['clock_id'])
+                ->where('local_id', '22222222-2222-2222-2222-222222222222')
+                ->where('employee_id', $employeeId)
                 ->count()
         );
     }

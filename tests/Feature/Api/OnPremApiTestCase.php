@@ -17,6 +17,7 @@ abstract class OnPremApiTestCase extends TestCase
     private bool $createdDevicesTable = false;
     private bool $createdDeviceNoncesTable = false;
     private bool $createdAttendancesRawTable = false;
+    private bool $createdAttendanceLogsTable = false;
     private bool $createdAuditLogsTable = false;
 
     protected function setUp(): void
@@ -41,6 +42,9 @@ abstract class OnPremApiTestCase extends TestCase
         }
         if ($this->createdAttendancesRawTable && Schema::hasTable('attendances_raw')) {
             Schema::drop('attendances_raw');
+        }
+        if ($this->createdAttendanceLogsTable && Schema::hasTable('attendance_logs')) {
+            Schema::drop('attendance_logs');
         }
         if ($this->createdDeviceNoncesTable && Schema::hasTable('device_nonces')) {
             Schema::drop('device_nonces');
@@ -117,10 +121,10 @@ abstract class OnPremApiTestCase extends TestCase
         ];
     }
 
-    protected function seedCollaborator(int $collaboratorId, int $companyId, int $unitId): void
+    protected function seedCollaborator(int $fortiaEmployeeId, int $companyId, int $unitId, array $attributes = []): int
     {
-        DB::table('employees')->insert([
-            'fortia_employee_id' => $collaboratorId,
+        $payload = array_merge([
+            'fortia_employee_id' => $fortiaEmployeeId,
             'company_id' => $companyId,
             'base_location_id' => $unitId,
             'name' => 'Colaborador',
@@ -129,7 +133,15 @@ abstract class OnPremApiTestCase extends TestCase
             'has_fingerprint' => 1,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ], $attributes);
+
+        if (array_key_exists('id', $payload)) {
+            DB::table('employees')->insert($payload);
+
+            return (int) $payload['id'];
+        }
+
+        return (int) DB::table('employees')->insertGetId($payload);
     }
 
     protected function signedJsonRequest(
@@ -195,7 +207,7 @@ abstract class OnPremApiTestCase extends TestCase
 
     private function clearTables(): void
     {
-        foreach (['device_nonces', 'attendances_raw', 'audit_logs', 'devices', 'employees', 'clocks', 'locations', 'companies'] as $table) {
+        foreach (['device_nonces', 'attendances_raw', 'attendance_logs', 'audit_logs', 'devices', 'employees', 'clocks', 'locations', 'companies'] as $table) {
             if (Schema::hasTable($table)) {
                 DB::table($table)->delete();
             }
@@ -334,6 +346,38 @@ abstract class OnPremApiTestCase extends TestCase
                 $table->unique(['device_serial', 'local_event_id'], 'att_raw_device_local_unique');
             });
             $this->createdAttendancesRawTable = true;
+        }
+
+        if (! Schema::hasTable('attendance_logs')) {
+            Schema::create('attendance_logs', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('log_id');
+                $table->unsignedBigInteger('employee_id');
+                $table->unsignedBigInteger('fortia_employee_id')->nullable();
+                $table->unsignedBigInteger('company_id')->nullable();
+                $table->unsignedBigInteger('location_id')->nullable();
+                $table->unsignedBigInteger('device_id')->nullable();
+                $table->string('local_id', 120)->nullable();
+                $table->dateTime('log_date');
+                $table->unsignedTinyInteger('log_type')->default(0);
+                $table->string('source', 40)->nullable();
+                $table->string('attendance_status', 30)->nullable();
+                $table->unsignedTinyInteger('status')->nullable();
+                $table->json('raw_payload')->nullable();
+                $table->dateTime('ingested_at_utc')->nullable();
+                $table->string('ingest_ip', 45)->nullable();
+                $table->string('device_serial', 120)->nullable();
+                $table->string('auth_key_id', 120)->nullable();
+                $table->string('request_id', 120)->nullable();
+                $table->string('integrity_hash', 64)->nullable();
+                $table->string('integrity_previous_hash', 64)->nullable();
+                $table->unsignedTinyInteger('integrity_hash_version')->nullable();
+                $table->dateTime('integrity_verified_at')->nullable();
+                $table->timestamps();
+
+                $table->unique(['local_id', 'device_id'], 'attendance_logs_local_device_unique');
+            });
+            $this->createdAttendanceLogsTable = true;
         }
 
         if (! Schema::hasTable('audit_logs')) {
