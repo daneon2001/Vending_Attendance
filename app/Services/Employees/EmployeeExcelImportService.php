@@ -71,106 +71,143 @@ class EmployeeExcelImportService
         $terminationSkippedNotFoundCount = 0;
         $persistedRows = 0;
         $preparedRows = $analysis['prepared_rows'];
+        $persistableRows = collect($preparedRows)
+            ->filter(function (array $row): bool {
+                return ($row['errors'] ?? []) === []
+                    && (($row['blocked_by_catalogs'] ?? false) === false);
+            })
+            ->values();
         $hasEmployeeDetailsTable = $this->hasEmployeeDetailsTable();
         $hasEmployeeImportMetadataTable = $this->hasEmployeeImportMetadataTable();
         $hasEmployeeStatusChangesTable = $this->hasEmployeeStatusChangesTable();
         $employeeCache = $this->loadEmployeesForImport($preparedRows);
+        $batchSize = 500;
+        $currentBatchNumber = 0;
+        $currentBatchFromRow = null;
+        $currentBatchToRow = null;
+        $currentBatchFailedRow = null;
 
         Log::info('employees.import.started', [
             'file_name' => $file->getClientOriginalName(),
             'total_rows' => (int) ($analysis['summary']['total_rows'] ?? 0),
-            'valid_rows' => collect($preparedRows)->filter(function (array $row): bool {
-                return ($row['errors'] ?? []) === []
-                    && (($row['blocked_by_catalogs'] ?? false) === false);
-            })->count(),
+            'valid_rows' => $persistableRows->count(),
+            'batch_size' => $batchSize,
             'table_support' => [
                 'employee_details' => $hasEmployeeDetailsTable,
                 'employee_import_metadata' => $hasEmployeeImportMetadataTable,
                 'employee_status_changes' => $hasEmployeeStatusChangesTable,
             ],
         ]);
-        Log::info('employees.import.transaction.start', [
-            'file_name' => $file->getClientOriginalName(),
-            'total_rows' => (int) ($analysis['summary']['total_rows'] ?? 0),
-        ]);
 
         try {
-            DB::transaction(function () use (
-                $preparedRows,
-                $file,
-                &$createdCount,
-                &$updatedCount,
-                &$terminationAppliedCount,
-                &$terminationSkippedNotFoundCount,
-                &$persistedRows,
-                &$employeeCache,
-                $hasEmployeeDetailsTable,
-                $hasEmployeeImportMetadataTable,
-                $hasEmployeeStatusChangesTable
-            ): void {
-                foreach ($preparedRows as $preparedRow) {
-                    if (($preparedRow['errors'] ?? []) !== []) {
-                        continue;
-                    }
+            foreach ($persistableRows->chunk($batchSize) as $batchIndex => $batchCollection) {
+                $batchRows = $batchCollection->all();
+                $currentBatchNumber = $batchIndex + 1;
+                $currentBatchFromRow = $batchRows[0]['row_number'] ?? null;
+                $currentBatchToRow = $batchRows[array_key_last($batchRows)]['row_number'] ?? null;
+                $currentBatchFailedRow = null;
+                $batchCreatedCount = 0;
+                $batchUpdatedCount = 0;
+                $batchTerminationAppliedCount = 0;
+                $batchTerminationSkippedNotFoundCount = 0;
+                $batchProcessedRows = 0;
 
-                    if (($preparedRow['blocked_by_catalogs'] ?? false) === true) {
-                        continue;
-                    }
+                Log::info('employees.import.batch.start', [
+                    'file_name' => $file->getClientOriginalName(),
+                    'batch_number' => $currentBatchNumber,
+                    'from_row' => $currentBatchFromRow,
+                    'to_row' => $currentBatchToRow,
+                    'batch_size' => count($batchRows),
+                ]);
 
-                    $persistedRows++;
-                    $persisted = $this->persistRow(
-                        preparedRow: $preparedRow,
-                        fileName: $file->getClientOriginalName(),
-                        employeeCache: $employeeCache,
-                        hasEmployeeDetailsTable: $hasEmployeeDetailsTable,
-                        hasEmployeeImportMetadataTable: $hasEmployeeImportMetadataTable,
-                        hasEmployeeStatusChangesTable: $hasEmployeeStatusChangesTable
-                    );
+                try {
+                    DB::transaction(function () use (
+                        $batchRows,
+                        $file,
+                        &$employeeCache,
+                        $hasEmployeeDetailsTable,
+                        $hasEmployeeImportMetadataTable,
+                        $hasEmployeeStatusChangesTable,
+                        &$batchCreatedCount,
+                        &$batchUpdatedCount,
+                        &$batchTerminationAppliedCount,
+                        &$batchTerminationSkippedNotFoundCount,
+                        &$batchProcessedRows,
+                        &$currentBatchFailedRow
+                    ): void {
+                        foreach ($batchRows as $preparedRow) {
+                            $currentBatchFailedRow = $preparedRow['row_number'] ?? null;
+                            $batchProcessedRows++;
+                            $persisted = $this->persistRow(
+                                preparedRow: $preparedRow,
+                                fileName: $file->getClientOriginalName(),
+                                employeeCache: $employeeCache,
+                                hasEmployeeDetailsTable: $hasEmployeeDetailsTable,
+                                hasEmployeeImportMetadataTable: $hasEmployeeImportMetadataTable,
+                                hasEmployeeStatusChangesTable: $hasEmployeeStatusChangesTable
+                            );
 
-                    if ($persisted === 'termination_skipped') {
-                        $terminationSkippedNotFoundCount++;
-                    } elseif ($persisted === 'termination_applied') {
-                        $terminationAppliedCount++;
-                        $updatedCount++;
-                    } elseif ($persisted === 'created') {
-                        $createdCount++;
-                    } else {
-                        $updatedCount++;
-                    }
+                            if ($persisted === 'termination_skipped') {
+                                $batchTerminationSkippedNotFoundCount++;
+                            } elseif ($persisted === 'termination_applied') {
+                                $batchTerminationAppliedCount++;
+                                $batchUpdatedCount++;
+                            } elseif ($persisted === 'created') {
+                                $batchCreatedCount++;
+                            } else {
+                                $batchUpdatedCount++;
+                            }
+                        }
+                    });
+                } catch (\Throwable $batchException) {
+                    Log::error('employees.import.batch.failed', [
+                        'file_name' => $file->getClientOriginalName(),
+                        'batch_number' => $currentBatchNumber,
+                        'from_row' => $currentBatchFromRow,
+                        'to_row' => $currentBatchToRow,
+                        'failed_row_number' => $currentBatchFailedRow,
+                        'processed_in_batch_before_failure' => $batchProcessedRows,
+                        'processed_total_committed' => $persistedRows,
+                        'created_count_committed' => $createdCount,
+                        'updated_count_committed' => $updatedCount,
+                        'termination_applied_count_committed' => $terminationAppliedCount,
+                        'termination_skipped_not_found_count_committed' => $terminationSkippedNotFoundCount,
+                        'exception_class' => $batchException::class,
+                        'exception_message' => $batchException->getMessage(),
+                        'exception_file' => $batchException->getFile(),
+                        'exception_line' => $batchException->getLine(),
+                        'exception_trace' => array_slice($batchException->getTrace(), 0, 8),
+                    ]);
 
-                    if ($persistedRows % 500 === 0) {
-                        Log::info('employees.import.progress', [
-                            'file_name' => $file->getClientOriginalName(),
-                            'processed_rows' => $persistedRows,
-                            'created_count' => $createdCount,
-                            'updated_count' => $updatedCount,
-                            'termination_applied_count' => $terminationAppliedCount,
-                            'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
-                        ]);
-                    }
+                    throw $batchException;
                 }
 
-                Log::info('employees.import.transaction.before_commit', [
+                $createdCount += $batchCreatedCount;
+                $updatedCount += $batchUpdatedCount;
+                $terminationAppliedCount += $batchTerminationAppliedCount;
+                $terminationSkippedNotFoundCount += $batchTerminationSkippedNotFoundCount;
+                $persistedRows += $batchProcessedRows;
+
+                Log::info('employees.import.batch.committed', [
                     'file_name' => $file->getClientOriginalName(),
-                    'processed_rows' => $persistedRows,
+                    'batch_number' => $currentBatchNumber,
+                    'from_row' => $currentBatchFromRow,
+                    'to_row' => $currentBatchToRow,
+                    'processed_in_batch' => $batchProcessedRows,
+                    'processed_total' => $persistedRows,
                     'created_count' => $createdCount,
                     'updated_count' => $updatedCount,
                     'termination_applied_count' => $terminationAppliedCount,
                     'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
                 ]);
-            });
-
-            Log::info('employees.import.transaction.committed', [
-                'file_name' => $file->getClientOriginalName(),
-                'processed_rows' => $persistedRows,
-                'created_count' => $createdCount,
-                'updated_count' => $updatedCount,
-                'termination_applied_count' => $terminationAppliedCount,
-                'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
-            ]);
+            }
         } catch (\Throwable $exception) {
             Log::error('employees.import.failed', [
                 'file_name' => $file->getClientOriginalName(),
+                'batch_number' => $currentBatchNumber,
+                'from_row' => $currentBatchFromRow,
+                'to_row' => $currentBatchToRow,
+                'failed_row_number' => $currentBatchFailedRow,
                 'processed_rows' => $persistedRows,
                 'created_count' => $createdCount,
                 'updated_count' => $updatedCount,
@@ -202,7 +239,7 @@ class EmployeeExcelImportService
         $result['summary']['normal_created_count'] = $createdCount;
         $result['summary']['normal_updated_count'] = max($updatedCount - $terminationAppliedCount, 0);
 
-        Log::info('employees.import.completed', [
+        Log::info('employees.import.finished', [
             'file_name' => $file->getClientOriginalName(),
             'processed_rows' => $persistedRows,
             'created_count' => $createdCount,

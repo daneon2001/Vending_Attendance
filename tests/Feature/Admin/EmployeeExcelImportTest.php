@@ -550,6 +550,63 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertDatabaseCount('employee_status_changes', 0);
     }
 
+    public function test_termination_import_processes_multiple_batches_and_preserves_global_counters(): void
+    {
+        $user = $this->createAdminImporter();
+        $company = Company::query()->create([
+            'name' => 'Empresa Lotes',
+            'code' => 'EL',
+            'status' => 1,
+        ]);
+
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 30501,
+            'company_id' => $company->id,
+            'name' => 'Empleado Batch',
+            'full_name' => 'Empleado Batch',
+            'status' => 'A',
+        ]);
+
+        $rows = [];
+
+        for ($index = 1; $index <= 500; $index++) {
+            $rows[] = $this->employeeRow([
+                'CLA_TRAB' => (string) (40000 + $index),
+                'ESTATUS_TRABAJADOR' => 'BAJA',
+                'FECHA_BAJA' => '22/06/2026',
+            ]);
+        }
+
+        $rows[] = $this->employeeRow([
+            'CLA_TRAB' => '30501',
+            'ESTATUS_TRABAJADOR' => 'BAJA',
+            'FECHA_BAJA' => '22/06/2026',
+        ]);
+
+        $file = $this->makeExcelUpload($this->headers(), $rows);
+
+        $this->actingAs($user)
+            ->post('/api/admin/employees/import', [
+                'file' => $file,
+            ], [
+                'Accept' => 'application/json',
+            ])
+            ->assertOk()
+            ->assertJsonPath('created_count', 0)
+            ->assertJsonPath('updated_count', 1)
+            ->assertJsonPath('imported_count', 1)
+            ->assertJsonPath('termination_applied_count', 1)
+            ->assertJsonPath('termination_skipped_not_found_count', 500)
+            ->assertJsonPath('normal_created_count', 0)
+            ->assertJsonPath('normal_updated_count', 0)
+            ->assertJsonPath('summary.termination_applied_count', 1)
+            ->assertJsonPath('summary.termination_skipped_not_found_count', 500);
+
+        $employee->refresh();
+
+        $this->assertSame('B', $employee->status);
+    }
+
     public function test_invalid_file_is_rejected(): void
     {
         $user = $this->createAdminImporter();
