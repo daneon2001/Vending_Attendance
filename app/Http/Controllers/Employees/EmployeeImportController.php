@@ -8,6 +8,7 @@ use App\Http\Requests\Employees\ImportEmployeesExcelRequest;
 use App\Services\Audit\AuditLogger;
 use App\Services\Employees\EmployeeExcelImportService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class EmployeeImportController extends Controller
@@ -102,47 +103,78 @@ class EmployeeImportController extends Controller
         ImportEmployeesExcelRequest $request,
         EmployeeExcelImportService $service
     ): JsonResponse {
+        $stage = 'service.import';
+
         try {
             $result = $service->import($request->file('file'));
-        } catch (Throwable $exception) {
-            return response()->json([
-                'message' => 'No se pudo procesar el archivo Excel.',
-                'detail' => $exception->getMessage(),
-            ], 422);
-        }
+            if (! ($result['can_import'] ?? false)) {
+                $stage = 'audit.import_failed';
+                AuditLogger::log(
+                    'employees.import_failed',
+                    null,
+                    'Importacion de empleados rechazada por errores de validacion',
+                    [
+                        'action' => 'employees.import',
+                        'entity' => 'employees',
+                        'reason' => 'preview_contains_errors',
+                        'after' => $result['summary'] ?? [],
+                        'file_name' => $result['file_name'] ?? null,
+                    ]
+                );
 
-        if (! ($result['can_import'] ?? false)) {
+                Log::info('employees.import.response.prepare', [
+                    'status' => 422,
+                    'can_import' => false,
+                    'file_name' => $result['file_name'] ?? null,
+                    'summary' => $result['summary'] ?? [],
+                ]);
+
+                $stage = 'response.prepare.validation_failed';
+                return response()->json([
+                    'message' => $result['message'] ?? 'El archivo contiene errores y no se puede importar.',
+                ] + $result, 422);
+            }
+
+            $stage = 'audit.import_completed';
             AuditLogger::log(
-                'employees.import_failed',
+                'employees.import_completed',
                 null,
-                'Importacion de empleados rechazada por errores de validacion',
+                'Importacion manual de empleados completada',
                 [
                     'action' => 'employees.import',
                     'entity' => 'employees',
-                    'reason' => 'preview_contains_errors',
+                    'reason' => 'import_completed',
                     'after' => $result['summary'] ?? [],
                     'file_name' => $result['file_name'] ?? null,
                 ]
             );
 
-            return response()->json([
-                'message' => $result['message'] ?? 'El archivo contiene errores y no se puede importar.',
-            ] + $result, 422);
-        }
-
-        AuditLogger::log(
-            'employees.import_completed',
-            null,
-            'Importacion manual de empleados completada',
-            [
-                'action' => 'employees.import',
-                'entity' => 'employees',
-                'reason' => 'import_completed',
-                'after' => $result['summary'] ?? [],
+            Log::info('employees.import.response.prepare', [
+                'status' => 200,
+                'can_import' => true,
                 'file_name' => $result['file_name'] ?? null,
-            ]
-        );
+                'summary' => $result['summary'] ?? [],
+            ]);
 
-        return response()->json($result);
+            $stage = 'response.prepare.success';
+            return response()->json($result);
+        } catch (Throwable $exception) {
+            Log::error('employees.import.controller.failed', [
+                'stage' => $stage,
+                'exception_class' => $exception::class,
+                'exception_message' => $exception->getMessage(),
+                'exception_file' => $exception->getFile(),
+                'exception_line' => $exception->getLine(),
+                'exception_trace' => array_slice($exception->getTrace(), 0, 8),
+                'file_name' => $request->file('file')?->getClientOriginalName(),
+            ]);
+
+            $status = $stage === 'service.import' ? 422 : 500;
+
+            return response()->json([
+                'message' => 'No se pudo procesar el archivo Excel.',
+                'detail' => $exception->getMessage(),
+            ], $status);
+        }
     }
 }

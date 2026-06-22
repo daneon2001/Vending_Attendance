@@ -89,6 +89,10 @@ class EmployeeExcelImportService
                 'employee_status_changes' => $hasEmployeeStatusChangesTable,
             ],
         ]);
+        Log::info('employees.import.transaction.start', [
+            'file_name' => $file->getClientOriginalName(),
+            'total_rows' => (int) ($analysis['summary']['total_rows'] ?? 0),
+        ]);
 
         try {
             DB::transaction(function () use (
@@ -145,7 +149,25 @@ class EmployeeExcelImportService
                         ]);
                     }
                 }
+
+                Log::info('employees.import.transaction.before_commit', [
+                    'file_name' => $file->getClientOriginalName(),
+                    'processed_rows' => $persistedRows,
+                    'created_count' => $createdCount,
+                    'updated_count' => $updatedCount,
+                    'termination_applied_count' => $terminationAppliedCount,
+                    'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
+                ]);
             });
+
+            Log::info('employees.import.transaction.committed', [
+                'file_name' => $file->getClientOriginalName(),
+                'processed_rows' => $persistedRows,
+                'created_count' => $createdCount,
+                'updated_count' => $updatedCount,
+                'termination_applied_count' => $terminationAppliedCount,
+                'termination_skipped_not_found_count' => $terminationSkippedNotFoundCount,
+            ]);
         } catch (\Throwable $exception) {
             Log::error('employees.import.failed', [
                 'file_name' => $file->getClientOriginalName(),
@@ -158,6 +180,7 @@ class EmployeeExcelImportService
                 'exception_message' => $exception->getMessage(),
                 'exception_file' => $exception->getFile(),
                 'exception_line' => $exception->getLine(),
+                'exception_trace' => array_slice($exception->getTrace(), 0, 8),
             ]);
 
             throw $exception;
