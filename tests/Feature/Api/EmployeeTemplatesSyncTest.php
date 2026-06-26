@@ -23,6 +23,7 @@ class EmployeeTemplatesSyncTest extends TestCase
         parent::setUp();
 
         $this->withoutMiddleware();
+        config(['onprem.full_employee_biometric_sync' => false]);
 
         if (! Schema::hasTable('locations')) {
             Schema::create('locations', function (Blueprint $table): void {
@@ -605,6 +606,86 @@ class EmployeeTemplatesSyncTest extends TestCase
         $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-INACTIVE']);
         $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-NO-TEMPLATE']);
         $response->assertJsonMissing(['vendor_template_id' => 'TPL-DENY-PENDING']);
+        $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_full_biometric_sync_returns_templates_from_all_active_employees_even_with_location_filter(): void
+    {
+        config(['onprem.full_employee_biometric_sync' => true]);
+
+        $locA = DB::table('locations')->insertGetId(['name' => 'Unit Full A']);
+        $locB = DB::table('locations')->insertGetId(['name' => 'Unit Full B']);
+
+        $empLocal = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 881101,
+            'base_location_id' => $locA,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empOther = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 881102,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'status' => 'A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $empInactive = DB::table('employees')->insertGetId([
+            'fortia_employee_id' => 881103,
+            'base_location_id' => $locB,
+            'can_check_all_branches' => false,
+            'status' => 'B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employee_fingerprints')->insert([
+            [
+                'employee_id' => $empLocal,
+                'vendor_template_id' => 'TPL-FULL-LOCAL',
+                'template_b64' => base64_encode('full-local'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empOther,
+                'vendor_template_id' => 'TPL-FULL-OTHER',
+                'template_b64' => base64_encode('full-other'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => $empInactive,
+                'vendor_template_id' => 'TPL-FULL-INACTIVE',
+                'template_b64' => base64_encode('full-inactive'),
+                'template_format' => 'DPFP_PROPRIETARY',
+                'enrolment_type' => 'FINGERPRINT',
+                'status' => 'enrolled',
+                'performed_at' => now(),
+                'deleted_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA . '&status=active&biometric_type=FINGERPRINT');
+
+        $response->assertOk();
+        $response->assertJsonFragment(['vendor_template_id' => 'TPL-FULL-LOCAL']);
+        $response->assertJsonFragment(['vendor_template_id' => 'TPL-FULL-OTHER']);
+        $response->assertJsonMissing(['vendor_template_id' => 'TPL-FULL-INACTIVE']);
         $response->assertJsonCount(2, 'data');
     }
 

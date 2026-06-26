@@ -6,4 +6,5 @@ return [
     'max_batch_size' => max(1, (int) env('ONPREM_MAX_BATCH_SIZE', 500)),
     'next_heartbeat_seconds' => max(5, (int) env('ONPREM_HEARTBEAT_INTERVAL_SECONDS', 15)),
     'default_shared_secret' => (string) env('ONPREM_DEFAULT_SHARED_SECRET', ''),
+    'full_employee_biometric_sync' => filter_var(env('ONPREM_FULL_EMPLOYEE_BIOMETRIC_SYNC', true), FILTER_VALIDATE_BOOL),
 ];

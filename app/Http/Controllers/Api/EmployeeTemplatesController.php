@@ -30,10 +30,10 @@ class EmployeeTemplatesController extends Controller
     {
         $validated = $request->validated();
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
-        $locationId = null;
+        $requestedLocationId = null;
         if (array_key_exists('location_id', $validated) && $validated['location_id'] !== null) {
-            $locationId = $this->resolveLocationId((int) $validated['location_id']);
-            if ($locationId === null) {
+            $requestedLocationId = $this->resolveLocationId((int) $validated['location_id']);
+            if ($requestedLocationId === null) {
                 return response()->json([
                     'message' => 'The selected location id is invalid.',
                     'errors' => [
@@ -42,6 +42,7 @@ class EmployeeTemplatesController extends Controller
                 ], 422);
             }
         }
+        $locationId = $this->shouldUseFullEmployeeBiometricSync() ? null : $requestedLocationId;
         $status = $validated['status'] ?? 'active';
         $biometricType = $validated['biometric_type'] ?? null;
 
@@ -536,5 +537,10 @@ class EmployeeTemplatesController extends Controller
         }
 
         return (int) $resolvedLocationId;
+    }
+
+    private function shouldUseFullEmployeeBiometricSync(): bool
+    {
+        return (bool) config('onprem.full_employee_biometric_sync', true);
     }
 }

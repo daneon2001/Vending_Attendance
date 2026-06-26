@@ -22,6 +22,7 @@ class EmployeesCatalogSyncTest extends TestCase
         parent::setUp();
 
         $this->withoutMiddleware();
+        config(['onprem.full_employee_biometric_sync' => false]);
 
         if (! Schema::hasTable('locations')) {
             Schema::create('locations', function (Blueprint $table): void {
@@ -426,6 +427,78 @@ class EmployeesCatalogSyncTest extends TestCase
             ->assertJsonPath('data.0.fortia_employee_id', 7161)
             ->assertJsonPath('data.0.can_check_all_branches', true)
             ->assertJsonPath('data.0.check_scope', 'HOME_ONLY');
+    }
+
+    public function test_catalog_returns_full_active_employee_universe_when_full_sync_mode_is_enabled(): void
+    {
+        config(['onprem.full_employee_biometric_sync' => true]);
+
+        $locA = DB::table('locations')->insertGetId([
+            'name' => 'Unit Full Sync A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $locB = DB::table('locations')->insertGetId([
+            'name' => 'Unit Full Sync B',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'fortia_employee_id' => 9901,
+                'base_location_id' => $locA,
+                'can_check_all_branches' => false,
+                'name' => 'Local',
+                'last_name' => 'A',
+                'full_name' => 'Local A',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 9902,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => false,
+                'name' => 'Remoto',
+                'last_name' => 'B',
+                'full_name' => 'Remoto B',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 9903,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => true,
+                'name' => 'Global',
+                'last_name' => 'C',
+                'full_name' => 'Global C',
+                'status' => 'A',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'fortia_employee_id' => 9904,
+                'base_location_id' => $locB,
+                'can_check_all_branches' => true,
+                'name' => 'Inactivo',
+                'last_name' => 'D',
+                'full_name' => 'Inactivo D',
+                'status' => 'B',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson(self::URI . '?location_id=' . $locA);
+
+        $response->assertOk()
+            ->assertJsonCount(3, 'data')
+            ->assertJsonFragment(['fortia_employee_id' => 9901])
+            ->assertJsonFragment(['fortia_employee_id' => 9902])
+            ->assertJsonFragment(['fortia_employee_id' => 9903])
+            ->assertJsonMissing(['fortia_employee_id' => 9904]);
     }
 
     public function test_catalog_returns_scope_tombstones_when_employee_leaves_branch(): void

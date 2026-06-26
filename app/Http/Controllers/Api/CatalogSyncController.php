@@ -102,10 +102,10 @@ class CatalogSyncController extends Controller
         ]);
 
         $since = isset($validated['since']) ? $this->parseSince($validated['since']) : null;
-        $locationId = null;
+        $requestedLocationId = null;
         if (array_key_exists('location_id', $validated) && $validated['location_id'] !== null) {
-            $locationId = $this->resolveLocationId((int) $validated['location_id']);
-            if ($locationId === null) {
+            $requestedLocationId = $this->resolveLocationId((int) $validated['location_id']);
+            if ($requestedLocationId === null) {
                 return response()->json([
                     'message' => 'The selected location id is invalid.',
                     'errors' => [
@@ -114,6 +114,7 @@ class CatalogSyncController extends Controller
                 ], 422);
             }
         }
+        $locationId = $this->shouldUseFullEmployeeBiometricSync() ? null : $requestedLocationId;
 
         $baseDataQuery = $this->allowedCandidates->getAllowedEmployeesQuery($locationId, 'active');
 
@@ -274,6 +275,7 @@ class CatalogSyncController extends Controller
         $bodyBytes = is_string($payloadJson) ? strlen($payloadJson) : 0;
 
         Log::info('onprem.employees_catalog.response', [
+            'requested_location_id' => $requestedLocationId,
             'location_id' => $locationId,
             'since' => $validated['since'] ?? null,
             'data_count' => $rows->count(),
@@ -284,6 +286,7 @@ class CatalogSyncController extends Controller
 
         if ($durationMs > 10000) {
             Log::warning('onprem.employees_catalog.slow', [
+                'requested_location_id' => $requestedLocationId,
                 'location_id' => $locationId,
                 'since' => $validated['since'] ?? null,
                 'data_count' => $rows->count(),
@@ -371,5 +374,10 @@ class CatalogSyncController extends Controller
         return (bool) ($employee->can_check_all_branches ?? false)
             ? 'ANY_BRANCH'
             : 'HOME_ONLY';
+    }
+
+    private function shouldUseFullEmployeeBiometricSync(): bool
+    {
+        return (bool) config('onprem.full_employee_biometric_sync', true);
     }
 }
