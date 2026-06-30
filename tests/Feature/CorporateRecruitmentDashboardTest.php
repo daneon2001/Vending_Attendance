@@ -128,6 +128,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $corporate->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-16 15:00:00',
                 'log_type' => 1,
                 'source' => 'api',
@@ -247,6 +248,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-16 13:00:00',
                 'log_type' => 1,
                 'source' => 'api',
@@ -259,6 +261,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-17 20:30:00',
                 'log_type' => 1,
                 'source' => 'api',
@@ -414,6 +417,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-19 15:00:00',
                 'log_type' => 1,
                 'source' => 'api',
@@ -441,11 +445,11 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $day19->assertOk()
                 ->assertJsonPath('global.active_employees', 2)
-                ->assertJsonPath('global.attended', 0)
-                ->assertJsonPath('global.pending', 2)
+                ->assertJsonPath('global.attended', 1)
+                ->assertJsonPath('global.pending', 1)
                 ->assertJsonPath('global.total_checks', 1)
                 ->assertJsonPath('locations.0.summary.active_employees', 1)
-                ->assertJsonPath('locations.0.summary.attended', 0)
+                ->assertJsonPath('locations.0.summary.attended', 1)
                 ->assertJsonPath('locations.0.summary.total_checks', 1);
 
             $response = $this->actingAs($user)
@@ -475,8 +479,8 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
 
             $this->assertSame('2', (string) $summaryMap->get('Total empleados'));
-            $this->assertSame('0', (string) $summaryMap->get('Total con checada'));
-            $this->assertSame('2', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
             $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
 
             $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
@@ -510,6 +514,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_offline']->id,
+                'device_serial' => $fixture['corporate_clock_offline']->serial_number,
                 'log_date' => '2026-06-17 19:00:00',
                 'log_type' => 2,
                 'source' => 'manual',
@@ -618,6 +623,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-17 19:30:00',
                 'log_type' => 1,
                 'source' => 'manual',
@@ -682,6 +688,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-29 05:59:59',
                 'log_type' => 1,
                 'source' => 'api',
@@ -694,6 +701,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-29 06:00:00',
                 'log_type' => 1,
                 'source' => 'api',
@@ -706,6 +714,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-30 05:59:59',
                 'log_type' => 2,
                 'source' => 'api',
@@ -718,6 +727,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 'company_id' => $fixture['company']->id,
                 'location_id' => $fixture['corporate']->id,
                 'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
                 'log_date' => '2026-06-30 06:00:00',
                 'log_type' => 2,
                 'source' => 'api',
@@ -762,6 +772,67 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertTrue(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-30 05:59:59'));
             $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-29 05:59:59'));
             $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-30 06:00:00'));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_and_workbook_count_distinct_attendance_employee_ids_without_report_universe_filter(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9501,
+                'employee_id' => $fixture['other_employee']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
+                'log_date' => '2026-06-17 16:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $summary = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'today',
+                ]));
+
+            $summary->assertOk()
+                ->assertJsonPath('global.active_employees', 3)
+                ->assertJsonPath('global.attended', 3)
+                ->assertJsonPath('global.pending', 0)
+                ->assertJsonPath('global.total_checks', 4)
+                ->assertJsonPath('locations.0.summary.attended', 2)
+                ->assertJsonPath('locations.0.summary.pending', 0);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'today',
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+
+            $workbook = $this->exportWorkbook($response);
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('3', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('0', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('4', (string) $summaryMap->get('Total checadas'));
+            $this->assertSame('100%', (string) $summaryMap->get('Cobertura'));
 
             $workbook->disconnectWorksheets();
             unset($workbook);
@@ -922,6 +993,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $company->id,
             'location_id' => $corporate->id,
             'device_id' => $corporateClockOnline->id,
+            'device_serial' => $corporateClockOnline->serial_number,
             'log_date' => '2026-06-17 14:00:00',
             'log_type' => 1,
             'source' => 'api',
@@ -934,6 +1006,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $company->id,
             'location_id' => $corporate->id,
             'device_id' => $corporateClockOnline->id,
+            'device_serial' => $corporateClockOnline->serial_number,
             'log_date' => '2026-06-17 18:00:00',
             'log_type' => 2,
             'source' => 'api',
@@ -946,6 +1019,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $company->id,
             'location_id' => $recruitment->id,
             'device_id' => $recruitmentClockStale->id,
+            'device_serial' => $recruitmentClockStale->serial_number,
             'log_date' => '2026-06-17 13:30:00',
             'log_type' => 1,
             'source' => 'api',
@@ -958,6 +1032,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $company->id,
             'location_id' => $other->id,
             'device_id' => $otherClock->id,
+            'device_serial' => $otherClock->serial_number,
             'log_date' => '2026-06-17 14:15:00',
             'log_type' => 1,
             'source' => 'api',
@@ -1016,6 +1091,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
             'company_id' => $fixture['company']->id,
             'location_id' => $fixture['corporate']->id,
             'device_id' => $fixture['corporate_clock_online']->id,
+            'device_serial' => $fixture['corporate_clock_online']->serial_number,
             'log_date' => '2026-06-17 00:38:45',
             'log_type' => 1,
             'source' => 'api',

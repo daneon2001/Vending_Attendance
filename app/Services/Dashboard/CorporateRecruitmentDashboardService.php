@@ -106,16 +106,9 @@ class CorporateRecruitmentDashboardService
             $normalized['to_local']
         );
         $attendanceByLocation = $this->attendanceSummaryByLocation($attendanceRecords);
-        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation(
-            $attendanceRecords,
-            $eligibleEmployees['eligibility']
-        );
+        $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation($attendanceRecords);
         $employeeCountsByLocation = $eligibleEmployees['counts_by_location'];
-        $globalAttended = $attendanceRecords
-            ->filter(fn (AttendanceLog $record) => $this->recordCountsForCoverage($record, $eligibleEmployees['eligibility']))
-            ->pluck('employee_id')
-            ->unique()
-            ->count();
+        $globalAttended = $this->distinctAttendanceEmployeesCount($attendanceRecords);
         $globalChecks = $attendanceRecords->count();
         $globalFirstCheckAt = $this->firstAttendanceCheckAt($attendanceRecords);
         $globalLastCheckAt = $this->lastAttendanceCheckAt($attendanceRecords);
@@ -245,7 +238,20 @@ class CorporateRecruitmentDashboardService
             $normalized['from_local'],
             $normalized['to_local']
         );
-        $detailRecords = $this->buildAttendanceWorkbookDetailRecords($normalized, $activeEmployees, $reportClocks);
+        $attendanceRecords = $this->loadAttendanceRecords(
+            $normalized['from_local'],
+            $normalized['to_local'],
+            $reportClocks,
+            [
+                'employee:'.implode(',', array_values(array_unique(array_merge(
+                    $this->employeeIdentifierSelectColumns(),
+                    ['name', 'full_name']
+                )))),
+                'location:id,name,code,fortia_location_id',
+                'clock:id,clock_name,serial_number',
+            ]
+        );
+        $detailRecords = $this->buildAttendanceWorkbookDetailRecords($attendanceRecords, $activeEmployees);
         $eligibleDetailRecords = $detailRecords->filter(
             fn (array $record) => $this->employeeDateIsEligible(
                 (int) $record['employee_id'],
@@ -270,8 +276,7 @@ class CorporateRecruitmentDashboardService
                     $selectedLocations,
                     $reportClocks,
                     $activeEmployees,
-                    $eligibleDetailRecords,
-                    $detailRecords->count(),
+                    $attendanceRecords,
                     $generatedAt
                 ),
                 'raw' => $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT
@@ -477,29 +482,19 @@ class CorporateRecruitmentDashboardService
 
     protected function attendanceQuery(Collection $clocks): Builder
     {
-        $clockIds = $clocks->pluck('id')
-            ->filter(fn ($id) => $id !== null)
-            ->map(fn ($id) => (int) $id)
-            ->values()
-            ->all();
         $clockSerials = $clocks->pluck('serial_number')
             ->filter(fn ($serial) => is_string($serial) && trim($serial) !== '')
             ->map(fn (string $serial) => trim($serial))
             ->values()
             ->all();
 
+        if ($clockSerials === []) {
+            return AttendanceLog::query()->whereRaw('1 = 0');
+        }
+
         return AttendanceLog::query()
             ->where('attendance_status', 'valida')
-            ->where(function (Builder $query) use ($clockIds, $clockSerials): void {
-                if ($clockIds !== []) {
-                    $query->whereIn('device_id', $clockIds);
-                }
-
-                if ($clockSerials !== []) {
-                    $method = $clockIds !== [] ? 'orWhereIn' : 'whereIn';
-                    $query->{$method}('device_serial', $clockSerials);
-                }
-            });
+            ->whereIn('device_serial', $clockSerials);
     }
 
     /**
@@ -572,10 +567,10 @@ class CorporateRecruitmentDashboardService
             });
     }
 
-    protected function attendanceDistinctEmployeesByLocation(Collection $attendanceRecords, array $eligibilityMap): Collection
+    protected function attendanceDistinctEmployeesByLocation(Collection $attendanceRecords): Collection
     {
         return $attendanceRecords
-            ->filter(fn (AttendanceLog $record) => $this->recordCountsForCoverage($record, $eligibilityMap))
+            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
             ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
             ->map(fn (Collection $records) => $records->pluck('employee_id')->unique()->count());
     }
@@ -698,24 +693,6 @@ class CorporateRecruitmentDashboardService
         ];
     }
 
-    protected function recordCountsForCoverage(AttendanceLog $record, array $eligibilityMap): bool
-    {
-        if ($record->employee_id === null) {
-            return false;
-        }
-
-        $localDateTime = $this->resolvedAttendanceLocalDateTime($record);
-
-        if (! $localDateTime) {
-            return false;
-        }
-
-        return (bool) ($eligibilityMap[(int) $record->employee_id][$localDateTime->format('Y-m-d')] ?? false);
-    }
-
-    /**
-     * @param  Collection<int, array<string, mixed>>  $activeEmployees
-     */
     protected function employeeDateIsEligible(int $employeeId, string $dateKey, Collection $activeEmployees): bool
     {
         $employee = $activeEmployees->firstWhere('employee_id', $employeeId);
@@ -1334,29 +1311,11 @@ class CorporateRecruitmentDashboardService
      * @param  Collection<int, array<string, mixed>>  $activeEmployees
      * @return Collection<int, array<string, mixed>>
      */
-    protected function buildAttendanceWorkbookDetailRecords(
-        array $normalized,
-        Collection $activeEmployees,
-        Collection $clocks
-    ): Collection
+    protected function buildAttendanceWorkbookDetailRecords(Collection $attendanceRecords, Collection $activeEmployees): Collection
     {
         $employeeIndex = $activeEmployees->keyBy('employee_id');
 
-        $employeeRelationColumns = implode(',', array_values(array_unique(array_merge(
-            $this->employeeIdentifierSelectColumns(),
-            ['name', 'full_name']
-        ))));
-
-        return $this->loadAttendanceRecords(
-            $normalized['from_local'],
-            $normalized['to_local'],
-            $clocks,
-            [
-                'employee:'.$employeeRelationColumns,
-                'location:id,name,code,fortia_location_id',
-                'clock:id,clock_name,serial_number',
-            ]
-        )
+        return $attendanceRecords
             ->sortBy([
                 fn (AttendanceLog $record) => (int) ($record->employee_id ?? 0),
                 fn (AttendanceLog $record) => $this->resolvedAttendanceLocalDateTime($record)?->getTimestamp() ?? PHP_INT_MAX,
@@ -1492,13 +1451,13 @@ class CorporateRecruitmentDashboardService
         Collection $selectedLocations,
         Collection $reportClocks,
         Collection $activeEmployees,
-        Collection $detailRecords,
-        int $rawDetailCount,
+        Collection $attendanceRecords,
         Carbon $generatedAt
     ): array {
-        $employeesWithChecks = $detailRecords->pluck('employee_id')->unique()->count();
+        $employeesWithChecks = $this->distinctAttendanceEmployeesCount($attendanceRecords);
         $totalEmployees = $activeEmployees->count();
         $pendingEmployees = max($totalEmployees - $employeesWithChecks, 0);
+        $rawDetailCount = $attendanceRecords->count();
         [$fromUtc, $toUtcExclusive] = $this->attendanceUtcWindow($normalized['from_local'], $normalized['to_local']);
         $clockLabels = $reportClocks
             ->map(fn (Clock $clock) => trim($clock->clock_name.($clock->serial_number ? ' ('.$clock->serial_number.')' : '')))
@@ -1581,6 +1540,15 @@ class CorporateRecruitmentDashboardService
         }
 
         return $rows;
+    }
+
+    protected function distinctAttendanceEmployeesCount(Collection $attendanceRecords): int
+    {
+        return $attendanceRecords
+            ->pluck('employee_id')
+            ->filter(fn ($employeeId) => $employeeId !== null)
+            ->unique()
+            ->count();
     }
 
     /**
