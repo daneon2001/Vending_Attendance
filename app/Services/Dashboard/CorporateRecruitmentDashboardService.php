@@ -94,18 +94,17 @@ class CorporateRecruitmentDashboardService
             ];
         }
 
+        $clocks = $this->clockCollection($selectedLocationIds, $selectedClockId);
         $attendanceRecords = $this->loadAttendanceRecords(
             fromLocal: $normalized['from_local'],
             toLocal: $normalized['to_local'],
-            locationIds: $selectedLocationIds,
-            clockId: $selectedClockId
+            clocks: $clocks
         );
         $eligibleEmployees = $this->eligibleEmployeesForLocations(
             $selectedLocations,
             $normalized['from_local'],
             $normalized['to_local']
         );
-        $clocks = $this->clockCollection($selectedLocationIds, $selectedClockId);
         $attendanceByLocation = $this->attendanceSummaryByLocation($attendanceRecords);
         $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation(
             $attendanceRecords,
@@ -239,12 +238,14 @@ class CorporateRecruitmentDashboardService
         $locations = $this->resolveScopedLocations();
         $normalized = $this->normalizeFilters($filters, $locations);
         $selectedLocations = $normalized['selected_locations'];
+        $selectedLocationIds = $selectedLocations->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $reportClocks = $this->clockCollection($selectedLocationIds, $normalized['clock_id']);
         $activeEmployees = $this->activeEmployeesForAttendanceWorkbook(
             $selectedLocations,
             $normalized['from_local'],
             $normalized['to_local']
         );
-        $detailRecords = $this->buildAttendanceWorkbookDetailRecords($normalized, $activeEmployees);
+        $detailRecords = $this->buildAttendanceWorkbookDetailRecords($normalized, $activeEmployees, $reportClocks);
         $eligibleDetailRecords = $detailRecords->filter(
             fn (array $record) => $this->employeeDateIsEligible(
                 (int) $record['employee_id'],
@@ -267,6 +268,7 @@ class CorporateRecruitmentDashboardService
                 'summary' => $this->buildAttendanceWorkbookSummaryRows(
                     $normalized,
                     $selectedLocations,
+                    $reportClocks,
                     $activeEmployees,
                     $eligibleDetailRecords,
                     $detailRecords->count(),
@@ -473,14 +475,30 @@ class CorporateRecruitmentDashboardService
         ];
     }
 
-    protected function attendanceQuery(array $locationIds, ?int $clockId = null): Builder
+    protected function attendanceQuery(Collection $clocks): Builder
     {
+        $clockIds = $clocks->pluck('id')
+            ->filter(fn ($id) => $id !== null)
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+        $clockSerials = $clocks->pluck('serial_number')
+            ->filter(fn ($serial) => is_string($serial) && trim($serial) !== '')
+            ->map(fn (string $serial) => trim($serial))
+            ->values()
+            ->all();
+
         return AttendanceLog::query()
-            ->whereIn('location_id', $locationIds)
-            ->when($clockId, fn (Builder $query) => $query->where('device_id', $clockId))
-            ->where(function (Builder $query): void {
-                $query->whereNull('attendance_status')
-                    ->orWhere('attendance_status', '!=', 'anulada');
+            ->where('attendance_status', 'valida')
+            ->where(function (Builder $query) use ($clockIds, $clockSerials): void {
+                if ($clockIds !== []) {
+                    $query->whereIn('device_id', $clockIds);
+                }
+
+                if ($clockSerials !== []) {
+                    $method = $clockIds !== [] ? 'orWhereIn' : 'whereIn';
+                    $query->{$method}('device_serial', $clockSerials);
+                }
             });
     }
 
@@ -490,45 +508,26 @@ class CorporateRecruitmentDashboardService
     protected function loadAttendanceRecords(
         Carbon $fromLocal,
         Carbon $toLocal,
-        array $locationIds,
-        ?int $clockId = null,
+        Collection $clocks,
         array $relations = []
     ): Collection {
-        if ($locationIds === []) {
+        if ($clocks->isEmpty()) {
             return collect();
         }
 
-        $query = $this->attendanceQuery($locationIds, $clockId);
+        $query = $this->attendanceQuery($clocks);
 
         if ($relations !== []) {
             $query->with($relations);
         }
 
-        $this->applyAttendanceCandidateWindow($query, $fromLocal, $toLocal);
+        [$fromUtc, $toUtcExclusive] = $this->attendanceUtcWindow($fromLocal, $toLocal);
 
         return $query
+            ->where('log_date', '>=', $fromUtc)
+            ->where('log_date', '<', $toUtcExclusive)
             ->orderBy('log_date')
-            ->get()
-            ->filter(fn (AttendanceLog $record) => $this->attendanceFallsWithinLocalRange($record, $fromLocal, $toLocal))
-            ->values();
-    }
-
-    protected function applyAttendanceCandidateWindow(Builder $query, Carbon $fromLocal, Carbon $toLocal): void
-    {
-        $storageTimezone = $this->storageTimezone();
-        $candidateFrom = $fromLocal->copy()->setTimezone($storageTimezone)->subDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
-        $candidateTo = $toLocal->copy()->setTimezone($storageTimezone)->addDays(self::ATTENDANCE_SYNC_GRACE_DAYS);
-
-        $query->whereBetween('log_date', [$candidateFrom, $candidateTo]);
-    }
-
-    protected function attendanceFallsWithinLocalRange(AttendanceLog $record, Carbon $fromLocal, Carbon $toLocal): bool
-    {
-        $checkedAtLocal = $this->resolvedAttendanceLocalDateTime($record);
-
-        return $checkedAtLocal !== null
-            && $checkedAtLocal->greaterThanOrEqualTo($fromLocal)
-            && $checkedAtLocal->lessThanOrEqualTo($toLocal);
+            ->get();
     }
 
     protected function clockCollection(array $locationIds, ?int $clockId = null): Collection
@@ -1272,11 +1271,11 @@ class CorporateRecruitmentDashboardService
         $locations = $this->resolveScopedLocations();
         $normalized = $this->normalizeFilters($filters, $locations);
         $selectedLocationIds = $normalized['selected_locations']->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $clocks = $this->clockCollection($selectedLocationIds, $normalized['clock_id']);
         $records = $this->loadAttendanceRecords(
             $normalized['from_local'],
             $normalized['to_local'],
-            $selectedLocationIds,
-            $normalized['clock_id'],
+            $clocks,
             [
                 'employee:'.implode(',', $this->employeeIdentifierSelectColumns()),
                 'location:id,name',
@@ -1335,14 +1334,13 @@ class CorporateRecruitmentDashboardService
      * @param  Collection<int, array<string, mixed>>  $activeEmployees
      * @return Collection<int, array<string, mixed>>
      */
-    protected function buildAttendanceWorkbookDetailRecords(array $normalized, Collection $activeEmployees): Collection
+    protected function buildAttendanceWorkbookDetailRecords(
+        array $normalized,
+        Collection $activeEmployees,
+        Collection $clocks
+    ): Collection
     {
-        $selectedLocationIds = $normalized['selected_locations']->pluck('id')->map(fn ($id) => (int) $id)->all();
         $employeeIndex = $activeEmployees->keyBy('employee_id');
-
-        if ($selectedLocationIds === []) {
-            return collect();
-        }
 
         $employeeRelationColumns = implode(',', array_values(array_unique(array_merge(
             $this->employeeIdentifierSelectColumns(),
@@ -1352,8 +1350,7 @@ class CorporateRecruitmentDashboardService
         return $this->loadAttendanceRecords(
             $normalized['from_local'],
             $normalized['to_local'],
-            $selectedLocationIds,
-            $normalized['clock_id'],
+            $clocks,
             [
                 'employee:'.$employeeRelationColumns,
                 'location:id,name,code,fortia_location_id',
@@ -1381,20 +1378,33 @@ class CorporateRecruitmentDashboardService
                 }
 
                 return [
+                    'attendance_log_id' => (int) $record->id,
                     'employee_id' => $employeeId,
+                    'fortia_employee_id' => $record->fortia_employee_id ?? $employeeModel?->fortia_employee_id,
                     'employee_number' => $employee['employee_number'] ?? $this->resolveVisibleEmployeeNumber($employeeModel, $employeeId),
                     'employee_name' => $employee['employee_name'] ?? ($employeeModel?->full_name ?: ($employeeModel?->name ?: 'Empleado #'.$employeeId)),
+                    'location_id' => $record->location_id ? (int) $record->location_id : null,
                     'base_location_name' => $employee['base_location_name'] ?? '',
                     'date_key' => $localDateTime->format('Y-m-d'),
                     'date_display' => $localDateTime->format('d/m/Y'),
                     'time_display' => $localDateTime->format('H:i:s'),
                     'datetime_display' => $localDateTime->format('d/m/Y H:i:s'),
+                    'log_date_utc_display' => $this->resolvedAttendanceUtcDateTime($record)?->format('Y-m-d H:i:s'),
+                    'log_date_local_display' => $localDateTime->format('Y-m-d H:i:s'),
                     'unit_name' => $record->location?->name ?? ($employee['base_location_name'] ?? 'Sin unidad'),
+                    'device_id' => $record->device_id ? (int) $record->device_id : null,
                     'clock_name' => $record->clock?->clock_name ?? ($record->device_id ? 'Reloj #'.$record->device_id : 'Sin reloj'),
                     'clock_serial' => $record->clock?->serial_number,
+                    'device_serial' => $record->device_serial ?: $record->clock?->serial_number,
+                    'log_type' => (int) $record->log_type,
                     'type_label' => $this->logTypeLabel((int) $record->log_type),
+                    'source_raw' => (string) $record->source,
                     'source' => strtoupper((string) $record->source),
+                    'attendance_status' => (string) ($record->attendance_status ?? ''),
                     'status' => $record->attendance_status ? ucfirst((string) $record->attendance_status) : '',
+                    'function_int' => $record->function_int,
+                    'function_str' => $record->function_str,
+                    'created_at' => $record->created_at?->format('Y-m-d H:i:s'),
                 ];
             })
             ->filter()
@@ -1480,6 +1490,7 @@ class CorporateRecruitmentDashboardService
     protected function buildAttendanceWorkbookSummaryRows(
         array $normalized,
         Collection $selectedLocations,
+        Collection $reportClocks,
         Collection $activeEmployees,
         Collection $detailRecords,
         int $rawDetailCount,
@@ -1488,10 +1499,8 @@ class CorporateRecruitmentDashboardService
         $employeesWithChecks = $detailRecords->pluck('employee_id')->unique()->count();
         $totalEmployees = $activeEmployees->count();
         $pendingEmployees = max($totalEmployees - $employeesWithChecks, 0);
-        $clockLabels = $this->clockCollection(
-            $selectedLocations->pluck('id')->map(fn ($id) => (int) $id)->all(),
-            $normalized['clock_id']
-        )
+        [$fromUtc, $toUtcExclusive] = $this->attendanceUtcWindow($normalized['from_local'], $normalized['to_local']);
+        $clockLabels = $reportClocks
             ->map(fn (Clock $clock) => trim($clock->clock_name.($clock->serial_number ? ' ('.$clock->serial_number.')' : '')))
             ->filter()
             ->values()
@@ -1504,6 +1513,8 @@ class CorporateRecruitmentDashboardService
             ['Rango', (string) $normalized['filters']['range']],
             ['Desde', Carbon::parse($normalized['filters']['from_date'], $this->operationsTimezone())->format('d/m/Y')],
             ['Hasta', Carbon::parse($normalized['filters']['to_date'], $this->operationsTimezone())->format('d/m/Y')],
+            ['Desde UTC', $fromUtc->format('Y-m-d H:i:s')],
+            ['Hasta UTC (exclusivo)', $toUtcExclusive->format('Y-m-d H:i:s')],
             ['Unidades incluidas', $selectedLocations->map(fn (Location $location) => trim($location->name.' ('.$this->preferredLocationCode($location).')'))->implode(', ')],
             ['Total empleados', (string) $totalEmployees],
             ['Total con checada', (string) $employeesWithChecks],
@@ -1522,32 +1533,67 @@ class CorporateRecruitmentDashboardService
     protected function buildAttendanceWorkbookRawRows(Collection $detailRecords): array
     {
         $rows = [[
+            'Attendance ID',
+            'Employee ID',
+            'Fortia employee ID',
             'Numero de empleado',
             'Nombre completo del empleado',
-            'Fecha hora local',
+            'Location ID',
             'Unidad',
+            'Device ID',
             'Reloj',
             'Serie',
+            'Device serial',
+            'Log date UTC',
+            'Log date MX',
+            'Log type',
             'Tipo',
             'Fuente',
-            'Status',
+            'Attendance status',
+            'Function int',
+            'Function str',
+            'Created at',
         ]];
 
         foreach ($detailRecords as $record) {
             $rows[] = [
+                $record['attendance_log_id'],
+                $record['employee_id'],
+                $record['fortia_employee_id'],
                 $record['employee_number'],
                 $record['employee_name'],
-                $record['datetime_display'],
+                $record['location_id'],
                 $record['unit_name'],
+                $record['device_id'],
                 $record['clock_name'],
                 $record['clock_serial'],
+                $record['device_serial'],
+                $record['log_date_utc_display'],
+                $record['log_date_local_display'],
+                $record['log_type'],
                 $record['type_label'],
-                $record['source'],
-                $record['status'],
+                $record['source_raw'],
+                $record['attendance_status'],
+                $record['function_int'],
+                $record['function_str'],
+                $record['created_at'],
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array{0:Carbon,1:Carbon}
+     */
+    protected function attendanceUtcWindow(Carbon $fromLocal, Carbon $toLocal): array
+    {
+        $storageTimezone = $this->storageTimezone();
+
+        return [
+            $fromLocal->copy()->startOfDay()->setTimezone($storageTimezone),
+            $toLocal->copy()->startOfDay()->addDay()->setTimezone($storageTimezone),
+        ];
     }
 
     /**
@@ -1802,6 +1848,11 @@ class CorporateRecruitmentDashboardService
     protected function resolvedAttendanceLocalDateTime(AttendanceLog $record): ?Carbon
     {
         return $record->resolvedAttendanceLocalDateTime();
+    }
+
+    protected function resolvedAttendanceUtcDateTime(AttendanceLog $record): ?Carbon
+    {
+        return $record->resolvedAttendanceUtcDateTime();
     }
 
     protected function employeeOperationalStatusResolver(): EmployeeOperationalStatusResolver

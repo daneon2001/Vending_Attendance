@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Dashboard\CorporateRecruitmentDashboardService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Inertia\Testing\AssertableInertia as Assert;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -30,6 +31,9 @@ class CorporateRecruitmentDashboardTest extends TestCase
         $this->withoutVite();
         config()->set('operations.timezone', 'America/Mexico_City');
         config()->set('operations.storage_timezone', 'UTC');
+        $excelTempPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'asistencias-fortia-laravel-excel';
+        config()->set('excel.temporary_files.local_path', $excelTempPath);
+        File::ensureDirectoryExists($excelTempPath);
     }
 
     public function test_dashboard_page_requires_dashboard_view_permission(): void
@@ -336,7 +340,7 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
             $this->assertSame(
-                ['Numero de empleado', 'Nombre completo del empleado', 'Fecha hora local', 'Unidad', 'Reloj', 'Serie', 'Tipo', 'Fuente', 'Status'],
+                ['Attendance ID', 'Employee ID', 'Fortia employee ID', 'Numero de empleado', 'Nombre completo del empleado', 'Location ID', 'Unidad', 'Device ID', 'Reloj', 'Serie', 'Device serial', 'Log date UTC', 'Log date MX', 'Log type', 'Tipo', 'Fuente', 'Attendance status', 'Function int', 'Function str', 'Created at'],
                 $rawRows[0]
             );
             $this->assertCount(3, $rawRows);
@@ -381,8 +385,8 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
             $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
             $this->assertTrue(collect($rawBody)->contains(
-                fn (array $row) => ($row[2] ?? '') === '16/06/2026 18:38:45'
-                    && ($row[0] ?? '') === '1002'
+                fn (array $row) => ($row[12] ?? '') === '2026-06-16 18:38:45'
+                    && ($row[3] ?? '') === '1002'
             ));
 
             $workbook->disconnectWorksheets();
@@ -481,8 +485,8 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->all();
 
             $this->assertTrue(collect($rawBody)->contains(
-                fn (array $row) => ($row[0] ?? '') === '1002'
-                    && ($row[2] ?? '') === '19/06/2026 09:00:00'
+                fn (array $row) => ($row[3] ?? '') === '1002'
+                    && ($row[12] ?? '') === '2026-06-19 09:00:00'
             ));
 
             $workbook->disconnectWorksheets();
@@ -557,8 +561,8 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
                 ->all();
             $this->assertCount(2, $rawBody);
-            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[4] ?? '') === 'Corpo 2'));
-            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[1] ?? '') === 'Maria Soto'));
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[8] ?? '') === 'Corpo 2'));
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[4] ?? '') === 'Maria Soto'));
 
             $workbook->disconnectWorksheets();
             unset($workbook);
@@ -595,6 +599,172 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertSame('2026-06-16T18:38:45-06:00', $detailRows[0][0] ?? null);
             $this->assertSame('1002', $detailRows[0][4] ?? null);
             $this->assertNotSame((string) $fixture['corporate_employee_pending']->id, $detailRows[0][4] ?? null);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_and_workbook_only_count_valid_attendance_records(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9301,
+                'employee_id' => $fixture['corporate_employee_pending']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-17 19:30:00',
+                'log_type' => 1,
+                'source' => 'manual',
+                'attendance_status' => 'corregida',
+            ]);
+
+            $summary = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'today',
+                ]));
+
+            $summary->assertOk()
+                ->assertJsonPath('global.active_employees', 3)
+                ->assertJsonPath('global.attended', 2)
+                ->assertJsonPath('global.pending', 1)
+                ->assertJsonPath('global.total_checks', 3);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'today',
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+
+            $workbook = $this->exportWorkbook($response);
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('2', (string) $summaryMap->get('Total con checada'));
+            $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('3', (string) $summaryMap->get('Total checadas'));
+
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
+                ->all();
+
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[16] ?? '') === 'corregida'));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_yesterday_uses_exact_utc_window_for_dashboard_and_workbook(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-30 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view', 'export']]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9401,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-29 05:59:59',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9402,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-29 06:00:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9403,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-30 05:59:59',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9404,
+                'employee_id' => $fixture['corporate_employee_attended']->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'log_date' => '2026-06-30 06:00:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $summary = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'yesterday',
+                ]));
+
+            $summary->assertOk()
+                ->assertJsonPath('global.total_checks', 2)
+                ->assertJsonPath('global.attended', 1)
+                ->assertJsonPath('locations.0.summary.total_checks', 2);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard.corporativo-reclutamiento.export', [
+                    'range' => 'yesterday',
+                    'format' => 'xlsx',
+                ]));
+
+            $response->assertOk();
+
+            $workbook = $this->exportWorkbook($response);
+            $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
+            $summaryMap = collect(array_slice($summaryRows, 1))
+                ->filter(fn (array $row) => ($row[0] ?? '') !== '')
+                ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
+
+            $this->assertSame('2', (string) $summaryMap->get('Total checadas'));
+            $this->assertSame('2026-06-29 06:00:00', (string) $summaryMap->get('Desde UTC'));
+            $this->assertSame('2026-06-30 06:00:00', (string) $summaryMap->get('Hasta UTC (exclusivo)'));
+
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
+                ->all();
+
+            $this->assertCount(2, $rawBody);
+            $this->assertTrue(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-29 06:00:00'));
+            $this->assertTrue(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-30 05:59:59'));
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-29 05:59:59'));
+            $this->assertFalse(collect($rawBody)->contains(fn (array $row) => ($row[11] ?? '') === '2026-06-30 06:00:00'));
+
+            $workbook->disconnectWorksheets();
+            unset($workbook);
         } finally {
             Carbon::setTestNow();
         }
