@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -80,6 +81,30 @@ class AuditLogControllerTest extends TestCase
         $this->assertArrayNotHasKey('new_values', $first);
     }
 
+    public function test_settings_audit_logs_endpoint_formats_created_at_in_operations_timezone(): void
+    {
+        config()->set('app.timezone', 'UTC');
+        config()->set('operations.timezone', 'America/Mexico_City');
+
+        $user = $this->createUserWithAuditPermissions(['view']);
+
+        DB::table('audit_logs')->insert([
+            'event' => 'users.updated',
+            'action' => 'update',
+            'entity' => 'users',
+            'entity_id' => '1',
+            'description' => 'Cambio de usuario timezone test',
+            'created_at' => Carbon::parse('2026-07-01 01:00:00', 'UTC')->format('Y-m-d H:i:s'),
+            'updated_at' => Carbon::parse('2026-07-01 01:00:00', 'UTC')->format('Y-m-d H:i:s'),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->getJson('/settings/audit-logs?range=all&page=1&per_page=15&q=timezone%20test');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.created_at_local', '30/06/2026 19:00:00');
+    }
+
     public function test_audit_logs_purge_supports_dry_run_and_real_delete(): void
     {
         $user = $this->createUserWithAuditPermissions(['manage']);
@@ -133,6 +158,46 @@ class AuditLogControllerTest extends TestCase
             'status' => 'completed',
             'deleted_records' => 1,
         ]);
+    }
+
+    public function test_audit_logs_purge_before_date_uses_operations_timezone_boundaries(): void
+    {
+        config()->set('app.timezone', 'UTC');
+        config()->set('operations.timezone', 'America/Mexico_City');
+
+        $user = $this->createUserWithAuditPermissions(['manage']);
+
+        $deletedLogId = DB::table('audit_logs')->insertGetId([
+            'event' => 'users.updated',
+            'action' => 'update',
+            'entity' => 'users',
+            'description' => 'Registro antes del corte local',
+            'created_at' => '2026-06-01 05:59:59',
+            'updated_at' => '2026-06-01 05:59:59',
+        ]);
+
+        $keptLogId = DB::table('audit_logs')->insertGetId([
+            'event' => 'users.updated',
+            'action' => 'update',
+            'entity' => 'users',
+            'description' => 'Registro en el inicio del dia local',
+            'created_at' => '2026-06-01 06:00:00',
+            'updated_at' => '2026-06-01 06:00:00',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->postJson('/settings/audit-logs/purge', [
+                'mode' => 'before_date',
+                'before_date' => '2026-06-01',
+                'dry_run' => false,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.total_detected', 1)
+            ->assertJsonPath('data.total_deleted', 1);
+
+        $this->assertDatabaseMissing('audit_logs', ['id' => $deletedLogId]);
+        $this->assertDatabaseHas('audit_logs', ['id' => $keptLogId]);
     }
 
     private function createUserWithAuditPermissions(array $actions): User

@@ -13,8 +13,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 const AUDIT_LOGS_ENDPOINT = '/settings/audit-logs';
 const AUDIT_PURGE_ENDPOINT = '/settings/audit-logs/purge';
-const REQUEST_TIMEOUT_MS = 15000;
+const LOGS_REQUEST_TIMEOUT_MS = 15000;
 const DETAIL_TIMEOUT_MS = 10000;
+const PURGE_DRY_RUN_TIMEOUT_MS = 60000;
+const PURGE_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 
 const props = defineProps({
     users: {
@@ -200,7 +202,7 @@ const loadLogs = async (pageNumber = filters.page) => {
     activeLoadController = new AbortController();
     activeLoadTimeout = setTimeout(() => {
         activeLoadController?.abort('timeout');
-    }, REQUEST_TIMEOUT_MS);
+    }, LOGS_REQUEST_TIMEOUT_MS);
 
     try {
         const { data } = await axios.get(apiUrl(AUDIT_LOGS_ENDPOINT), {
@@ -355,21 +357,32 @@ const runPurge = async () => {
     }
 
     purgeBusy.submit = true;
+    const purgeTimeoutMs = purgeForm.dry_run ? PURGE_DRY_RUN_TIMEOUT_MS : PURGE_EXECUTION_TIMEOUT_MS;
+    const payload = {
+        mode: purgeForm.mode,
+        dry_run: Boolean(purgeForm.dry_run),
+        optimize: Boolean(purgeForm.optimize),
+    };
+
+    if (purgeForm.mode === 'before_date') {
+        payload.before_date = purgeForm.before_date || null;
+    }
+
+    if (purgeForm.mode === 'keep_last_days') {
+        payload.keep_days = Number(purgeForm.keep_days || 0);
+    }
+
+    if (purgeForm.mode === 'delete_by_range') {
+        payload.date_from = purgeForm.date_from || null;
+        payload.date_to = purgeForm.date_to || null;
+    }
 
     try {
         const { data } = await axios.post(
             apiUrl(AUDIT_PURGE_ENDPOINT),
+            payload,
             {
-                mode: purgeForm.mode,
-                before_date: purgeForm.before_date || null,
-                keep_days: Number(purgeForm.keep_days || 0),
-                date_from: purgeForm.date_from || null,
-                date_to: purgeForm.date_to || null,
-                dry_run: Boolean(purgeForm.dry_run),
-                optimize: Boolean(purgeForm.optimize),
-            },
-            {
-                timeout: REQUEST_TIMEOUT_MS,
+                timeout: purgeTimeoutMs,
             },
         );
 
@@ -387,7 +400,13 @@ const runPurge = async () => {
         });
     } catch (error) {
         const message = error.response?.data?.message
-            ?? (error?.code === 'ECONNABORTED' ? 'La limpieza tardo demasiado. Intenta con un rango mas acotado.' : 'Intenta nuevamente.');
+            ?? (
+                error?.code === 'ECONNABORTED'
+                    ? (purgeForm.dry_run
+                        ? 'La simulacion tardo demasiado. Ajusta el rango e intenta nuevamente.'
+                        : 'La limpieza sigue tomando mas tiempo del esperado. Reduce el rango o ejecutala en una ventana operativa mas amplia.')
+                    : 'Intenta nuevamente.'
+            );
 
         showToast({
             type: 'error',
@@ -599,6 +618,10 @@ onMounted(() => {
                     <div class="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-900/20 dark:text-sky-100">
                         {{ purgeSummary }}
                     </div>
+
+                    <p class="mt-3 text-xs text-soft">
+                        La simulacion responde rapido. La ejecucion real puede tardar varios minutos cuando el volumen es alto.
+                    </p>
 
                     <div class="mt-4 flex flex-wrap gap-3">
                         <button

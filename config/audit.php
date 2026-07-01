@@ -40,6 +40,8 @@ return [
         'heartbeat_log_interval_minutes' => (int) env('AUDIT_HEARTBEAT_LOG_INTERVAL_MINUTES', 30),
         'optimize_min_deleted_mb' => (int) env('AUDIT_OPTIMIZE_MIN_DELETED_MB', 512),
         'min_keep_days' => (int) env('AUDIT_PURGE_MIN_KEEP_DAYS', 90),
+        'purge_batch_size' => (int) env('AUDIT_PURGE_BATCH_SIZE', 20000),
+        'purge_request_timeout_seconds' => (int) env('AUDIT_PURGE_REQUEST_TIMEOUT_SECONDS', 3600),
         'schedule_time' => env('AUDIT_CLEANUP_SCHEDULE_TIME', '03:00'),
     ],
 

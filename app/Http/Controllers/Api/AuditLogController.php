@@ -131,7 +131,8 @@ class AuditLogController extends Controller
         try {
             $auditLog->load('user:id,name,email');
 
-            $timezone = config('app.timezone', 'UTC');
+            $timezone = $this->auditTimezone();
+            $createdAtUtc = $this->normalizeStoredDateTime($auditLog->created_at);
 
             return response()->json([
                 'data' => [
@@ -162,9 +163,9 @@ class AuditLogController extends Controller
                     'occurred_at_utc' => optional($auditLog->occurred_at_utc)->toISOString(),
                     'occurred_at_local' => optional($auditLog->occurred_at_local)->format('d/m/Y H:i:s'),
                     'timezone' => $auditLog->timezone,
-                    'created_at' => optional($auditLog->created_at)->toISOString(),
-                    'created_at_local' => optional($auditLog->created_at)
-                        ? $auditLog->created_at->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')
+                    'created_at' => optional($createdAtUtc)->toISOString(),
+                    'created_at_local' => optional($createdAtUtc)
+                        ? $createdAtUtc->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')
                         : null,
                 ],
             ]);
@@ -227,6 +228,10 @@ class AuditLogController extends Controller
         }
 
         try {
+            if (empty($validated['dry_run'])) {
+                $this->extendPurgeExecutionWindow();
+            }
+
             $result = ! empty($validated['dry_run'])
                 ? $cleanupService->previewPurge($validated)
                 : $cleanupService->executePurge($validated, $request->user(), 'manual');
@@ -253,7 +258,7 @@ class AuditLogController extends Controller
     protected function resolveRange(Request $request): array
     {
         $range = (string) $request->string('range', 'today');
-        $timezone = config('app.timezone', 'UTC');
+        $timezone = $this->auditTimezone();
         $now = now($timezone);
 
         if ($range === 'custom' && $request->filled(['from', 'to'])) {
@@ -315,6 +320,38 @@ class AuditLogController extends Controller
         }
 
         return null;
+    }
+
+    private function auditTimezone(): string
+    {
+        return (string) config('operations.timezone', config('app.timezone', 'America/Mexico_City'));
+    }
+
+    private function extendPurgeExecutionWindow(): void
+    {
+        $seconds = max(60, (int) config('audit.cleanup.purge_request_timeout_seconds', 3600));
+
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($seconds);
+        }
+    }
+
+    private function storageTimezone(): string
+    {
+        return (string) config('operations.storage_timezone', 'UTC');
+    }
+
+    private function normalizeStoredDateTime(mixed $value): ?Carbon
+    {
+        if (! $value) {
+            return null;
+        }
+
+        if ($value instanceof Carbon) {
+            return Carbon::parse($value->format('Y-m-d H:i:s'), $this->storageTimezone());
+        }
+
+        return Carbon::parse((string) $value, $this->storageTimezone());
     }
 
     /**

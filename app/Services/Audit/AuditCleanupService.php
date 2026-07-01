@@ -437,11 +437,12 @@ class AuditCleanupService
     {
         $selection = Arr::wrap($payload['selection'] ?? []);
         $targetFreeMb = (int) ($selection['target_free_mb'] ?? 0);
+        $timezone = $this->auditTimezone();
         $afterDate = isset($selection['after_date']) && $selection['after_date'] !== ''
-            ? Carbon::parse((string) $selection['after_date'], config('app.timezone', 'UTC'))->startOfDay()->setTimezone('UTC')
+            ? Carbon::parse((string) $selection['after_date'], $timezone)->startOfDay()->setTimezone('UTC')
             : null;
         $beforeDateRaw = isset($selection['before_date']) && $selection['before_date'] !== ''
-            ? Carbon::parse((string) $selection['before_date'], config('app.timezone', 'UTC'))
+            ? Carbon::parse((string) $selection['before_date'], $timezone)
             : null;
         $beforeDate = $beforeDateRaw
             ? ($afterDate ? $beforeDateRaw->copy()->endOfDay()->setTimezone('UTC') : $beforeDateRaw->copy()->startOfDay()->setTimezone('UTC'))
@@ -482,10 +483,13 @@ class AuditCleanupService
     private function buildPurgePayload(array $payload): array
     {
         $mode = (string) ($payload['mode'] ?? 'before_date');
-        $timezone = config('app.timezone', 'UTC');
+        $timezone = $this->auditTimezone();
         $selection = [
             'optimize' => (bool) ($payload['optimize'] ?? false),
             'simulate' => (bool) ($payload['dry_run'] ?? false),
+        ];
+        $settings = [
+            'batch_size' => max(100, (int) config('audit.cleanup.purge_batch_size', 20000)),
         ];
 
         if ($mode === 'keep_last_days') {
@@ -499,6 +503,7 @@ class AuditCleanupService
         }
 
         return [
+            'settings' => $settings,
             'selection' => $selection,
         ];
     }
@@ -640,5 +645,10 @@ class AuditCleanupService
         } catch (\Throwable $exception) {
             return false;
         }
+    }
+
+    private function auditTimezone(): string
+    {
+        return (string) config('operations.timezone', config('app.timezone', 'America/Mexico_City'));
     }
 }
