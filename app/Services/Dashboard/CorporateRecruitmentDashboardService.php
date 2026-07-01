@@ -230,6 +230,7 @@ class CorporateRecruitmentDashboardService
     {
         $locations = $this->resolveScopedLocations();
         $normalized = $this->normalizeFilters($filters, $locations);
+        $dashboardPayload = $this->build($normalized['filters']);
         $selectedLocations = $normalized['selected_locations'];
         $selectedLocationIds = $selectedLocations->pluck('id')->map(fn ($id) => (int) $id)->all();
         $reportClocks = $this->clockCollection($selectedLocationIds, $normalized['clock_id']);
@@ -252,34 +253,28 @@ class CorporateRecruitmentDashboardService
             ]
         );
         $detailRecords = $this->buildAttendanceWorkbookDetailRecords($attendanceRecords, $activeEmployees);
-        $eligibleDetailRecords = $detailRecords->filter(
-            fn (array $record) => $this->employeeDateIsEligible(
-                (int) $record['employee_id'],
-                (string) $record['date_key'],
-                $activeEmployees
-            )
-        )->values();
         $generatedAt = now($this->operationsTimezone());
         $reportDates = $this->reportDateRange($normalized['from_local'], $normalized['to_local']);
-        $maxChecks = max(0, (int) $eligibleDetailRecords
+        $maxChecks = max(0, (int) $detailRecords
             ->groupBy(fn (array $record) => $record['employee_id'].'|'.$record['date_key'])
             ->map(fn (Collection $records) => $records->count())
             ->max());
+        $rawSheetIncluded = $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT;
 
         return [
             'filters' => $normalized['filters'],
             'generated_at' => $generatedAt->toIso8601String(),
             'sheets' => [
-                'report' => $this->buildAttendanceWorkbookReportRows($activeEmployees, $eligibleDetailRecords, $reportDates, $maxChecks),
+                'report' => $this->buildAttendanceWorkbookReportRows($activeEmployees, $detailRecords, $reportDates, $maxChecks),
                 'summary' => $this->buildAttendanceWorkbookSummaryRows(
                     $normalized,
+                    $dashboardPayload['global'] ?? [],
                     $selectedLocations,
                     $reportClocks,
-                    $activeEmployees,
-                    $attendanceRecords,
+                    $rawSheetIncluded,
                     $generatedAt
                 ),
-                'raw' => $detailRecords->count() <= self::DETAIL_EXPORT_LIMIT
+                'raw' => $rawSheetIncluded
                     ? $this->buildAttendanceWorkbookRawRows($detailRecords)
                     : [],
             ],
@@ -1398,6 +1393,7 @@ class CorporateRecruitmentDashboardService
 
         $rows = [$heading];
         $grouped = $detailRecords->groupBy(fn (array $record) => $record['employee_id'].'|'.$record['date_key']);
+        $seenGroupKeys = [];
 
         foreach ($activeEmployees as $employee) {
             foreach ($reportDates as $dateKey) {
@@ -1405,35 +1401,45 @@ class CorporateRecruitmentDashboardService
                     continue;
                 }
 
+                $groupKey = $employee['employee_id'].'|'.$dateKey;
                 /** @var Collection<int, array<string, mixed>> $records */
-                $records = $grouped->get($employee['employee_id'].'|'.$dateKey, collect())
+                $records = $grouped->get($groupKey, collect())
                     ->sortBy('time_display')
                     ->values();
-
-                $checks = $records->pluck('time_display')->values()->all();
-                $totalChecks = count($checks);
-                $uniqueUnits = $records->pluck('unit_name')->filter()->unique()->values();
-                $unitLabel = $records->isEmpty()
-                    ? $employee['base_location_name']
-                    : ($uniqueUnits->count() > 1 ? 'Multiples' : ($uniqueUnits->first() ?? $employee['base_location_name']));
-                $dateDisplay = Carbon::createFromFormat('Y-m-d', $dateKey, $this->operationsTimezone())->format('d/m/Y');
-
-                $row = [
-                    $employee['employee_number'],
-                    $employee['employee_name'],
-                    $unitLabel,
-                    $dateDisplay,
-                    (string) $totalChecks,
-                    $checks[0] ?? '',
-                    $checks !== [] ? $checks[array_key_last($checks)] : '',
-                ];
-
-                for ($index = 0; $index < $maxChecks; $index++) {
-                    $row[] = $checks[$index] ?? '';
-                }
-
-                $rows[] = $row;
+                $seenGroupKeys[$groupKey] = true;
+                $rows[] = $this->buildAttendanceWorkbookReportRow(
+                    employeeNumber: (string) $employee['employee_number'],
+                    employeeName: (string) $employee['employee_name'],
+                    fallbackUnitName: (string) ($employee['base_location_name'] ?? ''),
+                    dateKey: $dateKey,
+                    records: $records,
+                    maxChecks: $maxChecks
+                );
             }
+        }
+
+        $attendanceOnlyRows = $grouped
+            ->reject(fn (Collection $records, string $groupKey) => isset($seenGroupKeys[$groupKey]))
+            ->sortKeys()
+            ->map(function (Collection $records, string $groupKey) use ($maxChecks): array {
+                /** @var array<string, mixed> $firstRecord */
+                $firstRecord = (array) $records->first();
+                [, $dateKey] = explode('|', $groupKey, 2);
+
+                return $this->buildAttendanceWorkbookReportRow(
+                    employeeNumber: (string) ($firstRecord['employee_number'] ?? ''),
+                    employeeName: (string) ($firstRecord['employee_name'] ?? ''),
+                    fallbackUnitName: (string) ($firstRecord['unit_name'] ?? ''),
+                    dateKey: $dateKey,
+                    records: $records->sortBy('time_display')->values(),
+                    maxChecks: $maxChecks
+                );
+            })
+            ->values()
+            ->all();
+
+        foreach ($attendanceOnlyRows as $row) {
+            $rows[] = $row;
         }
 
         return $rows;
@@ -1441,29 +1447,29 @@ class CorporateRecruitmentDashboardService
 
     /**
      * @param  array<string, mixed>  $normalized
+     * @param  array<string, mixed>  $globalSummary
      * @param  Collection<int, Location>  $selectedLocations
-     * @param  Collection<int, array<string, mixed>>  $activeEmployees
-     * @param  Collection<int, array<string, mixed>>  $detailRecords
      * @return array<int, array<int, mixed>>
      */
     protected function buildAttendanceWorkbookSummaryRows(
         array $normalized,
+        array $globalSummary,
         Collection $selectedLocations,
         Collection $reportClocks,
-        Collection $activeEmployees,
-        Collection $attendanceRecords,
+        bool $rawSheetIncluded,
         Carbon $generatedAt
     ): array {
-        $employeesWithChecks = $this->distinctAttendanceEmployeesCount($attendanceRecords);
-        $totalEmployees = $activeEmployees->count();
-        $pendingEmployees = max($totalEmployees - $employeesWithChecks, 0);
-        $rawDetailCount = $attendanceRecords->count();
         [$fromUtc, $toUtcExclusive] = $this->attendanceUtcWindow($normalized['from_local'], $normalized['to_local']);
         $clockLabels = $reportClocks
             ->map(fn (Clock $clock) => trim($clock->clock_name.($clock->serial_number ? ' ('.$clock->serial_number.')' : '')))
             ->filter()
             ->values()
             ->all();
+        $totalEmployees = (int) ($globalSummary['active_employees'] ?? 0);
+        $employeesWithChecks = (int) ($globalSummary['attended'] ?? 0);
+        $pendingEmployees = (int) ($globalSummary['pending'] ?? max($totalEmployees - $employeesWithChecks, 0));
+        $rawDetailCount = (int) ($globalSummary['total_checks'] ?? 0);
+        $coverage = (float) ($globalSummary['coverage_percent'] ?? $this->percentage($employeesWithChecks, $totalEmployees));
 
         return [
             ['Concepto', 'Valor'],
@@ -1479,10 +1485,45 @@ class CorporateRecruitmentDashboardService
             ['Total con checada', (string) $employeesWithChecks],
             ['Total pendientes', (string) $pendingEmployees],
             ['Total checadas', (string) $rawDetailCount],
-            ['Cobertura', $this->percentage($employeesWithChecks, $totalEmployees).'%'],
+            ['Cobertura', $coverage.'%'],
             ['Relojes incluidos', $clockLabels !== [] ? implode(', ', $clockLabels) : 'Todos'],
-            ['Detalle crudo incluido', $rawDetailCount <= self::DETAIL_EXPORT_LIMIT ? 'Si' : 'No'],
+            ['Detalle crudo incluido', $rawSheetIncluded ? 'Si' : 'No'],
         ];
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $records
+     * @return array<int, mixed>
+     */
+    protected function buildAttendanceWorkbookReportRow(
+        string $employeeNumber,
+        string $employeeName,
+        string $fallbackUnitName,
+        string $dateKey,
+        Collection $records,
+        int $maxChecks
+    ): array {
+        $checks = $records->pluck('time_display')->filter()->values()->all();
+        $uniqueUnits = $records->pluck('unit_name')->filter()->unique()->values();
+        $unitLabel = $records->isEmpty()
+            ? $fallbackUnitName
+            : ($uniqueUnits->count() > 1 ? 'Multiples' : ($uniqueUnits->first() ?? $fallbackUnitName));
+        $dateDisplay = Carbon::createFromFormat('Y-m-d', $dateKey, $this->operationsTimezone())->format('d/m/Y');
+        $row = [
+            $employeeNumber,
+            $employeeName,
+            $unitLabel,
+            $dateDisplay,
+            (string) count($checks),
+            $checks[0] ?? '',
+            $checks !== [] ? $checks[array_key_last($checks)] : '',
+        ];
+
+        for ($index = 0; $index < $maxChecks; $index++) {
+            $row[] = $checks[$index] ?? '';
+        }
+
+        return $row;
     }
 
     /**

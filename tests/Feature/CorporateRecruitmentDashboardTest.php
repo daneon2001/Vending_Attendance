@@ -471,7 +471,10 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ))
                 ->all();
 
-            $this->assertFalse(collect($reportBody)->contains(fn (array $row) => ($row[0] ?? '') === '1002'));
+            $this->assertContains(
+                ['1002', 'Luis Perez', 'Corporativo Central', '19/06/2026', '1', '09:00:00', '09:00:00', '09:00:00'],
+                $reportBody
+            );
 
             $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
             $summaryMap = collect(array_slice($summaryRows, 1))
@@ -650,6 +653,13 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
 
             $workbook = $this->exportWorkbook($response);
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 9, '')
+                ))
+                ->all();
             $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
             $summaryMap = collect(array_slice($summaryRows, 1))
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
@@ -753,6 +763,13 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
 
             $workbook = $this->exportWorkbook($response);
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 9, '')
+                ))
+                ->all();
             $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
             $summaryMap = collect(array_slice($summaryRows, 1))
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
@@ -823,6 +840,13 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $response->assertOk();
 
             $workbook = $this->exportWorkbook($response);
+            $reportRows = $workbook->getSheetByName('Reporte checadas')?->toArray('', true, true, false) ?? [];
+            $reportBody = collect(array_slice($reportRows, 1))
+                ->map(fn (array $row) => array_map(
+                    fn ($value) => $value === null ? '' : (string) $value,
+                    array_pad($row, 9, '')
+                ))
+                ->all();
             $summaryRows = $workbook->getSheetByName('Resumen')?->toArray('', true, true, false) ?? [];
             $summaryMap = collect(array_slice($summaryRows, 1))
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
@@ -833,6 +857,32 @@ class CorporateRecruitmentDashboardTest extends TestCase
             $this->assertSame('0', (string) $summaryMap->get('Total pendientes'));
             $this->assertSame('4', (string) $summaryMap->get('Total checadas'));
             $this->assertSame('100%', (string) $summaryMap->get('Cobertura'));
+            $this->assertContains(
+                ['1004', 'Jorge Ruiz', 'Corporativo Central', '17/06/2026', '1', '10:30:00', '10:30:00', '10:30:00', ''],
+                $reportBody
+            );
+            $this->assertSame(
+                3,
+                collect($reportBody)
+                    ->filter(fn (array $row) => (int) ($row[4] ?? 0) > 0)
+                    ->pluck(0)
+                    ->unique()
+                    ->count()
+            );
+            $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
+            $rawBody = collect(array_slice($rawRows, 1))
+                ->map(fn (array $row) => array_map(fn ($value) => $value === null ? '' : (string) $value, $row))
+                ->all();
+
+            $this->assertCount(4, $rawBody);
+            $this->assertSame(
+                3,
+                collect($rawBody)
+                    ->pluck(1)
+                    ->filter()
+                    ->unique()
+                    ->count()
+            );
 
             $workbook->disconnectWorksheets();
             unset($workbook);
