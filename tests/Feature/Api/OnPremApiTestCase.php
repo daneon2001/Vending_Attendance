@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -31,6 +32,7 @@ abstract class OnPremApiTestCase extends TestCase
             'onprem.next_heartbeat_seconds' => 15,
         ]);
 
+        Cache::flush();
         $this->ensureTables();
         $this->clearTables();
     }
@@ -40,6 +42,8 @@ abstract class OnPremApiTestCase extends TestCase
         if ($this->createdAuditLogsTable && Schema::hasTable('audit_logs')) {
             Schema::drop('audit_logs');
         }
+
+        Cache::flush();
         if ($this->createdAttendancesRawTable && Schema::hasTable('attendances_raw')) {
             Schema::drop('attendances_raw');
         }
@@ -384,15 +388,30 @@ abstract class OnPremApiTestCase extends TestCase
             Schema::create('audit_logs', function (Blueprint $table): void {
                 $table->bigIncrements('id');
                 $table->unsignedBigInteger('user_id')->nullable();
+                $table->unsignedBigInteger('actor_user_id')->nullable();
+                $table->string('actor_type', 40)->nullable();
+                $table->string('actor_identifier')->nullable();
                 $table->string('user_name')->nullable();
                 $table->string('user_email')->nullable();
                 $table->string('event', 150);
+                $table->string('action', 80)->nullable();
+                $table->string('entity')->nullable();
+                $table->string('entity_id')->nullable();
                 $table->string('auditable_type')->nullable();
                 $table->unsignedBigInteger('auditable_id')->nullable();
                 $table->string('description')->nullable();
+                $table->string('reason')->nullable();
+                $table->json('old_values')->nullable();
+                $table->json('new_values')->nullable();
                 $table->json('metadata')->nullable();
                 $table->string('ip_address', 45)->nullable();
                 $table->string('user_agent', 500)->nullable();
+                $table->string('request_id')->nullable();
+                $table->string('correlation_id')->nullable();
+                $table->unsignedBigInteger('device_id')->nullable();
+                $table->dateTime('occurred_at_utc')->nullable();
+                $table->dateTime('occurred_at_local')->nullable();
+                $table->string('timezone', 120)->nullable();
                 $table->timestamps();
             });
             $this->createdAuditLogsTable = true;

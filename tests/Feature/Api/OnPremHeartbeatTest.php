@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Api;
 
+use Illuminate\Support\Facades\DB;
+
 class OnPremHeartbeatTest extends OnPremApiTestCase
 {
     public function test_heartbeat_persists_status_and_returns_next_interval(): void
@@ -98,6 +100,82 @@ class OnPremHeartbeatTest extends OnPremApiTestCase
             'monitoring_status' => 'online',
             'program_status' => 'online',
             'last_status_message' => 'SERIAL_OK',
+        ]);
+    }
+
+    public function test_heartbeat_audit_is_throttled_between_status_changes(): void
+    {
+        config(['audit.cleanup.heartbeat_log_interval_minutes' => 30]);
+
+        $fixture = $this->seedDeviceFixture('HB-171', 'secret-heartbeat-audit');
+
+        $basePayload = [
+            'device_serial' => $fixture['device_serial'],
+            'clock_id' => $fixture['clock_id'],
+            'unit_id' => $fixture['unit_id'],
+            'company_id' => $fixture['company_id'],
+            'api_ok' => true,
+            'device_ok' => true,
+            'status_message' => 'RUNNING',
+        ];
+
+        $this->signedJsonRequest(
+            'POST',
+            '/api/onprem/heartbeat',
+            $basePayload,
+            $fixture['device_serial'],
+            $fixture['secret'],
+        )->assertOk();
+
+        $this->assertSame(1, DB::table('audit_logs')->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'onprem.heartbeat.status_changed',
+        ]);
+
+        $this->signedJsonRequest(
+            'POST',
+            '/api/onprem/heartbeat',
+            $basePayload,
+            $fixture['device_serial'],
+            $fixture['secret'],
+        )->assertOk();
+
+        $this->assertSame(1, DB::table('audit_logs')->count());
+
+        $this->signedJsonRequest(
+            'POST',
+            '/api/onprem/heartbeat',
+            array_merge($basePayload, [
+                'device_ok' => false,
+                'status_message' => 'DEVICE_ERROR',
+            ]),
+            $fixture['device_serial'],
+            $fixture['secret'],
+        )->assertOk();
+
+        $this->assertSame(2, DB::table('audit_logs')->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'onprem.heartbeat.status_changed',
+            'description' => 'Heartbeat status changed',
+        ]);
+
+        $this->travel(31)->minutes();
+
+        $this->signedJsonRequest(
+            'POST',
+            '/api/onprem/heartbeat',
+            array_merge($basePayload, [
+                'device_ok' => false,
+                'status_message' => 'DEVICE_ERROR',
+            ]),
+            $fixture['device_serial'],
+            $fixture['secret'],
+        )->assertOk();
+
+        $this->assertSame(3, DB::table('audit_logs')->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'onprem.heartbeat.sampled',
+            'description' => 'Heartbeat sampled',
         ]);
     }
 }

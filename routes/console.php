@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 use Carbon\Carbon;
 
 Artisan::command('inspire', function () {
@@ -87,3 +88,7 @@ Artisan::command(
         return self::SUCCESS;
     }
 )->purpose('Lista tombstones DEV de templates');
+
+Schedule::command('audit:cleanup --optimize')
+    ->dailyAt((string) config('audit.cleanup.schedule_time', '03:00'))
+    ->withoutOverlapping();

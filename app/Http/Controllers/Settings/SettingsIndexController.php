@@ -30,6 +30,12 @@ class SettingsIndexController extends Controller
                     'route' => route('settings.audit.page'),
                     'available' => $request->user()?->hasPermission('audit', 'view') ?? false,
                 ],
+                [
+                    'label' => 'Limpieza de bitácora',
+                    'description' => 'Configura retención, simulaciones y purgas seguras.',
+                    'route' => route('settings.audit-cleanup.page'),
+                    'available' => $request->user()?->hasPermission('audit', 'manage') ?? false,
+                ],
             ],
         ]);
     }

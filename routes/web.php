@@ -8,12 +8,14 @@ use App\Http\Controllers\CompanyCatalogController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\AttendanceCardController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Api\AuditCleanupController;
 use App\Http\Controllers\Dashboard\CorporateRecruitmentDashboardController;
 use App\Http\Controllers\Employees\EmployeeCatalogExportController;
 use App\Http\Controllers\Employees\EmployeeCatalogPageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\UserController as ApiUserController;
+use App\Http\Controllers\Settings\AuditCleanupPageController;
 use App\Http\Controllers\Settings\AuditPageController;
 use App\Http\Controllers\Settings\RoleAssignmentController;
 use App\Http\Controllers\Settings\RoleController as SettingsRoleController;
@@ -174,6 +176,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/audit', AuditPageController::class)
             ->middleware('perm:audit,view')
             ->name('audit.page');
+
+        Route::get('/audit-cleanup', AuditCleanupPageController::class)
+            ->middleware('perm:audit,manage')
+            ->name('audit-cleanup.page');
     });
 
     Route::prefix('api/users')->group(function () {
@@ -186,6 +192,13 @@ Route::middleware('auth')->group(function () {
     Route::prefix('api/audit-logs')->middleware('perm:audit,view')->group(function () {
         Route::get('/', [AuditLogController::class, 'index']);
         Route::get('{auditLog}', [AuditLogController::class, 'show']);
+    });
+
+    Route::prefix('api/audit-cleanup')->middleware('perm:audit,manage')->group(function () {
+        Route::get('/dashboard', [AuditCleanupController::class, 'dashboard']);
+        Route::put('/settings', [AuditCleanupController::class, 'updateSettings']);
+        Route::post('/preview', [AuditCleanupController::class, 'preview']);
+        Route::post('/execute', [AuditCleanupController::class, 'execute']);
     });
 
     Route::prefix('admin/asistencias')->name('admin.asistencias.')->group(function () {

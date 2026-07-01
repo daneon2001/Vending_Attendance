@@ -31,6 +31,7 @@ use App\Console\Commands\MakeAdminSuperCommand;
 use App\Console\Commands\FortiaMockAddEmployee;
 use App\Console\Commands\FortiaMockSyncEmployees;
 use App\Console\Commands\ReconcileDevicesFromClocks;
+use App\Console\Commands\AuditCleanupCommand;
 use App\Console\Commands\FortiaDiagnoseApis;
 use App\Console\Commands\FortiaDiagnoseBiometrics;
 use App\Console\Commands\FortiaDiagnoseDeviceToken;
@@ -68,6 +69,7 @@ return Application::configure(basePath: dirname(__DIR__))
         SyncPermissionCatalogCommand::class,
         ReconcileDevicesFromClocks::class,
         VerifyAttendanceIntegrity::class,
+        AuditCleanupCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)

@@ -7,12 +7,18 @@ use App\Http\Requests\OnPrem\StoreOnPremHeartbeatRequest;
 use App\Models\Clock;
 use App\Models\Device;
 use App\Services\Audit\AuditLogger;
+use App\Services\Audit\HeartbeatAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class OnPremHeartbeatController extends Controller
 {
+    public function __construct(
+        private readonly HeartbeatAuditService $heartbeatAuditService
+    ) {
+    }
+
     public function store(StoreOnPremHeartbeatRequest $request): JsonResponse
     {
         /** @var Device|null $device */
@@ -33,6 +39,7 @@ class OnPremHeartbeatController extends Controller
         $lastStatus = $validated['status_message']
             ?? ((array_key_exists('device_ok', $validated) && $validated['device_ok'] === false) ? 'DEVICE_ERROR' : 'OK');
         [$clock, $clockMatchedBy] = $this->resolveClockForHeartbeat($device, $validated);
+        $previousMonitoringStatus = $clock?->monitoring_status;
         $monitoringStatus = (($validated['device_ok'] ?? true) === false || ($validated['api_ok'] ?? true) === false)
             ? 'warning'
             : 'online';
@@ -100,10 +107,11 @@ class OnPremHeartbeatController extends Controller
             ]);
         }
 
-        AuditLogger::log(
-            event: 'onprem.heartbeat.received',
-            auditable: $device,
-            description: 'Heartbeat received',
+        $auditPayload = $this->heartbeatAuditService->buildAuditEntry(
+            device: $device,
+            clock: $clock,
+            previousMonitoringStatus: $previousMonitoringStatus,
+            currentMonitoringStatus: $monitoringStatus,
             metadata: [
                 'device_serial' => $device->device_serial,
                 'clock_id' => $validated['clock_id'] ?? $device->clock_id,
@@ -123,8 +131,17 @@ class OnPremHeartbeatController extends Controller
                 'ip_local' => $validated['ip_local'] ?? null,
                 'port' => $validated['port'] ?? null,
                 'status_message' => $validated['status_message'] ?? null,
-            ],
+            ]
         );
+
+        if ($auditPayload !== null) {
+            AuditLogger::log(
+                event: $auditPayload['event'],
+                auditable: $device,
+                description: $auditPayload['description'],
+                metadata: $auditPayload['metadata'],
+            );
+        }
 
         return response()->json([
             'ok' => true,
