@@ -236,10 +236,14 @@ class AuditLogController extends Controller
                 ? $cleanupService->previewPurge($validated)
                 : $cleanupService->executePurge($validated, $request->user(), 'manual');
 
+            $message = ! empty($validated['dry_run'])
+                ? 'Simulacion de limpieza completada.'
+                : (($result['completed'] ?? true)
+                    ? 'Limpieza de bitacora completada.'
+                    : 'Limpieza parcial completada. Aun quedan registros pendientes.');
+
             return response()->json([
-                'message' => ! empty($validated['dry_run'])
-                    ? 'Simulacion de limpieza completada.'
-                    : 'Limpieza de bitacora completada.',
+                'message' => $message,
                 'data' => $result,
             ]);
         } catch (\Throwable $exception) {

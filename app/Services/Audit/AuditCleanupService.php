@@ -151,6 +151,7 @@ class AuditCleanupService
     {
         $settings = $this->resolveSettingsFromPayload($payload);
         $filters = $this->normalizeFilters($payload);
+        $execution = $this->resolveExecutionOptions($payload);
         $estimate = $this->estimate($settings, $filters);
         $startedAt = now();
 
@@ -186,12 +187,19 @@ class AuditCleanupService
                 'estimated_bytes_freed' => 0,
                 'estimated_bytes_freed_human' => $this->humanBytes(0),
                 'optimized' => false,
+                'processed_batches' => 0,
+                'remaining_records' => 0,
+                'has_more' => false,
+                'completed' => true,
+                'stopped_by_budget' => false,
             ]);
         }
 
         $deletedRecords = 0;
         $estimatedBytesFreed = 0;
         $optimizeRan = false;
+        $processedBatches = 0;
+        $stoppedByBudget = false;
         $avgRowBytes = (int) ($estimate['avg_row_bytes'] ?? 0);
         $targetFreeBytes = (int) ($filters['target_free_bytes'] ?? 0);
         $batchSize = max(100, (int) ($settings['batch_size'] ?? 5000));
@@ -211,15 +219,37 @@ class AuditCleanupService
                 }
 
                 $deleted = DB::table('audit_logs')->whereIn('id', $ids)->delete();
+                $processedBatches++;
                 $deletedRecords += (int) $deleted;
                 $estimatedBytesFreed += $avgRowBytes > 0 ? ((int) $deleted * $avgRowBytes) : 0;
 
                 if ($targetFreeBytes > 0 && $estimatedBytesFreed >= $targetFreeBytes) {
                     break;
                 }
+
+                if (
+                    $execution['max_batches'] > 0
+                    && $processedBatches >= $execution['max_batches']
+                ) {
+                    $stoppedByBudget = true;
+
+                    break;
+                }
+
+                if (
+                    $execution['max_duration_ms'] > 0
+                    && $startedAt->diffInMilliseconds(now()) >= $execution['max_duration_ms']
+                ) {
+                    $stoppedByBudget = true;
+
+                    break;
+                }
             } while (true);
 
-            $shouldOptimize = $this->shouldOptimizeTable($filters, $settings, $estimatedBytesFreed);
+            $remainingRecords = max(0, (int) ($estimate['records_to_delete'] ?? 0) - $deletedRecords);
+            $hasMore = $remainingRecords > 0;
+            $completed = ! $hasMore;
+            $shouldOptimize = $completed && $this->shouldOptimizeTable($filters, $settings, $estimatedBytesFreed);
             if ($shouldOptimize) {
                 $optimizeRan = $this->optimizeTable('audit_logs');
             }
@@ -229,11 +259,16 @@ class AuditCleanupService
                 'estimated_bytes_freed' => $estimatedBytesFreed,
                 'estimated_bytes_freed_human' => $this->humanBytes($estimatedBytesFreed),
                 'optimized' => $optimizeRan,
+                'processed_batches' => $processedBatches,
+                'remaining_records' => $remainingRecords,
+                'has_more' => $hasMore,
+                'completed' => $completed,
+                'stopped_by_budget' => $stoppedByBudget,
             ]);
 
             if ($run) {
                 $run->forceFill([
-                    'status' => 'completed',
+                    'status' => $completed ? 'completed' : 'partial',
                     'deleted_records' => $deletedRecords,
                     'estimated_bytes_freed' => $estimatedBytesFreed,
                     'optimized' => $optimizeRan,
@@ -491,6 +526,10 @@ class AuditCleanupService
         $settings = [
             'batch_size' => max(100, (int) config('audit.cleanup.purge_batch_size', 20000)),
         ];
+        $execution = [
+            'max_batches' => max(1, (int) config('audit.cleanup.purge_max_batches_per_request', 5)),
+            'max_duration_ms' => max(1000, (int) config('audit.cleanup.purge_max_duration_ms', 15000)),
+        ];
 
         if ($mode === 'keep_last_days') {
             $keepDays = max(1, (int) ($payload['keep_days'] ?? 0));
@@ -505,6 +544,7 @@ class AuditCleanupService
         return [
             'settings' => $settings,
             'selection' => $selection,
+            'execution' => $execution,
         ];
     }
 
@@ -528,6 +568,25 @@ class AuditCleanupService
             'finished_at' => $finishedAt->toIso8601String(),
             'duration_ms' => $startedAt->diffInMilliseconds($finishedAt),
             'optimized' => (bool) ($result['optimized'] ?? false),
+            'processed_batches' => (int) ($result['processed_batches'] ?? 0),
+            'remaining_detected' => (int) ($result['remaining_records'] ?? 0),
+            'has_more' => (bool) ($result['has_more'] ?? false),
+            'completed' => (bool) ($result['completed'] ?? true),
+            'stopped_by_budget' => (bool) ($result['stopped_by_budget'] ?? false),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{max_batches:int,max_duration_ms:int}
+     */
+    private function resolveExecutionOptions(array $payload): array
+    {
+        $execution = Arr::wrap($payload['execution'] ?? []);
+
+        return [
+            'max_batches' => max(0, (int) ($execution['max_batches'] ?? 0)),
+            'max_duration_ms' => max(0, (int) ($execution['max_duration_ms'] ?? 0)),
         ];
     }
 

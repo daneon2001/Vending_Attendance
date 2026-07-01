@@ -200,6 +200,63 @@ class AuditLogControllerTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['id' => $keptLogId]);
     }
 
+    public function test_audit_logs_purge_can_continue_in_multiple_requests_without_timing_out_single_call(): void
+    {
+        config()->set('audit.cleanup.purge_batch_size', 100);
+        config()->set('audit.cleanup.purge_max_batches_per_request', 1);
+        config()->set('audit.cleanup.purge_max_duration_ms', 60000);
+
+        $user = $this->createUserWithAuditPermissions(['manage']);
+
+        foreach (range(1, 205) as $index) {
+            DB::table('audit_logs')->insert([
+                'event' => 'users.updated',
+                'action' => 'update',
+                'entity' => 'users',
+                'description' => 'Lote viejo '.$index,
+                'created_at' => now()->subDays(120)->subSeconds($index),
+                'updated_at' => now()->subDays(120)->subSeconds($index),
+            ]);
+        }
+
+        $payload = [
+            'mode' => 'before_date',
+            'before_date' => now()->subDays(90)->format('Y-m-d'),
+            'dry_run' => false,
+        ];
+
+        $firstResponse = $this->actingAs($user)
+            ->postJson('/settings/audit-logs/purge', $payload);
+
+        $firstResponse->assertOk()
+            ->assertJsonPath('data.completed', false)
+            ->assertJsonPath('data.has_more', true)
+            ->assertJsonPath('data.total_deleted', 100)
+            ->assertJsonPath('data.remaining_detected', 105)
+            ->assertJsonPath('data.processed_batches', 1);
+
+        $secondResponse = $this->actingAs($user)
+            ->postJson('/settings/audit-logs/purge', $payload);
+
+        $secondResponse->assertOk()
+            ->assertJsonPath('data.completed', false)
+            ->assertJsonPath('data.total_deleted', 100)
+            ->assertJsonPath('data.remaining_detected', 5);
+
+        $thirdResponse = $this->actingAs($user)
+            ->postJson('/settings/audit-logs/purge', $payload);
+
+        $thirdResponse->assertOk()
+            ->assertJsonPath('data.completed', true)
+            ->assertJsonPath('data.has_more', false)
+            ->assertJsonPath('data.total_deleted', 5)
+            ->assertJsonPath('data.remaining_detected', 0);
+
+        $this->assertSame(0, DB::table('audit_logs')->where('description', 'like', 'Lote viejo %')->count());
+        $this->assertDatabaseHas('audit_cleanup_runs', ['status' => 'partial']);
+        $this->assertDatabaseHas('audit_cleanup_runs', ['status' => 'completed']);
+    }
+
     private function createUserWithAuditPermissions(array $actions): User
     {
         $user = User::factory()->create();

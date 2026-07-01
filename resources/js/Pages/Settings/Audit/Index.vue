@@ -16,7 +16,8 @@ const AUDIT_PURGE_ENDPOINT = '/settings/audit-logs/purge';
 const LOGS_REQUEST_TIMEOUT_MS = 15000;
 const DETAIL_TIMEOUT_MS = 10000;
 const PURGE_DRY_RUN_TIMEOUT_MS = 60000;
-const PURGE_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
+const PURGE_EXECUTION_TIMEOUT_MS = 120000;
+const MAX_PURGE_REQUESTS = 250;
 
 const props = defineProps({
     users: {
@@ -378,15 +379,49 @@ const runPurge = async () => {
     }
 
     try {
-        const { data } = await axios.post(
-            apiUrl(AUDIT_PURGE_ENDPOINT),
-            payload,
-            {
-                timeout: purgeTimeoutMs,
-            },
-        );
+        let requestCount = 0;
+        let totalDeleted = 0;
+        let totalDurationMs = 0;
+        let totalDetected = null;
+        let finalMessage = 'Proceso terminado.';
+        let finalResult = null;
 
-        purgeResult.value = data.data ?? null;
+        do {
+            requestCount += 1;
+
+            if (requestCount > MAX_PURGE_REQUESTS) {
+                throw new Error('PURGE_MAX_REQUESTS_REACHED');
+            }
+
+            const { data } = await axios.post(
+                apiUrl(AUDIT_PURGE_ENDPOINT),
+                payload,
+                {
+                    timeout: purgeTimeoutMs,
+                },
+            );
+
+            const currentResult = data.data ?? {};
+            finalMessage = data.message ?? finalMessage;
+            totalDetected ??= Number(currentResult.total_detected ?? 0);
+            totalDeleted += Number(currentResult.total_deleted ?? 0);
+            totalDurationMs += Number(currentResult.duration_ms ?? 0);
+            finalResult = {
+                ...currentResult,
+                total_detected: Math.max(
+                    totalDetected,
+                    totalDeleted + Number(currentResult.remaining_detected ?? 0),
+                ),
+                total_deleted: totalDeleted,
+                duration_ms: totalDurationMs,
+                request_count: requestCount,
+            };
+            purgeResult.value = finalResult;
+
+            if (purgeForm.dry_run || currentResult.completed !== false) {
+                break;
+            }
+        } while (true);
 
         if (!purgeForm.dry_run) {
             await loadLogs(1);
@@ -395,11 +430,13 @@ const runPurge = async () => {
         showToast({
             type: 'success',
             title: purgeForm.dry_run ? 'Simulacion completada' : 'Limpieza completada',
-            message: data.message ?? 'Proceso terminado.',
+            message: finalMessage,
             duration: 7000,
         });
     } catch (error) {
-        const message = error.response?.data?.message
+        const message = error.message === 'PURGE_MAX_REQUESTS_REACHED'
+            ? 'La limpieza requiere mas bloques de los permitidos en una sola sesion. Reintenta para continuar.'
+            : error.response?.data?.message
             ?? (
                 error?.code === 'ECONNABORTED'
                     ? (purgeForm.dry_run
@@ -637,6 +674,8 @@ onMounted(() => {
                     <div v-if="purgeResult" class="mt-4 rounded-2xl border border-app px-4 py-3 text-xs text-muted">
                         <p><strong class="text-app">Detectados:</strong> {{ purgeResult.total_detected }}</p>
                         <p><strong class="text-app">Eliminados:</strong> {{ purgeResult.total_deleted }}</p>
+                        <p v-if="purgeResult.remaining_detected !== undefined"><strong class="text-app">Pendientes:</strong> {{ purgeResult.remaining_detected }}</p>
+                        <p v-if="purgeResult.request_count"><strong class="text-app">Bloques ejecutados:</strong> {{ purgeResult.request_count }}</p>
                         <p><strong class="text-app">Espacio estimado:</strong> {{ purgeResult.estimated_bytes_human }}</p>
                         <p><strong class="text-app">Duracion:</strong> {{ purgeResult.duration_ms }} ms</p>
                     </div>
