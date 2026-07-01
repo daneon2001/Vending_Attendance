@@ -194,6 +194,16 @@ Route::middleware('auth')->group(function () {
         Route::get('{auditLog}', [AuditLogController::class, 'show']);
     });
 
+    Route::prefix('settings/audit-logs')->group(function () {
+        Route::get('/', [AuditLogController::class, 'index'])->middleware('perm:audit,view');
+        Route::get('{auditLog}', [AuditLogController::class, 'show'])->middleware('perm:audit,view');
+        Route::post('/purge', [AuditLogController::class, 'purge'])->middleware('perm:audit,manage');
+    });
+
+    Route::prefix('api/audit-logs')->middleware('perm:audit,manage')->group(function () {
+        Route::post('/purge', [AuditLogController::class, 'purge']);
+    });
+
     Route::prefix('api/audit-cleanup')->middleware('perm:audit,manage')->group(function () {
         Route::get('/dashboard', [AuditCleanupController::class, 'dashboard']);
         Route::put('/settings', [AuditCleanupController::class, 'updateSettings']);

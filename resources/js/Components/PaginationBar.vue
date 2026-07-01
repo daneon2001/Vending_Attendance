@@ -26,10 +26,17 @@ const currentPage = computed(() => props.meta?.current_page ?? 1);
 const lastPage = computed(() => props.meta?.last_page ?? 1);
 const from = computed(() => props.meta?.from ?? 0);
 const to = computed(() => props.meta?.to ?? 0);
-const total = computed(() => props.meta?.total ?? 0);
+const total = computed(() => props.meta?.total ?? null);
+const hasMorePages = computed(() => {
+    if (typeof props.meta?.has_more_pages === 'boolean') {
+        return props.meta.has_more_pages;
+    }
+
+    return currentPage.value < lastPage.value;
+});
 
 const canGoPrev = computed(() => currentPage.value > 1);
-const canGoNext = computed(() => currentPage.value < lastPage.value);
+const canGoNext = computed(() => hasMorePages.value);
 
 const changePage = (newPage) => {
     if (props.disabled) return;
@@ -51,12 +58,20 @@ const changePerPage = (event) => {
         :class="compact ? 'text-xs' : 'text-sm'"
     >
         <div class="w-full text-soft sm:w-auto sm:min-w-[150px]">
-            Mostrando
-            <span class="font-semibold text-app">{{ from }}</span>
-            -
-            <span class="font-semibold text-app">{{ to }}</span>
-            de
-            <span class="font-semibold text-app">{{ total }}</span>
+            <template v-if="total !== null">
+                Mostrando
+                <span class="font-semibold text-app">{{ from }}</span>
+                -
+                <span class="font-semibold text-app">{{ to }}</span>
+                de
+                <span class="font-semibold text-app">{{ total }}</span>
+            </template>
+            <template v-else>
+                Mostrando
+                <span class="font-semibold text-app">{{ from }}</span>
+                -
+                <span class="font-semibold text-app">{{ to }}</span>
+            </template>
         </div>
 
         <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -70,7 +85,12 @@ const changePerPage = (event) => {
                 Anterior
             </button>
             <span class="text-center text-xs font-semibold uppercase tracking-[0.3em] text-soft">
-                Pagina {{ currentPage }} de {{ lastPage }}
+                <template v-if="total !== null">
+                    Pagina {{ currentPage }} de {{ lastPage }}
+                </template>
+                <template v-else>
+                    Pagina {{ currentPage }}
+                </template>
             </span>
             <button
                 type="button"

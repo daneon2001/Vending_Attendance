@@ -15,10 +15,13 @@ class AuditLogResource extends JsonResource
             'id' => $this->id,
             'event' => $this->event,
             'action' => $this->action,
+            'module' => $this->entity
+                ?? (is_string($this->event) && str_contains($this->event, '.') ? explode('.', $this->event)[0] : null),
             'entity' => $this->entity ?? $this->auditable_type,
             'entity_id' => $this->entity_id ?? $this->auditable_id,
             'description' => $this->description,
             'reason' => $this->reason,
+            'ip_address' => $this->ip_address,
             'created_at' => optional($createdAt)->toISOString(),
             'created_at_local' => optional($createdAt)
                 ? $createdAt->copy()->setTimezone($timezone)->format('d/m/Y H:i:s')

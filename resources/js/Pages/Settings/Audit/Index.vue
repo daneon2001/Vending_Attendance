@@ -11,6 +11,11 @@ import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 
+const AUDIT_LOGS_ENDPOINT = '/settings/audit-logs';
+const AUDIT_PURGE_ENDPOINT = '/settings/audit-logs/purge';
+const REQUEST_TIMEOUT_MS = 15000;
+const DETAIL_TIMEOUT_MS = 10000;
+
 const props = defineProps({
     users: {
         type: Array,
@@ -24,7 +29,7 @@ const meta = reactive({
     last_page: 1,
     from: 0,
     to: 0,
-    total: 0,
+    total: null,
 });
 
 const filters = reactive({
@@ -40,6 +45,11 @@ const filters = reactive({
 
 const loading = ref(false);
 const loadError = ref('');
+const loadDurationMs = ref(null);
+
+let activeLoadController = null;
+let activeLoadTimeout = null;
+let loadSequence = 0;
 
 const toast = reactive({
     show: false,
@@ -55,6 +65,22 @@ const detailModal = reactive({
     log: null,
     metadata: null,
 });
+
+const purgeForm = reactive({
+    mode: 'keep_last_days',
+    before_date: '',
+    keep_days: 90,
+    date_from: '',
+    date_to: '',
+    dry_run: true,
+    optimize: false,
+});
+
+const purgeBusy = reactive({
+    submit: false,
+});
+
+const purgeResult = ref(null);
 
 useBodyScrollLock(() => detailModal.show);
 
@@ -124,6 +150,23 @@ const buildRequestParams = () => {
     return params;
 };
 
+const clearLoadRequest = () => {
+    if (activeLoadTimeout) {
+        clearTimeout(activeLoadTimeout);
+        activeLoadTimeout = null;
+    }
+
+    if (activeLoadController) {
+        activeLoadController.abort('replaced');
+        activeLoadController = null;
+    }
+};
+
+const isAbortError = (error) =>
+    error?.code === 'ERR_CANCELED'
+    || error?.name === 'CanceledError'
+    || error?.name === 'AbortError';
+
 const loadLogs = async (pageNumber = filters.page) => {
     if (filters.range === 'custom') {
         const fromDate = parseDisplayDate(filters.from);
@@ -147,26 +190,60 @@ const loadLogs = async (pageNumber = filters.page) => {
         }
     }
 
+    clearLoadRequest();
+
     loading.value = true;
     loadError.value = '';
+    loadDurationMs.value = null;
     filters.page = pageNumber;
+    const requestId = ++loadSequence;
+    activeLoadController = new AbortController();
+    activeLoadTimeout = setTimeout(() => {
+        activeLoadController?.abort('timeout');
+    }, REQUEST_TIMEOUT_MS);
 
     try {
-        const { data } = await axios.get(apiUrl('/api/audit-logs'), {
+        const { data } = await axios.get(apiUrl(AUDIT_LOGS_ENDPOINT), {
             params: buildRequestParams(),
+            signal: activeLoadController.signal,
         });
+
+        if (requestId !== loadSequence) {
+            return;
+        }
 
         logs.value = data.data ?? [];
         Object.assign(meta, data.meta ?? {});
+        loadDurationMs.value = data.meta?.duration_ms ?? null;
     } catch (error) {
-        loadError.value = error.response?.data?.message ?? 'Intenta nuevamente.';
+        if (requestId !== loadSequence) {
+            return;
+        }
+
+        if (isAbortError(error)) {
+            if (error?.message === 'canceled' || error?.config?.signal?.reason === 'replaced') {
+                return;
+            }
+
+            loadError.value = 'La consulta de auditoria tardo demasiado. Ajusta los filtros e intenta nuevamente.';
+        } else {
+            loadError.value = error.response?.data?.message ?? 'Intenta nuevamente.';
+        }
+
         showToast({
             type: 'error',
             title: 'Error al cargar bitacora',
             message: loadError.value,
         });
     } finally {
-        loading.value = false;
+        if (requestId === loadSequence) {
+            loading.value = false;
+        }
+        if (activeLoadTimeout) {
+            clearTimeout(activeLoadTimeout);
+            activeLoadTimeout = null;
+        }
+        activeLoadController = null;
     }
 };
 
@@ -177,7 +254,9 @@ const openDetail = async (log) => {
     detailModal.metadata = null;
 
     try {
-        const { data } = await axios.get(apiUrl(`/api/audit-logs/${log.id}`));
+        const { data } = await axios.get(apiUrl(`${AUDIT_LOGS_ENDPOINT}/${log.id}`), {
+            timeout: DETAIL_TIMEOUT_MS,
+        });
         detailModal.metadata = data.data ?? null;
     } catch (error) {
         detailModal.metadata = null;
@@ -198,6 +277,21 @@ const closeDetail = () => {
 };
 
 const applyFilters = () => loadLogs(1);
+
+const purgeSummary = computed(() => {
+    switch (purgeForm.mode) {
+        case 'before_date':
+            return purgeForm.before_date
+                ? `Se evaluaran registros anteriores a ${purgeForm.before_date}.`
+                : 'Selecciona una fecha de corte.';
+        case 'delete_by_range':
+            return purgeForm.date_from && purgeForm.date_to
+                ? `Se evaluara el rango ${purgeForm.date_from} a ${purgeForm.date_to}.`
+                : 'Captura fecha inicial y final.';
+        default:
+            return `Se conservaran al menos ${purgeForm.keep_days} dias recientes.`;
+    }
+});
 
 const handlePageChange = (pageNumber) => {
     if (loading.value) return;
@@ -236,6 +330,8 @@ const rangeLabel = computed(() => {
             return 'Ultimos 7 dias';
         case '30d':
             return 'Ultimos 30 dias';
+        case 'all':
+            return 'Todo el historial';
         case 'custom':
             if (filters.from && filters.to) {
                 return `${filters.from} al ${filters.to}`;
@@ -246,11 +342,71 @@ const rangeLabel = computed(() => {
     }
 });
 
+const runPurge = async () => {
+    if (purgeBusy.submit) {
+        return;
+    }
+
+    if (!purgeForm.dry_run) {
+        const confirmed = window.confirm('Se ejecutara una limpieza real de audit_logs. Confirma que deseas continuar.');
+        if (!confirmed) {
+            return;
+        }
+    }
+
+    purgeBusy.submit = true;
+
+    try {
+        const { data } = await axios.post(
+            apiUrl(AUDIT_PURGE_ENDPOINT),
+            {
+                mode: purgeForm.mode,
+                before_date: purgeForm.before_date || null,
+                keep_days: Number(purgeForm.keep_days || 0),
+                date_from: purgeForm.date_from || null,
+                date_to: purgeForm.date_to || null,
+                dry_run: Boolean(purgeForm.dry_run),
+                optimize: Boolean(purgeForm.optimize),
+            },
+            {
+                timeout: REQUEST_TIMEOUT_MS,
+            },
+        );
+
+        purgeResult.value = data.data ?? null;
+
+        if (!purgeForm.dry_run) {
+            await loadLogs(1);
+        }
+
+        showToast({
+            type: 'success',
+            title: purgeForm.dry_run ? 'Simulacion completada' : 'Limpieza completada',
+            message: data.message ?? 'Proceso terminado.',
+            duration: 7000,
+        });
+    } catch (error) {
+        const message = error.response?.data?.message
+            ?? (error?.code === 'ECONNABORTED' ? 'La limpieza tardo demasiado. Intenta con un rango mas acotado.' : 'Intenta nuevamente.');
+
+        showToast({
+            type: 'error',
+            title: 'No se pudo ejecutar la limpieza',
+            message,
+            duration: 9000,
+        });
+    } finally {
+        purgeBusy.submit = false;
+    }
+};
+
 watch(
     () => filters.range,
     () => {
         if (filters.range === 'custom') {
             ensureCustomRangeDefaults();
+        } else if (filters.range === 'all') {
+            loadLogs(1);
         } else {
             loadLogs(1);
         }
@@ -277,16 +433,18 @@ onMounted(() => {
         </template>
 
         <section class="space-y-6">
-            <div class="card flex flex-wrap gap-4 px-4 py-4 text-sm">
-                <label class="flex w-full flex-col sm:w-auto">
-                    <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Rango</span>
-                    <select
-                        v-model="filters.range"
+            <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <div class="card flex flex-wrap gap-4 px-4 py-4 text-sm">
+                    <label class="flex w-full flex-col sm:w-auto">
+                        <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Rango</span>
+                        <select
+                            v-model="filters.range"
                         class="w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900 sm:w-auto"
                     >
                         <option value="today">Hoy</option>
                         <option value="7d">Ultimos 7 dias</option>
                         <option value="30d">Ultimos 30 dias</option>
+                        <option value="all">Todo</option>
                         <option value="custom">Personalizado</option>
                     </select>
                 </label>
@@ -352,17 +510,121 @@ onMounted(() => {
                 <div class="flex w-full items-end sm:w-auto">
                     <button
                         class="w-full rounded-2xl border border-app px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted hover:text-app sm:w-auto"
+                        :disabled="loading"
                         @click="applyFilters"
                     >
                         Aplicar filtro
                     </button>
                 </div>
+
+                    <div class="w-full text-xs text-soft">
+                        <span v-if="loadDurationMs !== null">Ultima consulta: {{ loadDurationMs }} ms</span>
+                    </div>
+                </div>
+
+                <div class="card p-4 text-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Limpieza segura</p>
+                            <h2 class="text-lg font-semibold text-app">Purgar auditoria</h2>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-soft dark:bg-slate-800">
+                            Dry-run disponible
+                        </span>
+                    </div>
+
+                    <div class="mt-4 grid gap-3">
+                        <label class="flex flex-col">
+                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Modo</span>
+                            <select
+                                v-model="purgeForm.mode"
+                                class="mt-1 w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                            >
+                                <option value="keep_last_days">Conservar ultimos dias</option>
+                                <option value="before_date">Borrar antes de fecha</option>
+                                <option value="delete_by_range">Borrar por rango</option>
+                            </select>
+                        </label>
+
+                        <label v-if="purgeForm.mode === 'keep_last_days'" class="flex flex-col">
+                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Conservar dias</span>
+                            <input
+                                v-model.number="purgeForm.keep_days"
+                                type="number"
+                                min="90"
+                                max="3650"
+                                class="mt-1 w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                            />
+                        </label>
+
+                        <label v-if="purgeForm.mode === 'before_date'" class="flex flex-col">
+                            <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Fecha corte</span>
+                            <input
+                                v-model="purgeForm.before_date"
+                                type="date"
+                                class="mt-1 w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                            />
+                        </label>
+
+                        <div v-if="purgeForm.mode === 'delete_by_range'" class="grid gap-3 sm:grid-cols-2">
+                            <label class="flex flex-col">
+                                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Desde</span>
+                                <input
+                                    v-model="purgeForm.date_from"
+                                    type="date"
+                                    class="mt-1 w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                                />
+                            </label>
+                            <label class="flex flex-col">
+                                <span class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Hasta</span>
+                                <input
+                                    v-model="purgeForm.date_to"
+                                    type="date"
+                                    class="mt-1 w-full rounded-2xl border border-app bg-white px-4 py-2 dark:bg-slate-900"
+                                />
+                            </label>
+                        </div>
+
+                        <label class="flex items-center gap-3 rounded-2xl border border-app px-4 py-3">
+                            <input v-model="purgeForm.dry_run" type="checkbox" class="rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                            <span class="text-sm text-app">Ejecutar primero como simulacion</span>
+                        </label>
+
+                        <label class="flex items-center gap-3 rounded-2xl border border-app px-4 py-3">
+                            <input v-model="purgeForm.optimize" type="checkbox" class="rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                            <span class="text-sm text-app">Optimizar tabla si aplica</span>
+                        </label>
+                    </div>
+
+                    <div class="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-900/20 dark:text-sky-100">
+                        {{ purgeSummary }}
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap gap-3">
+                        <button
+                            type="button"
+                            class="rounded-2xl bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+                            :disabled="purgeBusy.submit"
+                            @click="runPurge"
+                        >
+                            {{ purgeBusy.submit ? 'Procesando...' : (purgeForm.dry_run ? 'Simular limpieza' : 'Ejecutar limpieza') }}
+                        </button>
+                    </div>
+
+                    <div v-if="purgeResult" class="mt-4 rounded-2xl border border-app px-4 py-3 text-xs text-muted">
+                        <p><strong class="text-app">Detectados:</strong> {{ purgeResult.total_detected }}</p>
+                        <p><strong class="text-app">Eliminados:</strong> {{ purgeResult.total_deleted }}</p>
+                        <p><strong class="text-app">Espacio estimado:</strong> {{ purgeResult.estimated_bytes_human }}</p>
+                        <p><strong class="text-app">Duracion:</strong> {{ purgeResult.duration_ms }} ms</p>
+                    </div>
+                </div>
             </div>
 
             <PaginationBar
-                v-if="meta.total"
+                v-if="meta.current_page > 1 || meta.to || loading"
                 class="card"
                 :meta="meta"
+                :per-page-options="[10, 15, 25]"
                 :disabled="loading"
                 @update:page="handlePageChange"
                 @update:perPage="handlePerPageChange"

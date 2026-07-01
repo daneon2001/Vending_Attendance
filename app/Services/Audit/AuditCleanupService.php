@@ -127,6 +127,26 @@ class AuditCleanupService
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
+    public function previewPurge(array $payload): array
+    {
+        $startedAt = now();
+        $input = $this->buildPurgePayload($payload);
+        $estimate = $this->preview($input);
+        $finishedAt = now();
+
+        return $this->formatPurgeResult(
+            result: $estimate,
+            source: $payload,
+            dryRun: true,
+            startedAt: $startedAt,
+            finishedAt: $finishedAt
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
     public function execute(array $payload, ?User $user = null, string $triggerSource = 'manual'): array
     {
         $settings = $this->resolveSettingsFromPayload($payload);
@@ -240,6 +260,26 @@ class AuditCleanupService
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function executePurge(array $payload, ?User $user = null, string $triggerSource = 'manual'): array
+    {
+        $startedAt = now();
+        $input = $this->buildPurgePayload($payload);
+        $result = $this->execute($input, $user, $triggerSource);
+        $finishedAt = now();
+
+        return $this->formatPurgeResult(
+            result: $result,
+            source: $payload,
+            dryRun: false,
+            startedAt: $startedAt,
+            finishedAt: $finishedAt
+        );
+    }
+
+    /**
      * @param  array<string, int>  $settings
      * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
@@ -315,13 +355,19 @@ class AuditCleanupService
         }
 
         $beforeDateUtc = $filters['before_date_utc'];
+        $beforeDateOperator = (string) ($filters['before_date_operator'] ?? '<');
+        $afterDateUtc = $filters['after_date_utc'];
         $hasExplicitSelector = (bool) $filters['has_explicit_selector'];
 
-        if ($beforeDateUtc) {
-            $query->where('created_at', '<', $beforeDateUtc);
+        if ($afterDateUtc) {
+            $query->where('created_at', '>=', $afterDateUtc);
         }
 
-        if (! $hasExplicitSelector && $beforeDateUtc) {
+        if ($beforeDateUtc) {
+            $query->where('created_at', $beforeDateOperator, $beforeDateUtc);
+        }
+
+        if (! $hasExplicitSelector && ($beforeDateUtc || $afterDateUtc)) {
             return $query;
         }
 
@@ -391,9 +437,16 @@ class AuditCleanupService
     {
         $selection = Arr::wrap($payload['selection'] ?? []);
         $targetFreeMb = (int) ($selection['target_free_mb'] ?? 0);
-        $beforeDate = isset($selection['before_date']) && $selection['before_date'] !== ''
-            ? Carbon::parse((string) $selection['before_date'], config('app.timezone', 'UTC'))->startOfDay()->setTimezone('UTC')
+        $afterDate = isset($selection['after_date']) && $selection['after_date'] !== ''
+            ? Carbon::parse((string) $selection['after_date'], config('app.timezone', 'UTC'))->startOfDay()->setTimezone('UTC')
             : null;
+        $beforeDateRaw = isset($selection['before_date']) && $selection['before_date'] !== ''
+            ? Carbon::parse((string) $selection['before_date'], config('app.timezone', 'UTC'))
+            : null;
+        $beforeDate = $beforeDateRaw
+            ? ($afterDate ? $beforeDateRaw->copy()->endOfDay()->setTimezone('UTC') : $beforeDateRaw->copy()->startOfDay()->setTimezone('UTC'))
+            : null;
+        $beforeDateOperator = $afterDate ? '<=' : '<';
         $flags = [
             'delete_heartbeats' => (bool) ($selection['delete_heartbeats'] ?? false),
             'delete_sync' => (bool) ($selection['delete_sync'] ?? false),
@@ -402,7 +455,7 @@ class AuditCleanupService
             'delete_except_critical' => (bool) ($selection['delete_except_critical'] ?? false),
         ];
         $hasExplicitSelector = collect($flags)->contains(true);
-        $mode = $hasExplicitSelector || $beforeDate ? 'selection' : 'retention';
+        $mode = $hasExplicitSelector || $beforeDate || $afterDate ? 'selection' : 'retention';
         $matchedCategories = collect($flags)
             ->filter(fn (bool $enabled) => $enabled)
             ->keys()
@@ -411,13 +464,66 @@ class AuditCleanupService
 
         return array_merge($flags, [
             'mode' => $mode,
+            'after_date_utc' => $afterDate,
             'before_date_utc' => $beforeDate,
+            'before_date_operator' => $beforeDateOperator,
             'target_free_bytes' => max(0, $targetFreeMb) * 1024 * 1024,
             'optimize' => (bool) ($selection['optimize'] ?? false),
             'simulate' => (bool) ($selection['simulate'] ?? false),
             'has_explicit_selector' => $hasExplicitSelector,
             'matched_categories' => $matchedCategories,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function buildPurgePayload(array $payload): array
+    {
+        $mode = (string) ($payload['mode'] ?? 'before_date');
+        $timezone = config('app.timezone', 'UTC');
+        $selection = [
+            'optimize' => (bool) ($payload['optimize'] ?? false),
+            'simulate' => (bool) ($payload['dry_run'] ?? false),
+        ];
+
+        if ($mode === 'keep_last_days') {
+            $keepDays = max(1, (int) ($payload['keep_days'] ?? 0));
+            $selection['before_date'] = now($timezone)->subDays($keepDays)->format('Y-m-d');
+        } elseif ($mode === 'delete_by_range') {
+            $selection['after_date'] = $payload['date_from'] ?? null;
+            $selection['before_date'] = $payload['date_to'] ?? null;
+        } else {
+            $selection['before_date'] = $payload['before_date'] ?? null;
+        }
+
+        return [
+            'selection' => $selection,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @param  array<string, mixed>  $source
+     * @return array<string, mixed>
+     */
+    private function formatPurgeResult(array $result, array $source, bool $dryRun, Carbon $startedAt, Carbon $finishedAt): array
+    {
+        return [
+            'mode' => (string) ($source['mode'] ?? 'before_date'),
+            'dry_run' => $dryRun,
+            'total_detected' => (int) ($result['records_to_delete'] ?? 0),
+            'total_deleted' => $dryRun ? 0 : (int) ($result['deleted_records'] ?? 0),
+            'estimated_bytes' => (int) ($result['estimated_bytes'] ?? $result['estimated_bytes_freed'] ?? 0),
+            'estimated_bytes_human' => (string) ($result['estimated_bytes_human'] ?? $result['estimated_bytes_freed_human'] ?? '0 B'),
+            'first_record_at' => $result['first_record_at'] ?? null,
+            'last_record_at' => $result['last_record_at'] ?? null,
+            'started_at' => $startedAt->toIso8601String(),
+            'finished_at' => $finishedAt->toIso8601String(),
+            'duration_ms' => $startedAt->diffInMilliseconds($finishedAt),
+            'optimized' => (bool) ($result['optimized'] ?? false),
+        ];
     }
 
     /**
