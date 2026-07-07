@@ -107,7 +107,12 @@ class CorporateRecruitmentDashboardService
         );
         $attendanceByLocation = $this->attendanceSummaryByLocation($attendanceRecords);
         $attendanceDistinctByLocation = $this->attendanceDistinctEmployeesByLocation($attendanceRecords);
-        $employeeCountsByLocation = $eligibleEmployees['counts_by_location'];
+        $collaboratorUniverse = $this->collaboratorUniverseForLocations(
+            $selectedLocations,
+            $eligibleEmployees['payload'],
+            $attendanceRecords
+        );
+        $employeeCountsByLocation = $collaboratorUniverse['counts_by_location'];
         $globalAttended = $this->distinctAttendanceEmployeesCount($attendanceRecords);
         $globalChecks = $attendanceRecords->count();
         $globalFirstCheckAt = $this->firstAttendanceCheckAt($attendanceRecords);
@@ -127,8 +132,8 @@ class CorporateRecruitmentDashboardService
                 $locationId = (int) $location->id;
                 $attendanceRow = $attendanceByLocation->get($locationId, []);
                 $attended = (int) ($attendanceDistinctByLocation[$locationId] ?? 0);
-                $activeEmployees = (int) ($employeeCountsByLocation[$locationId] ?? 0);
-                $pending = max($activeEmployees - $attended, 0);
+                $consideredEmployees = (int) ($employeeCountsByLocation[$locationId] ?? 0);
+                $pending = max($consideredEmployees - $attended, 0);
                 $locationClocks = $clocks->where('location_id', $locationId)->values();
                 $clockSummary = $this->summarizeClocks($locationClocks, $onlineThreshold, $isBusinessHours, $timezone, $storageTimezone);
 
@@ -138,10 +143,10 @@ class CorporateRecruitmentDashboardService
                     'fortia_location_id' => $location->fortia_location_id,
                     'name' => $location->name,
                     'summary' => [
-                        'active_employees' => $activeEmployees,
+                        'active_employees' => $consideredEmployees,
                         'attended' => $attended,
                         'pending' => $pending,
-                        'coverage_percent' => $this->percentage($attended, $activeEmployees),
+                        'coverage_percent' => $this->percentage($attended, $consideredEmployees),
                         'total_checks' => (int) ($attendanceRow['total_checks'] ?? 0),
                         'entries' => (int) ($attendanceRow['entries'] ?? 0),
                         'exits' => (int) ($attendanceRow['exits'] ?? 0),
@@ -154,7 +159,7 @@ class CorporateRecruitmentDashboardService
             })
             ->values();
 
-        $globalActiveEmployees = (int) array_sum($employeeCountsByLocation);
+        $globalActiveEmployees = (int) ($collaboratorUniverse['global_count'] ?? 0);
         $globalPending = max($globalActiveEmployees - $globalAttended, 0);
         $globalClockSummary = $this->summarizeClocks($clocks, $onlineThreshold, $isBusinessHours, $timezone, $storageTimezone);
         $hourlyActivity = $this->buildHourlyActivity($attendanceRecords);
@@ -577,6 +582,64 @@ class CorporateRecruitmentDashboardService
     protected function activeEmployeesByLocation(Collection $locations, Carbon $fromLocal, Carbon $toLocal): array
     {
         return $this->eligibleEmployeesForLocations($locations, $fromLocal, $toLocal)['counts_by_location'];
+    }
+
+    /**
+     * Dashboard universe = active employees in the selected unit plus distinct employees
+     * with at least one valid check inside the filtered period/scope.
+     *
+     * @param  Collection<int, Location>  $locations
+     * @param  Collection<int, array<string, mixed>>  $activeEmployees
+     * @return array{counts_by_location: array<int, int>, global_count: int}
+     */
+    protected function collaboratorUniverseForLocations(
+        Collection $locations,
+        Collection $activeEmployees,
+        Collection $attendanceRecords
+    ): array {
+        $selectedLocationIds = $locations
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        $activeByLocation = $activeEmployees
+            ->groupBy('base_location_id')
+            ->map(fn (Collection $rows) => $rows
+                ->pluck('employee_id')
+                ->map(fn ($employeeId) => (int) $employeeId)
+                ->filter(fn (int $employeeId) => $employeeId > 0)
+                ->unique()
+                ->values());
+
+        $checkedByLocation = $attendanceRecords
+            ->filter(fn (AttendanceLog $record) => $record->employee_id !== null)
+            ->groupBy(fn (AttendanceLog $record) => (int) $record->location_id)
+            ->map(fn (Collection $records) => $records
+                ->pluck('employee_id')
+                ->map(fn ($employeeId) => (int) $employeeId)
+                ->filter(fn (int $employeeId) => $employeeId > 0)
+                ->unique()
+                ->values());
+
+        $countsByLocation = [];
+        $globalEmployeeIds = collect();
+
+        foreach ($selectedLocationIds as $locationId) {
+            $locationEmployeeIds = collect()
+                ->merge($activeByLocation->get($locationId, collect()))
+                ->merge($checkedByLocation->get($locationId, collect()))
+                ->unique()
+                ->values();
+
+            $countsByLocation[$locationId] = $locationEmployeeIds->count();
+            $globalEmployeeIds = $globalEmployeeIds->merge($locationEmployeeIds);
+        }
+
+        return [
+            'counts_by_location' => $countsByLocation,
+            'global_count' => $globalEmployeeIds->unique()->count(),
+        ];
     }
 
     /**

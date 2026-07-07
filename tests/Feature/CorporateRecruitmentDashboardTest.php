@@ -444,13 +444,16 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ]));
 
             $day19->assertOk()
-                ->assertJsonPath('global.active_employees', 2)
+                ->assertJsonPath('global.active_employees', 3)
                 ->assertJsonPath('global.attended', 1)
-                ->assertJsonPath('global.pending', 1)
+                ->assertJsonPath('global.pending', 2)
                 ->assertJsonPath('global.total_checks', 1)
-                ->assertJsonPath('locations.0.summary.active_employees', 1)
+                ->assertJsonPath('locations.0.summary.active_employees', 2)
                 ->assertJsonPath('locations.0.summary.attended', 1)
-                ->assertJsonPath('locations.0.summary.total_checks', 1);
+                ->assertJsonPath('locations.0.summary.pending', 1)
+                ->assertJsonPath('locations.0.summary.total_checks', 1)
+                ->assertJsonPath('locations.1.summary.active_employees', 1)
+                ->assertJsonPath('locations.1.summary.pending', 1);
 
             $response = $this->actingAs($user)
                 ->get(route('dashboard.corporativo-reclutamiento.export', [
@@ -481,9 +484,9 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
                 ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
 
-            $this->assertSame('2', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
             $this->assertSame('1', (string) $summaryMap->get('Total con checada'));
-            $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('2', (string) $summaryMap->get('Total pendientes'));
             $this->assertSame('1', (string) $summaryMap->get('Total checadas'));
 
             $rawRows = $workbook->getSheetByName('Detalle crudo')?->toArray('', true, true, false) ?? [];
@@ -824,12 +827,13 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ]));
 
             $summary->assertOk()
-                ->assertJsonPath('global.active_employees', 3)
+                ->assertJsonPath('global.active_employees', 4)
                 ->assertJsonPath('global.attended', 3)
-                ->assertJsonPath('global.pending', 0)
+                ->assertJsonPath('global.pending', 1)
                 ->assertJsonPath('global.total_checks', 4)
+                ->assertJsonPath('locations.0.summary.active_employees', 3)
                 ->assertJsonPath('locations.0.summary.attended', 2)
-                ->assertJsonPath('locations.0.summary.pending', 0);
+                ->assertJsonPath('locations.0.summary.pending', 1);
 
             $response = $this->actingAs($user)
                 ->get(route('dashboard.corporativo-reclutamiento.export', [
@@ -852,11 +856,11 @@ class CorporateRecruitmentDashboardTest extends TestCase
                 ->filter(fn (array $row) => ($row[0] ?? '') !== '')
                 ->mapWithKeys(fn (array $row) => [$row[0] => $row[1] ?? '']);
 
-            $this->assertSame('3', (string) $summaryMap->get('Total empleados'));
+            $this->assertSame('4', (string) $summaryMap->get('Total empleados'));
             $this->assertSame('3', (string) $summaryMap->get('Total con checada'));
-            $this->assertSame('0', (string) $summaryMap->get('Total pendientes'));
+            $this->assertSame('1', (string) $summaryMap->get('Total pendientes'));
             $this->assertSame('4', (string) $summaryMap->get('Total checadas'));
-            $this->assertSame('100%', (string) $summaryMap->get('Cobertura'));
+            $this->assertSame('75%', (string) $summaryMap->get('Cobertura'));
             $this->assertContains(
                 ['1004', 'Jorge Ruiz', 'Corporativo Central', '17/06/2026', '1', '10:30:00', '10:30:00', '10:30:00', ''],
                 $reportBody
@@ -886,6 +890,74 @@ class CorporateRecruitmentDashboardTest extends TestCase
 
             $workbook->disconnectWorksheets();
             unset($workbook);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_summary_builds_collaborator_universe_by_unit_without_global_duplicates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-17 10:30:00', 'America/Mexico_City'));
+
+        try {
+            $fixture = $this->seedDashboardFixture();
+            $user = $this->makeUserWithPermissions(['dashboard' => ['view']]);
+            $floatingEmployee = Employee::query()->create([
+                'fortia_employee_id' => 1010,
+                'company_id' => $fixture['company']->id,
+                'base_location_id' => 999,
+                'name' => 'Patricia',
+                'last_name' => 'Vega',
+                'full_name' => 'Patricia Vega',
+                'status' => 'B',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9601,
+                'employee_id' => $floatingEmployee->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['corporate']->id,
+                'device_id' => $fixture['corporate_clock_online']->id,
+                'device_serial' => $fixture['corporate_clock_online']->serial_number,
+                'log_date' => '2026-06-17 15:30:00',
+                'log_type' => 1,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            AttendanceLog::query()->create([
+                'log_id' => 9602,
+                'employee_id' => $floatingEmployee->id,
+                'company_id' => $fixture['company']->id,
+                'location_id' => $fixture['recruitment']->id,
+                'device_id' => $fixture['recruitment_clock_stale']->id,
+                'device_serial' => $fixture['recruitment_clock_stale']->serial_number,
+                'log_date' => '2026-06-17 17:00:00',
+                'log_type' => 2,
+                'source' => 'api',
+                'attendance_status' => 'valida',
+            ]);
+
+            $summary = $this->actingAs($user)
+                ->getJson(route('dashboard.corporativo-reclutamiento.summary', [
+                    'range' => 'today',
+                ]));
+
+            $summary->assertOk()
+                ->assertJsonPath('locations.0.code', '87')
+                ->assertJsonPath('locations.0.summary.active_employees', 3)
+                ->assertJsonPath('locations.0.summary.attended', 2)
+                ->assertJsonPath('locations.0.summary.pending', 1)
+                ->assertJsonPath('locations.0.summary.coverage_percent', 66.7)
+                ->assertJsonPath('locations.1.fortia_location_id', 171)
+                ->assertJsonPath('locations.1.summary.active_employees', 2)
+                ->assertJsonPath('locations.1.summary.attended', 2)
+                ->assertJsonPath('locations.1.summary.pending', 0)
+                ->assertJsonPath('locations.1.summary.coverage_percent', 100)
+                ->assertJsonPath('global.active_employees', 4)
+                ->assertJsonPath('global.attended', 3)
+                ->assertJsonPath('global.pending', 1)
+                ->assertJsonPath('global.coverage_percent', 75);
         } finally {
             Carbon::setTestNow();
         }
