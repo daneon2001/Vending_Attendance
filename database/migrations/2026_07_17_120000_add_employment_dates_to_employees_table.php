@@ -68,7 +68,7 @@ return new class extends Migration
                     }
 
                     $updates = array_filter([
-                        'hire_date' => $this->normalizeDate($payload['fecha_ing'] ?? null),
+                        'hire_date' => $this->normalizeDate($payload['fecha_ing_grupo'] ?? null),
                         'termination_date' => $this->normalizeDate($payload['fecha_baja'] ?? null),
                     ], fn (?string $value): bool => $value !== null);
 

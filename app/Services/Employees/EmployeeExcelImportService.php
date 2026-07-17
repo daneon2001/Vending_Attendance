@@ -445,6 +445,7 @@ class EmployeeExcelImportService
         $existing = $claTrab !== null ? $existingEmployees->get((string) $claTrab) : null;
         $isTermination = $this->isTerminationStatus($status);
         $fechaIngreso = $this->normalizeDate($values['fecha_ing'] ?? null, 'FECHA_ING', $errors);
+        $fechaIngresoGrupo = $this->normalizeDate($values['fecha_ing_grupo'] ?? null, 'FECHA_ING_GRUPO', $errors);
         $fechaBaja = $this->normalizeDate($values['fecha_baja'] ?? null, 'FECHA_BAJA', $errors);
 
         if ($isTermination) {
@@ -454,7 +455,7 @@ class EmployeeExcelImportService
                 existing: $existing,
                 claTrab: $claTrab,
                 status: $status,
-                fechaIngreso: $fechaIngreso,
+                fechaIngresoGrupo: $fechaIngresoGrupo,
                 fechaBaja: $fechaBaja,
                 errors: $errors
             );
@@ -475,7 +476,6 @@ class EmployeeExcelImportService
             $errors[] = 'RFC invalido.';
         }
 
-        $fechaIngresoGrupo = $this->normalizeDate($values['fecha_ing_grupo'] ?? null, 'FECHA_ING_GRUPO', $errors);
         $inicioContrato = $this->normalizeDate($values['inicio_contrato'] ?? null, 'INICIO_CONTRATO', $errors);
         $fechaNacimiento = $this->normalizeDate($values['fecha_nacimiento'] ?? null, 'FECHA_NACIMIENTO', $errors);
         $catalogResolution = $this->catalogResolutionService->resolveRowDependencies($values);
@@ -495,8 +495,8 @@ class EmployeeExcelImportService
             'email_company' => $this->cleanText($values['correo_corporativo'] ?? null),
         ];
 
-        if ($fechaIngreso !== null) {
-            $employeeAttributes['hire_date'] = $fechaIngreso;
+        if ($fechaIngresoGrupo !== null) {
+            $employeeAttributes['hire_date'] = $fechaIngresoGrupo;
         }
 
         if ($status === 'A') {
@@ -604,7 +604,7 @@ class EmployeeExcelImportService
         ?Employee $existing,
         ?int $claTrab,
         ?string $status,
-        ?string $fechaIngreso,
+        ?string $fechaIngresoGrupo,
         ?string $fechaBaja,
         array $errors
     ): array {
@@ -631,7 +631,7 @@ class EmployeeExcelImportService
             'employee_attributes' => array_filter([
                 'fortia_employee_id' => $claTrab,
                 'status' => $status ?? 'B',
-                'hire_date' => $fechaIngreso,
+                'hire_date' => $fechaIngresoGrupo,
                 'termination_date' => $effectiveTerminationDate,
             ], fn ($value, string $key): bool => $value !== null || $key === 'status', ARRAY_FILTER_USE_BOTH),
             'detail_attributes' => [],

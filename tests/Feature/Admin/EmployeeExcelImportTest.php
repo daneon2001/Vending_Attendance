@@ -210,7 +210,7 @@ class EmployeeExcelImportTest extends TestCase
             'CLA_REG_IMSS' => 'REG-01',
             'NOM_REG_IMSS' => 'Registro Demo',
             'FECHA_ING' => '15/02/2026',
-            'FECHA_ING_GRUPO' => '15/02/2026',
+            'FECHA_ING_GRUPO' => '10/04/2019',
             'CLA_PUESTO' => 'PST-01',
             'NOM_PUESTO' => 'Operador',
             'CLA_CENTRO_COSTO' => 'CC-01',
@@ -284,7 +284,7 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('nuevo@empresa.test', $employee->email_company);
         $this->assertSame(2001, (int) $employee->company_id);
         $this->assertSame(3001, (int) $employee->base_location_id);
-        $this->assertSame('2026-02-15', $employee->hire_date?->toDateString());
+        $this->assertSame('2019-04-10', $employee->hire_date?->toDateString());
         $this->assertNull($employee->termination_date);
 
         $this->assertDatabaseHas('employee_details', [
@@ -303,6 +303,7 @@ class EmployeeExcelImportTest extends TestCase
 
         $this->assertIsArray($metadata);
         $this->assertSame('2026-02-15', $metadata['fecha_ing'] ?? null);
+        $this->assertSame('2019-04-10', $metadata['fecha_ing_grupo'] ?? null);
 
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'employees.import_completed',
@@ -311,7 +312,7 @@ class EmployeeExcelImportTest extends TestCase
         ]);
     }
 
-    public function test_num_imss_is_trimmed_and_fecha_ing_dd_mm_yyyy_is_normalized(): void
+    public function test_num_imss_is_trimmed_and_hire_date_uses_normalized_fecha_ing_grupo(): void
     {
         $user = $this->createAdminImporter();
 
@@ -321,6 +322,7 @@ class EmployeeExcelImportTest extends TestCase
                 'NOMBRE' => 'EMPLEADO FECHA',
                 'NUM_IMSS' => '  99988877766  ',
                 'FECHA_ING' => '23/02/2022',
+                'FECHA_ING_GRUPO' => '04/07/2018',
                 'ESTATUS_TRABAJADOR' => 'ACTIVO',
             ]),
         ]);
@@ -335,7 +337,7 @@ class EmployeeExcelImportTest extends TestCase
 
         $employee = Employee::query()->where('fortia_employee_id', 15555)->firstOrFail();
         $this->assertSame('99988877766', $employee->imss_number);
-        $this->assertSame('2022-02-23', $employee->hire_date?->toDateString());
+        $this->assertSame('2018-07-04', $employee->hire_date?->toDateString());
 
         $metadata = json_decode((string) \Illuminate\Support\Facades\DB::table('employee_import_metadata')
             ->where('employee_id', $employee->id)
@@ -343,6 +345,7 @@ class EmployeeExcelImportTest extends TestCase
 
         $this->assertIsArray($metadata);
         $this->assertSame('2022-02-23', $metadata['fecha_ing'] ?? null);
+        $this->assertSame('2018-07-04', $metadata['fecha_ing_grupo'] ?? null);
     }
 
     public function test_can_update_existing_employee_without_duplication_by_cla_trab(): void
@@ -367,6 +370,7 @@ class EmployeeExcelImportTest extends TestCase
                 'RFC' => 'NUAI900101AB2',
                 'NUM_IMSS' => '55555555555',
                 'FECHA_ING' => '20/02/2026',
+                'FECHA_ING_GRUPO' => '05/01/2017',
                 'CORREO_CORPORATIVO' => 'actualizado@empresa.test',
                 'ESTATUS_TRABAJADOR' => 'ACTIVO',
             ]),
@@ -389,7 +393,7 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('NUAI900101AB2', $employee->rfc);
         $this->assertSame('NUAI900101HDFRMR02', $employee->curp);
         $this->assertSame('A', $employee->status);
-        $this->assertSame('2026-02-20', $employee->hire_date?->toDateString());
+        $this->assertSame('2017-01-05', $employee->hire_date?->toDateString());
         $this->assertNull($employee->termination_date);
         $this->assertSame(1, Employee::query()->where('fortia_employee_id', 16001)->count());
     }
@@ -418,7 +422,10 @@ class EmployeeExcelImportTest extends TestCase
             'employee_id' => $employee->id,
             'source' => 'employees_excel',
             'source_file_name' => 'alta-original.xlsx',
-            'payload' => json_encode(['fecha_ing' => '2024-03-01']),
+            'payload' => json_encode([
+                'fecha_ing' => '2025-03-01',
+                'fecha_ing_grupo' => '2024-03-01',
+            ]),
             'imported_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
@@ -475,7 +482,8 @@ class EmployeeExcelImportTest extends TestCase
         $metadata = json_decode((string) DB::table('employee_import_metadata')
             ->where('employee_id', $employee->id)
             ->value('payload'), true);
-        $this->assertSame('2024-03-01', $metadata['fecha_ing'] ?? null);
+        $this->assertSame('2025-03-01', $metadata['fecha_ing'] ?? null);
+        $this->assertSame('2024-03-01', $metadata['fecha_ing_grupo'] ?? null);
         $this->assertSame('2026-06-19', $metadata['fecha_baja'] ?? null);
 
         $statusChange = EmployeeStatusChange::query()

@@ -24,7 +24,8 @@ class EmployeeEmploymentDatesMigrationTest extends TestCase
             'employee_id' => $employee->id,
             'source' => 'employees_excel',
             'payload' => json_encode([
-                'fecha_ing' => '2024-01-15',
+                'fecha_ing' => '2025-01-15',
+                'fecha_ing_grupo' => '2024-01-15',
                 'fecha_baja' => '2026-06-30',
             ]),
             'created_at' => now(),
@@ -38,5 +39,31 @@ class EmployeeEmploymentDatesMigrationTest extends TestCase
 
         $this->assertSame('2024-01-15', $employee->hire_date?->toDateString());
         $this->assertSame('2026-07-01', $employee->termination_date?->toDateString());
+    }
+
+    public function test_corrective_migration_replaces_hire_date_with_group_date(): void
+    {
+        $employee = Employee::query()->create([
+            'fortia_employee_id' => 99102,
+            'full_name' => 'Empleado Correccion',
+            'status' => 'A',
+            'hire_date' => '2025-01-15',
+        ]);
+
+        DB::table('employee_import_metadata')->insert([
+            'employee_id' => $employee->id,
+            'source' => 'employees_excel',
+            'payload' => json_encode([
+                'fecha_ing' => '2025-01-15',
+                'fecha_ing_grupo' => '2019-04-10',
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_07_17_130000_correct_hire_date_from_group_import_date.php');
+        $migration->up();
+
+        $this->assertSame('2019-04-10', $employee->fresh()->hire_date?->toDateString());
     }
 }
