@@ -14,6 +14,7 @@ class ExternalEmployeeLookupApiTest extends TestCase
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeDetailsTable = false;
     private bool $createdPuestosTable = false;
+    private bool $createdEmployeeImportMetadataTable = false;
 
     protected function setUp(): void
     {
@@ -34,6 +35,10 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
         if ($this->createdPuestosTable && Schema::hasTable('puestos')) {
             Schema::drop('puestos');
+        }
+
+        if ($this->createdEmployeeImportMetadataTable && Schema::hasTable('employee_import_metadata')) {
+            Schema::drop('employee_import_metadata');
         }
 
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
@@ -95,7 +100,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.check_scope', 'ANY_BRANCH')
             ->assertJsonPath('data.has_fingerprint', true)
             ->assertJsonPath('data.has_face_enrollment', false)
-            ->assertJsonPath('data.face_enabled', false);
+            ->assertJsonPath('data.face_enabled', false)
+            ->assertJsonPath('data.fecha_alta', '2024-01-15')
+            ->assertJsonPath('data.fecha_baja', '2026-06-30');
 
         $this->assertStringContainsString('application/json', (string) $response->headers->get('content-type'));
     }
@@ -115,7 +122,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.full_name', 'ANDRADE CRUZ DANIEL')
             ->assertJsonPath('data.position_id', 123)
             ->assertJsonPath('data.position_code', '2001')
-            ->assertJsonPath('data.position_name', 'ABOGADO');
+            ->assertJsonPath('data.position_name', 'ABOGADO')
+            ->assertJsonPath('data.fecha_alta', '2024-01-15')
+            ->assertJsonPath('data.fecha_baja', '2026-06-30');
     }
 
     public function test_employee_without_position_returns_null_position_fields(): void
@@ -214,6 +223,8 @@ class ExternalEmployeeLookupApiTest extends TestCase
                     'has_fingerprint',
                     'has_face_enrollment',
                     'face_enabled',
+                    'fecha_alta',
+                    'fecha_baja',
                     'updated_at',
                 ],
             ])
@@ -239,6 +250,19 @@ class ExternalEmployeeLookupApiTest extends TestCase
             'created_at' => '2026-05-25 18:00:00',
             'updated_at' => '2026-05-25 18:00:00',
         ]);
+
+        DB::table('employee_import_metadata')->updateOrInsert(
+            ['employee_id' => $employeeId],
+            [
+                'source' => 'employees_excel',
+                'payload' => json_encode([
+                    'fecha_ing' => '2024-01-15',
+                    'fecha_baja' => '2026-06-30',
+                ]),
+                'created_at' => '2026-05-25 18:00:00',
+                'updated_at' => '2026-05-25 18:00:00',
+            ]
+        );
 
         return $employeeId;
     }
@@ -338,6 +362,17 @@ class ExternalEmployeeLookupApiTest extends TestCase
             });
             $this->createdEmployeeDetailsTable = true;
         }
+
+        if (! Schema::hasTable('employee_import_metadata')) {
+            Schema::create('employee_import_metadata', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('employee_id')->unique();
+                $table->string('source', 40)->default('employees_excel');
+                $table->json('payload')->nullable();
+                $table->timestamps();
+            });
+            $this->createdEmployeeImportMetadataTable = true;
+        }
     }
 
     private function cleanData(): void
@@ -348,6 +383,10 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
         if (Schema::hasTable('puestos')) {
             DB::table('puestos')->delete();
+        }
+
+        if (Schema::hasTable('employee_import_metadata')) {
+            DB::table('employee_import_metadata')->delete();
         }
 
         DB::table('employees')->delete();

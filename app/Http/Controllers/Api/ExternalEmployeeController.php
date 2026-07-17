@@ -85,6 +85,10 @@ class ExternalEmployeeController extends Controller
             }
         }
 
+        if (Schema::hasTable('employee_import_metadata')) {
+            $columns[] = 'employee_import_metadata.payload as employee_import_metadata_payload';
+        }
+
         if (! Schema::hasTable('employee_details') || ! Schema::hasTable('puestos')) {
             $columns[] = DB::raw('NULL as position_id');
             $columns[] = DB::raw('NULL as position_code');
@@ -96,17 +100,24 @@ class ExternalEmployeeController extends Controller
 
     private function applyPositionJoin(\Illuminate\Database\Eloquent\Builder $query): void
     {
-        if (! Schema::hasTable('employee_details') || ! Schema::hasTable('puestos')) {
-            return;
+        if (Schema::hasTable('employee_details') && Schema::hasTable('puestos')) {
+            $query->leftJoin('employee_details', 'employee_details.employee_id', '=', 'employees.id')
+                ->leftJoin('puestos', 'puestos.id', '=', 'employee_details.puesto_id')
+                ->addSelect([
+                    'puestos.id as position_id',
+                    'puestos.cla_puesto as position_code',
+                    'puestos.nom_puesto as position_name',
+                ]);
         }
 
-        $query->leftJoin('employee_details', 'employee_details.employee_id', '=', 'employees.id')
-            ->leftJoin('puestos', 'puestos.id', '=', 'employee_details.puesto_id')
-            ->addSelect([
-                'puestos.id as position_id',
-                'puestos.cla_puesto as position_code',
-                'puestos.nom_puesto as position_name',
-            ]);
+        if (Schema::hasTable('employee_import_metadata')) {
+            $query->leftJoin(
+                'employee_import_metadata',
+                'employee_import_metadata.employee_id',
+                '=',
+                'employees.id'
+            );
+        }
     }
 
     private function transformEmployee(Employee $employee): array
@@ -114,6 +125,8 @@ class ExternalEmployeeController extends Controller
         $positionId = $employee->getAttribute('position_id');
         $positionCode = $employee->getAttribute('position_code');
         $positionName = $employee->getAttribute('position_name');
+        $importMetadata = json_decode((string) $employee->getAttribute('employee_import_metadata_payload'), true);
+        $importMetadata = is_array($importMetadata) ? $importMetadata : [];
 
         return [
             'id' => (int) $employee->id,
@@ -145,8 +158,17 @@ class ExternalEmployeeController extends Controller
             'has_fingerprint' => (bool) $employee->has_fingerprint,
             'has_face_enrollment' => (bool) ($employee->has_face_enrollment ?? false),
             'face_enabled' => (bool) ($employee->face_enabled ?? false),
+            'fecha_alta' => $this->metadataDate($importMetadata, 'fecha_ing'),
+            'fecha_baja' => $this->metadataDate($importMetadata, 'fecha_baja'),
             'updated_at' => $this->formatUpdatedAt($employee->updated_at),
         ];
+    }
+
+    private function metadataDate(array $metadata, string $key): ?string
+    {
+        $value = $metadata[$key] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     private function resolveEmployeeCode(Employee $employee): ?string
