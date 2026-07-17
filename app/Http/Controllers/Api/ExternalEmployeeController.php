@@ -85,8 +85,12 @@ class ExternalEmployeeController extends Controller
             }
         }
 
-        if (Schema::hasTable('employee_import_metadata')) {
-            $columns[] = 'employee_import_metadata.payload as employee_import_metadata_payload';
+        foreach (['hire_date', 'termination_date'] as $column) {
+            if (Schema::hasColumn('employees', $column)) {
+                $columns[] = 'employees.'.$column;
+            } else {
+                $columns[] = DB::raw('NULL as '.$column);
+            }
         }
 
         if (! Schema::hasTable('employee_details') || ! Schema::hasTable('puestos')) {
@@ -110,14 +114,6 @@ class ExternalEmployeeController extends Controller
                 ]);
         }
 
-        if (Schema::hasTable('employee_import_metadata')) {
-            $query->leftJoin(
-                'employee_import_metadata',
-                'employee_import_metadata.employee_id',
-                '=',
-                'employees.id'
-            );
-        }
     }
 
     private function transformEmployee(Employee $employee): array
@@ -125,8 +121,6 @@ class ExternalEmployeeController extends Controller
         $positionId = $employee->getAttribute('position_id');
         $positionCode = $employee->getAttribute('position_code');
         $positionName = $employee->getAttribute('position_name');
-        $importMetadata = json_decode((string) $employee->getAttribute('employee_import_metadata_payload'), true);
-        $importMetadata = is_array($importMetadata) ? $importMetadata : [];
 
         return [
             'id' => (int) $employee->id,
@@ -158,17 +152,19 @@ class ExternalEmployeeController extends Controller
             'has_fingerprint' => (bool) $employee->has_fingerprint,
             'has_face_enrollment' => (bool) ($employee->has_face_enrollment ?? false),
             'face_enabled' => (bool) ($employee->face_enabled ?? false),
-            'fecha_alta' => $this->metadataDate($importMetadata, 'fecha_ing'),
-            'fecha_baja' => $this->metadataDate($importMetadata, 'fecha_baja'),
+            'fecha_alta' => $this->formatDate($employee->hire_date),
+            'fecha_baja' => $this->formatDate($employee->termination_date),
             'updated_at' => $this->formatUpdatedAt($employee->updated_at),
         ];
     }
 
-    private function metadataDate(array $metadata, string $key): ?string
+    private function formatDate(mixed $date): ?string
     {
-        $value = $metadata[$key] ?? null;
+        if ($date instanceof CarbonInterface) {
+            return $date->toDateString();
+        }
 
-        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+        return is_string($date) && trim($date) !== '' ? trim($date) : null;
     }
 
     private function resolveEmployeeCode(Employee $employee): ?string

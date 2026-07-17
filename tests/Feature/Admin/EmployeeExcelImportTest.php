@@ -20,6 +20,7 @@ use App\Models\Ubicacion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 use ZipArchive;
@@ -283,6 +284,8 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('nuevo@empresa.test', $employee->email_company);
         $this->assertSame(2001, (int) $employee->company_id);
         $this->assertSame(3001, (int) $employee->base_location_id);
+        $this->assertSame('2026-02-15', $employee->hire_date?->toDateString());
+        $this->assertNull($employee->termination_date);
 
         $this->assertDatabaseHas('employee_details', [
             'employee_id' => $employee->id,
@@ -332,6 +335,7 @@ class EmployeeExcelImportTest extends TestCase
 
         $employee = Employee::query()->where('fortia_employee_id', 15555)->firstOrFail();
         $this->assertSame('99988877766', $employee->imss_number);
+        $this->assertSame('2022-02-23', $employee->hire_date?->toDateString());
 
         $metadata = json_decode((string) \Illuminate\Support\Facades\DB::table('employee_import_metadata')
             ->where('employee_id', $employee->id)
@@ -350,6 +354,7 @@ class EmployeeExcelImportTest extends TestCase
             'name' => 'Nombre Legacy',
             'full_name' => 'Nombre Legacy',
             'status' => 'B',
+            'termination_date' => '2025-12-31',
             'rfc' => 'OLDR900101AB1',
             'curp' => 'OLDR900101HDFRMR01',
         ]);
@@ -384,6 +389,8 @@ class EmployeeExcelImportTest extends TestCase
         $this->assertSame('NUAI900101AB2', $employee->rfc);
         $this->assertSame('NUAI900101HDFRMR02', $employee->curp);
         $this->assertSame('A', $employee->status);
+        $this->assertSame('2026-02-20', $employee->hire_date?->toDateString());
+        $this->assertNull($employee->termination_date);
         $this->assertSame(1, Employee::query()->where('fortia_employee_id', 16001)->count());
     }
 
@@ -402,8 +409,19 @@ class EmployeeExcelImportTest extends TestCase
             'name' => 'Empleado',
             'full_name' => 'Empleado Vigente',
             'status' => 'A',
+            'hire_date' => '2024-03-01',
             'rfc' => 'VIGE900101AB1',
             'curp' => 'VIGE900101HDFRMR01',
+        ]);
+
+        DB::table('employee_import_metadata')->insert([
+            'employee_id' => $employee->id,
+            'source' => 'employees_excel',
+            'source_file_name' => 'alta-original.xlsx',
+            'payload' => json_encode(['fecha_ing' => '2024-03-01']),
+            'imported_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $file = $this->makeExcelUpload($this->headers(), [
@@ -451,6 +469,14 @@ class EmployeeExcelImportTest extends TestCase
 
         $employee->refresh();
         $this->assertSame('B', $employee->status);
+        $this->assertSame('2024-03-01', $employee->hire_date?->toDateString());
+        $this->assertSame('2026-06-19', $employee->termination_date?->toDateString());
+
+        $metadata = json_decode((string) DB::table('employee_import_metadata')
+            ->where('employee_id', $employee->id)
+            ->value('payload'), true);
+        $this->assertSame('2024-03-01', $metadata['fecha_ing'] ?? null);
+        $this->assertSame('2026-06-19', $metadata['fecha_baja'] ?? null);
 
         $statusChange = EmployeeStatusChange::query()
             ->where('employee_id', $employee->id)
@@ -499,6 +525,7 @@ class EmployeeExcelImportTest extends TestCase
         $employee->refresh();
 
         $this->assertSame('B', $employee->status);
+        $this->assertSame('2026-06-21', $employee->termination_date?->toDateString());
         $this->assertDatabaseCount('employee_status_changes', 0);
         $this->assertDatabaseHas('employee_import_metadata', [
             'employee_id' => $employee->id,

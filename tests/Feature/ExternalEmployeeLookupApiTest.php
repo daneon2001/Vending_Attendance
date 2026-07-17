@@ -14,7 +14,6 @@ class ExternalEmployeeLookupApiTest extends TestCase
     private bool $createdEmployeesTable = false;
     private bool $createdEmployeeDetailsTable = false;
     private bool $createdPuestosTable = false;
-    private bool $createdEmployeeImportMetadataTable = false;
 
     protected function setUp(): void
     {
@@ -35,10 +34,6 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
         if ($this->createdPuestosTable && Schema::hasTable('puestos')) {
             Schema::drop('puestos');
-        }
-
-        if ($this->createdEmployeeImportMetadataTable && Schema::hasTable('employee_import_metadata')) {
-            Schema::drop('employee_import_metadata');
         }
 
         if ($this->createdEmployeesTable && Schema::hasTable('employees')) {
@@ -86,7 +81,7 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.fortia_employee_id', '12015')
             ->assertJsonPath('data.employee_code', '000123')
             ->assertJsonPath('data.full_name', 'ANDRADE CRUZ DANIEL')
-            ->assertJsonPath('data.status', 'A')
+            ->assertJsonPath('data.status', 'B')
             ->assertJsonPath('data.company_id', 1)
             ->assertJsonPath('data.base_location_id', 10)
             ->assertJsonPath('data.department_id', 5)
@@ -139,7 +134,9 @@ class ExternalEmployeeLookupApiTest extends TestCase
             ->assertJsonPath('data.position_id', null)
             ->assertJsonPath('data.position_code', null)
             ->assertJsonPath('data.position_name', null)
-            ->assertJsonPath('data.position', null);
+            ->assertJsonPath('data.position', null)
+            ->assertJsonPath('data.fecha_alta', '2024-01-15')
+            ->assertJsonPath('data.fecha_baja', null);
     }
 
     public function test_returns_404_when_employee_does_not_exist(): void
@@ -235,6 +232,11 @@ class ExternalEmployeeLookupApiTest extends TestCase
     {
         $employeeId = $this->createEmployee(12015, 'ANDRADE CRUZ DANIEL');
 
+        DB::table('employees')->where('id', $employeeId)->update([
+            'status' => 'B',
+            'termination_date' => '2026-06-30',
+        ]);
+
         DB::table('puestos')->insert([
             'id' => 123,
             'cla_puesto' => '2001',
@@ -250,19 +252,6 @@ class ExternalEmployeeLookupApiTest extends TestCase
             'created_at' => '2026-05-25 18:00:00',
             'updated_at' => '2026-05-25 18:00:00',
         ]);
-
-        DB::table('employee_import_metadata')->updateOrInsert(
-            ['employee_id' => $employeeId],
-            [
-                'source' => 'employees_excel',
-                'payload' => json_encode([
-                    'fecha_ing' => '2024-01-15',
-                    'fecha_baja' => '2026-06-30',
-                ]),
-                'created_at' => '2026-05-25 18:00:00',
-                'updated_at' => '2026-05-25 18:00:00',
-            ]
-        );
 
         return $employeeId;
     }
@@ -292,6 +281,8 @@ class ExternalEmployeeLookupApiTest extends TestCase
             'last_name' => explode(' ', $fullName)[0] ?? 'ANDRADE',
             'second_last_name' => explode(' ', $fullName)[1] ?? 'CRUZ',
             'status' => 'A',
+            'hire_date' => '2024-01-15',
+            'termination_date' => null,
             'company_id' => 1,
             'company_name' => 'Medical Life',
             'base_location_id' => 10,
@@ -323,6 +314,8 @@ class ExternalEmployeeLookupApiTest extends TestCase
                 $table->string('last_name')->nullable();
                 $table->string('second_last_name')->nullable();
                 $table->string('status', 20)->default('A');
+                $table->date('hire_date')->nullable();
+                $table->date('termination_date')->nullable();
                 $table->unsignedBigInteger('company_id')->nullable();
                 $table->string('company_name')->nullable();
                 $table->unsignedBigInteger('base_location_id')->nullable();
@@ -363,16 +356,6 @@ class ExternalEmployeeLookupApiTest extends TestCase
             $this->createdEmployeeDetailsTable = true;
         }
 
-        if (! Schema::hasTable('employee_import_metadata')) {
-            Schema::create('employee_import_metadata', function (Blueprint $table): void {
-                $table->id();
-                $table->unsignedBigInteger('employee_id')->unique();
-                $table->string('source', 40)->default('employees_excel');
-                $table->json('payload')->nullable();
-                $table->timestamps();
-            });
-            $this->createdEmployeeImportMetadataTable = true;
-        }
     }
 
     private function cleanData(): void
@@ -383,10 +366,6 @@ class ExternalEmployeeLookupApiTest extends TestCase
 
         if (Schema::hasTable('puestos')) {
             DB::table('puestos')->delete();
-        }
-
-        if (Schema::hasTable('employee_import_metadata')) {
-            DB::table('employee_import_metadata')->delete();
         }
 
         DB::table('employees')->delete();

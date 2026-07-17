@@ -34,6 +34,8 @@ class Employee extends Model
         'second_last_name',
         'full_name',
         'status',
+        'hire_date',
+        'termination_date',
         'rfc',
         'imss_number',
         'curp',
@@ -58,6 +60,8 @@ class Employee extends Model
         'face_quality_score' => 'integer',
         'face_meta' => 'array',
         'can_check_all_branches' => 'boolean',
+        'hire_date' => 'date',
+        'termination_date' => 'date',
     ];
 
     protected $appends = [

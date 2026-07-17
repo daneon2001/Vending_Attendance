@@ -444,6 +444,7 @@ class EmployeeExcelImportService
 
         $existing = $claTrab !== null ? $existingEmployees->get((string) $claTrab) : null;
         $isTermination = $this->isTerminationStatus($status);
+        $fechaIngreso = $this->normalizeDate($values['fecha_ing'] ?? null, 'FECHA_ING', $errors);
         $fechaBaja = $this->normalizeDate($values['fecha_baja'] ?? null, 'FECHA_BAJA', $errors);
 
         if ($isTermination) {
@@ -453,6 +454,7 @@ class EmployeeExcelImportService
                 existing: $existing,
                 claTrab: $claTrab,
                 status: $status,
+                fechaIngreso: $fechaIngreso,
                 fechaBaja: $fechaBaja,
                 errors: $errors
             );
@@ -473,7 +475,6 @@ class EmployeeExcelImportService
             $errors[] = 'RFC invalido.';
         }
 
-        $fechaIngreso = $this->normalizeDate($values['fecha_ing'] ?? null, 'FECHA_ING', $errors);
         $fechaIngresoGrupo = $this->normalizeDate($values['fecha_ing_grupo'] ?? null, 'FECHA_ING_GRUPO', $errors);
         $inicioContrato = $this->normalizeDate($values['inicio_contrato'] ?? null, 'INICIO_CONTRATO', $errors);
         $fechaNacimiento = $this->normalizeDate($values['fecha_nacimiento'] ?? null, 'FECHA_NACIMIENTO', $errors);
@@ -493,6 +494,14 @@ class EmployeeExcelImportService
             'curp' => $curp,
             'email_company' => $this->cleanText($values['correo_corporativo'] ?? null),
         ];
+
+        if ($fechaIngreso !== null) {
+            $employeeAttributes['hire_date'] = $fechaIngreso;
+        }
+
+        if ($status === 'A') {
+            $employeeAttributes['termination_date'] = null;
+        }
 
         if (! $existing) {
             $employeeAttributes['name'] = $name;
@@ -595,6 +604,7 @@ class EmployeeExcelImportService
         ?Employee $existing,
         ?int $claTrab,
         ?string $status,
+        ?string $fechaIngreso,
         ?string $fechaBaja,
         array $errors
     ): array {
@@ -618,10 +628,12 @@ class EmployeeExcelImportService
             'warnings' => $warnings,
             'values' => $values,
             'employee_id' => $existing?->id,
-            'employee_attributes' => [
+            'employee_attributes' => array_filter([
                 'fortia_employee_id' => $claTrab,
                 'status' => $status ?? 'B',
-            ],
+                'hire_date' => $fechaIngreso,
+                'termination_date' => $effectiveTerminationDate,
+            ], fn ($value, string $key): bool => $value !== null || $key === 'status', ARRAY_FILTER_USE_BOTH),
             'detail_attributes' => [],
             'metadata_payload' => array_filter([
                 'cla_trab' => $claTrab !== null ? (string) $claTrab : null,
@@ -701,6 +713,8 @@ class EmployeeExcelImportService
             $oldStatus = $employee->status;
             $employee->fill([
                 'status' => $preparedRow['employee_attributes']['status'] ?? 'B',
+                'hire_date' => $preparedRow['employee_attributes']['hire_date'] ?? $employee->hire_date,
+                'termination_date' => $preparedRow['employee_attributes']['termination_date'] ?? null,
             ]);
             $employee->save();
 
@@ -762,12 +776,28 @@ class EmployeeExcelImportService
             return;
         }
 
+        $existingPayload = DB::table('employee_import_metadata')
+            ->where('employee_id', $employee->id)
+            ->value('payload');
+        $existingMetadata = json_decode((string) $existingPayload, true);
+        $metadata = array_merge(
+            is_array($existingMetadata) ? $existingMetadata : [],
+            $preparedRow['metadata_payload']
+        );
+
+        if (
+            ($preparedRow['operation'] ?? null) === 'normal'
+            && ($preparedRow['employee_attributes']['status'] ?? null) === 'A'
+        ) {
+            $metadata['fecha_baja'] = null;
+        }
+
         DB::table('employee_import_metadata')->updateOrInsert(
             ['employee_id' => $employee->id],
             [
                 'source' => 'employees_excel',
                 'source_file_name' => $fileName,
-                'payload' => json_encode($preparedRow['metadata_payload'], JSON_UNESCAPED_UNICODE),
+                'payload' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
                 'imported_at' => now(),
                 'updated_at' => now(),
                 'created_at' => now(),
