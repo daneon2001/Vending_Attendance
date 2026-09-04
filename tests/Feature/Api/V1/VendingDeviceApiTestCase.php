@@ -1,0 +1,111 @@
+<?php
+
+namespace Tests\Feature\Api\V1;
+
+use App\Enums\Vending\VendingMachineStatus;
+use App\Models\Device;
+use App\Models\VendingMachine;
+use App\Services\Vending\DeviceProvisioningTokenService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+abstract class VendingDeviceApiTestCase extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config([
+            'vending.device.rate_limits.provision_per_minute' => 1000,
+            'vending.device.rate_limits.bootstrap_per_minute' => 1000,
+            'vending.device.rate_limits.heartbeat_per_minute' => 1000,
+            'onprem.hmac_tolerance_seconds' => 300,
+            'onprem.nonce_ttl_seconds' => 600,
+        ]);
+        RateLimiter::clear('vending-device-provision:127.0.0.1');
+    }
+
+    protected function machine(?string $code = null): VendingMachine
+    {
+        return VendingMachine::query()->create([
+            'machine_code' => $code ?? 'DEV-'.fake()->unique()->numerify('#####'),
+            'latitude' => 19.4326,
+            'longitude' => -99.1332,
+            'coordinate_source' => 'MANUAL',
+            'coordinates_verified' => true,
+            'timezone' => 'America/Mexico_City',
+            'status' => VendingMachineStatus::ACTIVE->value,
+        ]);
+    }
+
+    protected function provisioningToken(VendingMachine $machine, $expiresAt = null): array
+    {
+        return app(DeviceProvisioningTokenService::class)->create($machine, null, $expiresAt);
+    }
+
+    /**
+     * @return array{device:Device,credential:string,response:\Illuminate\Testing\TestResponse}
+     */
+    protected function provisionedDevice(VendingMachine $machine, ?string $serial = null): array
+    {
+        $token = $this->provisioningToken($machine);
+        $response = $this->postJson('/api/v1/device/provision', [
+            'provisioning_token' => $token['plain_token'],
+            'device_serial' => $serial ?? 'SER-'.fake()->unique()->numerify('######'),
+            'platform' => 'android',
+            'platform_version' => '15',
+            'app_version' => '1.0.0',
+            'hardware_model' => 'Test Terminal',
+        ])->assertCreated();
+
+        return [
+            'device' => Device::query()->where('uuid', $response->json('device.uuid'))->firstOrFail(),
+            'credential' => (string) $response->json('credentials.credential'),
+            'response' => $response,
+        ];
+    }
+
+    protected function signedDeviceRequest(
+        string $method,
+        string $path,
+        array $payload,
+        Device $device,
+        string $credential,
+        ?int $timestamp = null,
+        ?string $nonce = null,
+        ?string $signedRequestTarget = null,
+    ) {
+        $method = strtoupper($method);
+        $timestamp ??= now()->timestamp;
+        $nonce ??= (string) Str::uuid();
+        $requestTarget = $path;
+        if (in_array($method, ['GET', 'HEAD'], true) && $payload !== []) {
+            $requestTarget .= '?'.http_build_query($payload);
+        }
+        $body = in_array($method, ['GET', 'HEAD'], true)
+            ? ''
+            : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $canonical = $method."\n".($signedRequestTarget ?? $requestTarget)."\n".$timestamp."\n".$nonce."\n".hash('sha256', $body);
+        $signature = base64_encode(hash_hmac('sha256', $canonical, $credential, true));
+
+        return $this->call(
+            $method,
+            $requestTarget,
+            [],
+            [],
+            [],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_X_DEVICE_ID' => $device->uuid,
+                'HTTP_X_TIMESTAMP' => (string) $timestamp,
+                'HTTP_X_NONCE' => $nonce,
+                'HTTP_X_SIGNATURE' => $signature,
+            ],
+            $body,
+        );
+    }
+}

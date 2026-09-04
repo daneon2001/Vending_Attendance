@@ -24,6 +24,19 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <env name="FORTIA_MOCK_DB_HOST" value="127.0.0.1"/>
+        <env name="FORTIA_MOCK_DB_PORT" value="3307"/>
+        <env name="FORTIA_MOCK_DB_DATABASE" value="vending_attendance_testing_fortia_mock"/>
+        <env name="FORTIA_MOCK_DB_USERNAME" value="vending_local"/>
+        <env name="FORTIA_MOCK_DB_PASSWORD" value=""/>
+        <env name="FORTIA_DB_HOST" value="127.0.0.1"/>
+        <env name="FORTIA_DB_PORT" value="3307"/>
+        <env name="FORTIA_DB_DATABASE" value="vending_attendance_testing_fortia"/>
+        <env name="FORTIA_DB_USERNAME" value="vending_local"/>
+        <env name="FORTIA_DB_PASSWORD" value=""/>
+        <env name="FORTIA_BASE_URL" value="http://127.0.0.1:9"/>
+        <env name="FORTIA_SYNC_DRIVER" value="mock"/>
+        <env name="FORTIA_SYNC_CONNECTION" value="fortia_mock"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

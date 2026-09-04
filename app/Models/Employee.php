@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Schema;
 
 class Employee extends Model
@@ -12,7 +14,9 @@ class Employee extends Model
     use HasFactory;
 
     public const CHECK_SCOPE_HOME_ONLY = 'HOME_ONLY';
+
     public const CHECK_SCOPE_ANY_BRANCH = 'ANY_BRANCH';
+
     public const CHECK_SCOPE_SELECTED_BRANCHES = 'SELECTED_BRANCHES';
 
     private const ACTIVE_TEMPLATE_STATUSES = ['enrolled', 'active'];
@@ -137,6 +141,22 @@ class Employee extends Model
             'employee_id',
             'location_id'
         );
+    }
+
+    public function machineAssignments(): HasMany
+    {
+        return $this->hasMany(EmployeeMachineAssignment::class);
+    }
+
+    public function vendingMachines(): BelongsToMany
+    {
+        return $this->belongsToMany(VendingMachine::class, 'employee_machine_assignments')
+            ->withPivot([
+                'uuid', 'assignment_type', 'valid_from', 'valid_until',
+                'attendance_allowed', 'enrollment_allowed', 'maintenance_allowed',
+                'status', 'source', 'revoked_at', 'revocation_reason',
+            ])
+            ->withTimestamps();
     }
 
     public function getFingerprintStatusAttribute(): string

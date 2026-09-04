@@ -93,6 +93,13 @@ const navGroups = [
                 icon: 'branches',
                 requiredPermission: { module: 'units', action: 'view' },
             },
+            {
+                label: 'Máquinas vending',
+                description: 'Catálogo, asignaciones y geocercas',
+                routeName: 'vending-machines.index',
+                icon: 'machines',
+                requiredPermission: { module: 'vending_machines', action: 'view' },
+            },
         ],
     },
     {
@@ -150,6 +157,15 @@ const iconPaths = {
         'M12 4L5 10v8a2 2 0 002 2h3v-5h4v5h3a2 2 0 002-2v-8l-7-6z',
         'M9 21V9.5',
         'M15 21V9.5',
+    ],
+    machines: [
+        'M4 7h16v10H4z',
+        'M7 10h6',
+        'M7 13h3',
+        'M16 10h1',
+        'M16 13h1',
+        'M7 17v2',
+        'M17 17v2',
     ],
     companies: [
         'M4 20h16',

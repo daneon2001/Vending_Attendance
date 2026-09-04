@@ -1,0 +1,12 @@
+Command: php artisan --version
+Exit code: 255
+Result: NOT EXECUTABLE
+Reason: vendor/autoload.php is absent from the local clone.
+
+Command: php artisan about
+Exit code: 255
+Result: NOT EXECUTABLE
+Reason: vendor/autoload.php is absent from the local clone.
+
+No dependencies were installed and no .env file was created or modified during Phase 0.
+Static lockfile evidence: laravel/framework v11.47.0, PHP requirement ^8.4.

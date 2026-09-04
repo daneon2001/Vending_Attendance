@@ -1,0 +1,131 @@
+
+  GET|HEAD  / ........................................................................................................
+  GET|HEAD  admin/asistencias ............................. admin.asistencias.index â€º Admin\AttendanceController@index
+  POST      admin/asistencias/adjustments admin.asistencias.adjustments.store â€º Admin\AttendanceController@storeManuaâ€¦
+  GET|HEAD  admin/asistencias/export .................... admin.asistencias.export â€º Admin\AttendanceController@export
+  GET|HEAD  admin/asistencias/export-checks admin.asistencias.export-checks â€º Admin\AttendanceController@exportChecks
+  GET|HEAD  admin/asistencias/grouped-detail admin.asistencias.grouped-detail â€º Admin\AttendanceController@groupedDetâ€¦
+  GET|HEAD  admin/asistencias/{attendance_record} ........... admin.asistencias.show â€º Admin\AttendanceController@show
+  PATCH     admin/asistencias/{attendance_record}/annul ... admin.asistencias.annul â€º Admin\AttendanceController@annul
+  POST      api/FortiaPrimeApi.Opensync/api/v2/attendance/from-device ....... Api\AttendanceController@storeFromDevice
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/biometrico/catalog .................. Api\CatalogSyncController@catalog
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/dashboard/summary fortia.dashboard.summary â€º Api\DashboardSummaryContrâ€¦
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/employees/catalog .......... Api\CatalogSyncController@employeesCatalog
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/employees/templates ............. Api\EmployeeTemplatesController@index
+  POST      api/FortiaPrimeApi.Opensync/api/v2/enrolments/complete .................. Api\EnrolmentController@complete
+  POST      api/FortiaPrimeApi.Opensync/api/v2/login/authenticate .................... Api\AuthController@authenticate
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog ........... Api\ClockController@index
+  POST      api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog ........... Api\ClockController@store
+  POST      api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/heartbeat Api\ClockController@heartbâ€¦
+  GET|HEAD  api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/resolve-by-serial Api\ClockControlleâ€¦
+  PUT       api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/{clock} .. Api\ClockController@update
+  POST      api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/{clock}/assign Api\ClockController@aâ€¦
+  POST      api/FortiaPrimeApi.Opensync/api/v2/time-and-assistance/clock-catalog/{clock}/heartbeat Api\ClockControlleâ€¦
+  GET|HEAD  api/admin/employees .................................................... Api\AdminEmployeeController@index
+  POST      api/admin/employees/import ...................................... Employees\EmployeeImportController@store
+  POST      api/admin/employees/import/catalogs/missing/create Employees\EmployeeImportController@createMissingCataloâ€¦
+  POST      api/admin/employees/import/preview ............................ Employees\EmployeeImportController@preview
+  PATCH     api/admin/employees/{employee}/face-profile ..................... Api\EmployeeFaceProfileController@update
+  DELETE    api/admin/employees/{employee}/face-profile .................... Api\EmployeeFaceProfileController@destroy
+  GET|HEAD  api/admin/employees/{employee}/fingerprints ................ Api\EmployeeFingerprintAccessController@index
+  DELETE    api/admin/employees/{employee}/fingerprints .............. Api\EmployeeFingerprintDeleteController@destroy
+  GET|HEAD  api/attendance/employee/{employee} ............................... Api\AttendanceController@listByEmployee
+  POST      api/attendance/from-device ...................................... Api\AttendanceController@storeFromDevice
+  POST      api/attendance/heartbeat ................................................... Api\ClockController@heartbeat
+  POST      api/attendance/send-to-fortia ...................................... Api\AttendanceController@sendToFortia
+  GET|HEAD  api/audit-cleanup/dashboard ......................................... Api\AuditCleanupController@dashboard
+  POST      api/audit-cleanup/execute ............................................. Api\AuditCleanupController@execute
+  POST      api/audit-cleanup/preview ............................................. Api\AuditCleanupController@preview
+  PUT       api/audit-cleanup/settings ..................................... Api\AuditCleanupController@updateSettings
+  GET|HEAD  api/audit-logs .............................................................. Api\AuditLogController@index
+  POST      api/audit-logs/purge ........................................................ Api\AuditLogController@purge
+  GET|HEAD  api/audit-logs/{auditLog} .................................................... Api\AuditLogController@show
+  GET|HEAD  api/biometrico/catalog ................................................. Api\CatalogSyncController@catalog
+  GET|HEAD  api/dashboard/summary ................................ dashboard.summary â€º Api\DashboardController@summary
+  GET|POST|HEAD api/device/ping ......................................................................................
+  GET|HEAD  api/employees ............................................................... Api\EmployeeController@index
+  POST      api/employees/sync-fortia .......................................... Api\EmployeeController@syncFromFortia
+  PATCH     api/employees/{employee}/status ...................................... Api\EmployeeController@updateStatus
+  POST      api/enrolments/complete ................................................. Api\EnrolmentController@complete
+  GET|HEAD  api/external/employees/fortia/{fortiaEmployeeId} api.external.employees.show-by-fortia â€º Api\ExternalEmplâ€¦
+  GET|HEAD  api/external/employees/{id} ............ api.external.employees.show â€º Api\ExternalEmployeeController@show
+  POST      api/faceid/templates/sync .......................................... Api\FaceIdTemplateSyncController@sync
+  GET|HEAD  api/fortia-mock/employees .............................. Api\FortiaMock\FortiaMockEmployeeController@index
+  POST      api/fortia-mock/employees .............................. Api\FortiaMock\FortiaMockEmployeeController@store
+  PATCH     api/fortia-mock/employees/{employee}/status ..... Api\FortiaMock\FortiaMockEmployeeController@updateStatus
+  POST      api/fortia-mock/sync-employees .............................. Api\FortiaMock\FortiaMockSyncController@sync
+  POST      api/onprem/attendances ....................................... Api\OnPrem\OnPremAttendanceController@store
+  POST      api/onprem/heartbeat .......................................... Api\OnPrem\OnPremHeartbeatController@store
+  GET|HEAD  api/onprem/ping ................................................ Api\OnPrem\OnPremHeartbeatController@ping
+  GET|HEAD  api/superadmin/employees/{employee}/fingerprints/templates Api\EmployeeFingerprintAccessController@templaâ€¦
+  GET|HEAD  api/users ....................................................................... Api\UserController@index
+  POST      api/users ....................................................................... Api\UserController@store
+  PUT       api/users/{user} ............................................................... Api\UserController@update
+  PATCH     api/users/{user}/status .................................................. Api\UserController@updateStatus
+  GET|HEAD  attendance-cards ................................. attendance-cards.index â€º AttendanceCardController@index
+  GET|HEAD  attendance-cards/employees/search attendance-cards.employees.search â€º AttendanceCardController@searchEmplâ€¦
+  GET|HEAD  attendance-cards/export ........................ attendance-cards.export â€º AttendanceCardController@export
+  GET|HEAD  clocks ....................................................... clocks.index â€º ClockCatalogController@index
+  POST      clocks .............................................................. clocks.store â€º ClockController@store
+  POST      clocks/import ...................................................... clocks.import â€º ClockImportController
+  GET|HEAD  clocks/list .......................................................... clocks.list â€º ClockController@index
+  PUT       clocks/{clock} .................................................... clocks.update â€º ClockController@update
+  PUT       clocks/{clock}/assign-unit ............................... clocks.assign-unit â€º ClockController@assignUnit
+  GET|HEAD  clocks/{clock}/logs ............................................... clocks.logs â€º ClockLogController@index
+  GET|HEAD  companies ..................................................... companies.index â€º CompanyCatalogController
+  POST      companies ...................................................... companies.store â€º CompanyController@store
+  GET|HEAD  companies/list .................................................. companies.list â€º CompanyController@index
+  PUT       companies/{company} .......................................... companies.update â€º CompanyController@update
+  PUT       companies/{company}/toggle-status ............... companies.toggle-status â€º CompanyController@toggleStatus
+  GET|HEAD  confirm-password .............................. password.confirm â€º Auth\ConfirmablePasswordController@show
+  POST      confirm-password ................................................ Auth\ConfirmablePasswordController@store
+  GET|HEAD  dashboard ...................................................................................... dashboard
+  GET|HEAD  dashboard/corporativo-reclutamiento dashboard.corporativo-reclutamiento â€º Dashboard\CorporateRecruitmentDâ€¦
+  GET|HEAD  dashboard/corporativo-reclutamiento/export dashboard.corporativo-reclutamiento.export â€º Dashboard\Corporaâ€¦
+  GET|HEAD  dashboard/corporativo-reclutamiento/summary dashboard.corporativo-reclutamiento.summary â€º Dashboard\Corpoâ€¦
+  POST      email/verification-notification ... verification.send â€º Auth\EmailVerificationNotificationController@store
+  GET|HEAD  employees ...................................... employees.index â€º Employees\EmployeeCatalogPageController
+  GET|HEAD  employees/export .................... employees.catalog.export â€º Employees\EmployeeCatalogExportController
+  GET|HEAD  forgot-password ............................... password.request â€º Auth\PasswordResetLinkController@create
+  POST      forgot-password .................................. password.email â€º Auth\PasswordResetLinkController@store
+  GET|HEAD  login ................................................. login â€º Auth\AuthenticatedSessionController@create
+  POST      login .......................................................... Auth\AuthenticatedSessionController@store
+  POST      logout .............................................. logout â€º Auth\AuthenticatedSessionController@destroy
+  PUT       password ................................................ password.update â€º Auth\PasswordController@update
+  GET|HEAD  profile ............................................................ profile.edit â€º ProfileController@edit
+  PATCH     profile ........................................................ profile.update â€º ProfileController@update
+  DELETE    profile ...................................................... profile.destroy â€º ProfileController@destroy
+  GET|HEAD  register ................................................. register â€º Auth\RegisteredUserController@create
+  POST      register ............................................................. Auth\RegisteredUserController@store
+  POST      reset-password ......................................... password.store â€º Auth\NewPasswordController@store
+  GET|HEAD  reset-password/{token} ................................ password.reset â€º Auth\NewPasswordController@create
+  GET|HEAD  sanctum/csrf-cookie .................... sanctum.csrf-cookie â€º Laravel\Sanctum â€º CsrfCookieController@show
+  GET|HEAD  settings ............................................... settings.index â€º Settings\SettingsIndexController
+  GET|HEAD  settings/audit ........................................ settings.audit.page â€º Settings\AuditPageController
+  GET|HEAD  settings/audit-cleanup ................. settings.audit-cleanup.page â€º Settings\AuditCleanupPageController
+  GET|HEAD  settings/audit-logs ......................................................... Api\AuditLogController@index
+  POST      settings/audit-logs/purge ................................................... Api\AuditLogController@purge
+  GET|HEAD  settings/audit-logs/{auditLog} ............................................... Api\AuditLogController@show
+  GET|HEAD  settings/roles ......................................... settings.roles.page â€º Settings\RolePageController
+  POST      settings/roles ...................................... settings.roles.store â€º Settings\RoleController@store
+  GET|HEAD  settings/roles/list ................................. settings.roles.index â€º Settings\RoleController@index
+  PUT       settings/roles/{role} ............................. settings.roles.update â€º Settings\RoleController@update
+  DELETE    settings/roles/{role} ........................... settings.roles.destroy â€º Settings\RoleController@destroy
+  POST      settings/roles/{role}/users ......... settings.roles.users.store â€º Settings\RoleAssignmentController@store
+  DELETE    settings/roles/{role}/users/{user} settings.roles.users.destroy â€º Settings\RoleAssignmentController@destrâ€¦
+  GET|HEAD  settings/users ......................................... settings.users.page â€º Settings\UserPageController
+  GET|HEAD  storage/{path} ............................................................................. storage.local
+  GET|HEAD  units ................................................................ units.index â€º UnitCatalogController
+  POST      units ................................................................. units.store â€º UnitController@store
+  POST      units/bulk-deactivate-inactive .... units.bulk-deactivate-inactive â€º UnitController@bulkDeactivateInactive
+  GET|HEAD  units/bulk-deactivation-preview . units.bulk-deactivation-preview â€º UnitController@bulkDeactivationPreview
+  GET|HEAD  units/export ........................................................ units.export â€º UnitController@export
+  GET|HEAD  units/list ............................................................. units.list â€º UnitController@index
+  GET|HEAD  units/{unit} ............................................................ units.show â€º UnitController@show
+  PUT       units/{unit} ........................................................ units.update â€º UnitController@update
+  PUT       units/{unit}/toggle-status ............................. units.toggle-status â€º UnitController@toggleStatus
+  GET|HEAD  up .......................................................................................................
+  GET|HEAD  verify-email ................................ verification.notice â€º Auth\EmailVerificationPromptController
+  GET|HEAD  verify-email/{id}/{hash} ................................ verification.verify â€º Auth\VerifyEmailController
+
+                                                                                                  Showing [128] routes

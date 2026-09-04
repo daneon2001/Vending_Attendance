@@ -1,0 +1,6 @@
+Command: php artisan migrate:status
+Result: NOT RUN
+
+Reason: the clone contains no .env and no vendor/autoload.php. A safe local database connection could not be established without creating configuration or installing dependencies. Running migration commands against an inferred database was intentionally avoided.
+
+Static inventory: 76 migration files were found under database/migrations.

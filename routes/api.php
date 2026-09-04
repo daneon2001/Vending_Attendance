@@ -1,26 +1,52 @@
 <?php
 
-use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AdminEmployeeController;
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogSyncController;
 use App\Http\Controllers\Api\ClockController;
-use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\EmployeeFaceProfileController;
 use App\Http\Controllers\Api\EmployeeFingerprintAccessController;
 use App\Http\Controllers\Api\EmployeeFingerprintDeleteController;
-use App\Http\Controllers\Api\ExternalEmployeeController;
-use App\Http\Controllers\Api\FaceIdTemplateSyncController;
 use App\Http\Controllers\Api\EmployeeTemplatesController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\ExternalEmployeeController;
+use App\Http\Controllers\Api\FaceIdTemplateSyncController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
-use App\Http\Controllers\Employees\EmployeeImportController;
 use App\Http\Controllers\Api\OnPrem\OnPremAttendanceController;
 use App\Http\Controllers\Api\OnPrem\OnPremHeartbeatController;
+use App\Http\Controllers\Api\V1\DeviceBootstrapController;
+use App\Http\Controllers\Api\V1\DeviceHeartbeatController;
+use App\Http\Controllers\Api\V1\DeviceProvisioningController;
+use App\Http\Controllers\Api\V1\EmployeeVendingMachineController;
+use App\Http\Controllers\Api\V1\GeofenceValidationController as V1GeofenceValidationController;
+use App\Http\Controllers\Api\V1\VendingMachineController as V1VendingMachineController;
+use App\Http\Controllers\Employees\EmployeeImportController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1/device')->group(function (): void {
+    Route::post('provision', DeviceProvisioningController::class)
+        ->middleware('throttle:vending-device-provision');
+
+    Route::middleware('device.hmac:vending')->group(function (): void {
+        Route::get('bootstrap', DeviceBootstrapController::class)
+            ->middleware('throttle:vending-device-bootstrap');
+        Route::post('heartbeat', DeviceHeartbeatController::class)
+            ->middleware('throttle:vending-device-heartbeat');
+    });
+});
+
+Route::prefix('v1')->middleware(['auth:sanctum', 'perm.strict:vending_machines,view'])->group(function (): void {
+    Route::get('vending-machines/{vendingMachine}', [V1VendingMachineController::class, 'show']);
+    Route::get('vending-machines/{vendingMachine}/geofence', [V1VendingMachineController::class, 'geofence']);
+    Route::get('vending-machines/{vendingMachine}/assignments', [V1VendingMachineController::class, 'assignments']);
+    Route::get('employees/{employee}/vending-machines', [EmployeeVendingMachineController::class, 'index']);
+    Route::post('geofence/validate', V1GeofenceValidationController::class);
+});
 
 Route::middleware('device.token')->match(['GET', 'POST'], '/device/ping', function () {
     return response()->json([

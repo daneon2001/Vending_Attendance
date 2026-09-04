@@ -1,0 +1,7 @@
+Command: php artisan route:list
+Exit code: 255
+Result: NOT EXECUTABLE
+Reason: vendor/autoload.php is absent from the local clone.
+
+Static route sources audited: routes/web.php, routes/api.php, routes/auth.php and routes/console.php.
+No route cache or application state was changed.

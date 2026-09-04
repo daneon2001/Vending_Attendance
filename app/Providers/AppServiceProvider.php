@@ -4,10 +4,18 @@ namespace App\Providers;
 
 use App\Models\AttendanceAudit;
 use App\Models\AttendanceRecord;
+use App\Models\Device;
 use App\Models\Employee;
+use App\Models\EmployeeMachineAssignment;
+use App\Models\MachineGeofence;
+use App\Models\VendingMachine;
 use App\Observers\AttendanceAuditObserver;
 use App\Observers\AttendanceRecordObserver;
+use App\Observers\DeviceObserver;
+use App\Observers\EmployeeMachineAssignmentObserver;
 use App\Observers\EmployeeObserver;
+use App\Observers\MachineGeofenceObserver;
+use App\Observers\VendingMachineObserver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -69,8 +77,24 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by('employee-lookup:'.$request->ip().':'.$tokenFingerprint);
         });
 
+        RateLimiter::for('vending-device-provision', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.device.rate_limits.provision_per_minute', 5)
+        )->by('vending-device-provision:'.$request->ip()));
+
+        RateLimiter::for('vending-device-bootstrap', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.device.rate_limits.bootstrap_per_minute', 30)
+        )->by('vending-device-bootstrap:'.($request->header('X-Device-Id') ?: $request->ip())));
+
+        RateLimiter::for('vending-device-heartbeat', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.device.rate_limits.heartbeat_per_minute', 120)
+        )->by('vending-device-heartbeat:'.($request->header('X-Device-Id') ?: $request->ip())));
+
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
         Employee::observe(EmployeeObserver::class);
+        VendingMachine::observe(VendingMachineObserver::class);
+        EmployeeMachineAssignment::observe(EmployeeMachineAssignmentObserver::class);
+        MachineGeofence::observe(MachineGeofenceObserver::class);
+        Device::observe(DeviceObserver::class);
     }
 }

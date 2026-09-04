@@ -19,6 +19,10 @@ return [
             'label' => 'Catalogo de unidades',
             'actions' => ['view', 'create', 'update', 'disable', 'manage'],
         ],
+        'vending_machines' => [
+            'label' => 'Máquinas vending',
+            'actions' => ['view', 'create', 'update', 'assign', 'geofence', 'manage'],
+        ],
         'employees' => [
             'label' => 'Catalogo de empleados',
             'actions' => ['view', 'create', 'update', 'delete', 'disable', 'sync', 'export', 'import', 'manage'],

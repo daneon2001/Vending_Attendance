@@ -1,0 +1,14 @@
+<?php
+
+return [
+    'device' => [
+        'provisioning_token_ttl_minutes' => max(5, (int) env('VENDING_PROVISIONING_TOKEN_TTL_MINUTES', 30)),
+        'clock_drift_warning_seconds' => max(30, (int) env('VENDING_CLOCK_DRIFT_WARNING_SECONDS', 300)),
+        'next_heartbeat_seconds' => max(15, (int) env('VENDING_HEARTBEAT_INTERVAL_SECONDS', 60)),
+        'rate_limits' => [
+            'provision_per_minute' => max(1, (int) env('VENDING_PROVISION_PER_MINUTE', 5)),
+            'bootstrap_per_minute' => max(1, (int) env('VENDING_BOOTSTRAP_PER_MINUTE', 30)),
+            'heartbeat_per_minute' => max(1, (int) env('VENDING_HEARTBEAT_PER_MINUTE', 120)),
+        ],
+    ],
+];

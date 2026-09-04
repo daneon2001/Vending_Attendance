@@ -1,0 +1,18 @@
+Command: php artisan test --no-ansi
+Database safety: primary connection SQLite :memory:; Fortia auxiliary connections point only to dedicated testing databases on 127.0.0.1:3307.
+
+Total: 282
+Passed: 281
+Failed: 1
+Skipped: 0
+Assertions: 2296
+Duration: 38.71s
+
+Failed test:
+Tests\Feature\Console\OnPremDiagnosticsCommandTest::test_onprem_diagnostics_command_passes_and_generates_json_report
+
+Root cause:
+The inherited test fixture creates devices, device_nonces, locations, employees, and attendances_raw, but not clocks. OnPremHeartbeatController now queries clocks while resolving the diagnostic heartbeat, producing SQLite "no such table: clocks". This is test-fixture debt, not a Phase 0Q environment failure, and was not repaired.
+
+Control result:
+`php artisan fortia:diagnose-onprem --no-ansi` passed all 12 route, middleware, ping, heartbeat, and attendance checks against the fully migrated isolated MySQL development baseline.

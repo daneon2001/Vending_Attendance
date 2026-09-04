@@ -12,14 +12,18 @@ use Symfony\Component\HttpFoundation\Response;
 
 class VerifyDeviceHmac
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $context = 'legacy'): Response
     {
-        $deviceSerial = trim((string) $request->header('X-Device-Serial', ''));
+        $isVendingContext = $context === 'vending';
+        $deviceIdentity = trim((string) $request->header(
+            $isVendingContext ? 'X-Device-Id' : 'X-Device-Serial',
+            '',
+        ));
         $timestampHeader = trim((string) $request->header('X-Timestamp', ''));
         $nonce = trim((string) $request->header('X-Nonce', ''));
         $providedSignature = trim((string) $request->header('X-Signature', ''));
 
-        if ($deviceSerial === '' || $timestampHeader === '' || $nonce === '' || $providedSignature === '') {
+        if ($deviceIdentity === '' || $timestampHeader === '' || $nonce === '' || $providedSignature === '') {
             return $this->errorResponse(422, 'VALIDATION_FAILED', 'Missing HMAC headers.');
         }
 
@@ -31,15 +35,23 @@ class VerifyDeviceHmac
             return $this->errorResponse(422, 'VALIDATION_FAILED', 'Invalid nonce.');
         }
 
+        if ($isVendingContext && ! Str::isUuid($deviceIdentity)) {
+            return $this->errorResponse(422, 'VALIDATION_FAILED', 'Invalid device identity.');
+        }
+
         $device = Device::query()
-            ->where('device_serial', $deviceSerial)
+            ->where($isVendingContext ? 'uuid' : 'device_serial', $deviceIdentity)
             ->first();
 
-        if (! $device || ! $device->is_active) {
+        if (! $device || ($isVendingContext ? ! $device->isOperationalVendingDevice() : ! $device->is_active)) {
             return $this->errorResponse(401, 'DEVICE_NOT_ACTIVE', 'Device not authorized.');
         }
 
-        if (trim((string) $device->shared_secret) === '') {
+        $sharedSecret = $isVendingContext
+            ? trim((string) $device->credential_secret)
+            : trim((string) $device->shared_secret);
+
+        if ($sharedSecret === '') {
             return $this->errorResponse(401, 'INVALID_SIGNATURE', 'Device secret not configured.');
         }
 
@@ -72,7 +84,7 @@ class VerifyDeviceHmac
         $bodyHash = hash('sha256', $rawBody);
         $canonical = $this->canonicalString(
             method: strtoupper($request->method()),
-            path: $request->getPathInfo(),
+            path: $request->getRequestUri(),
             timestamp: $timestampHeader,
             nonce: $nonce,
             bodyHash: $bodyHash,
@@ -81,7 +93,7 @@ class VerifyDeviceHmac
         $expectedSignature = base64_encode(hash_hmac(
             'sha256',
             $canonical,
-            (string) $device->shared_secret,
+            $sharedSecret,
             true,
         ));
 
@@ -103,6 +115,9 @@ class VerifyDeviceHmac
         $request->attributes->set('onprem_device', $device);
         $request->attributes->set('onprem_payload_hash', $bodyHash);
         $request->attributes->set('onprem_canonical', $canonical);
+        if ($isVendingContext) {
+            $request->attributes->set('vending_device', $device);
+        }
 
         $device->forceFill([
             'last_seen_at' => $now,

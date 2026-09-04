@@ -1,20 +1,20 @@
 <?php
 
+use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Api\AuditCleanupController;
+use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\UserController as ApiUserController;
+use App\Http\Controllers\AttendanceCardController;
 use App\Http\Controllers\ClockCatalogController;
 use App\Http\Controllers\ClockController;
 use App\Http\Controllers\ClockImportController;
 use App\Http\Controllers\ClockLogController;
 use App\Http\Controllers\CompanyCatalogController;
 use App\Http\Controllers\CompanyController;
-use App\Http\Controllers\AttendanceCardController;
-use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
-use App\Http\Controllers\Api\AuditCleanupController;
 use App\Http\Controllers\Dashboard\CorporateRecruitmentDashboardController;
 use App\Http\Controllers\Employees\EmployeeCatalogExportController;
 use App\Http\Controllers\Employees\EmployeeCatalogPageController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Api\AuditLogController;
-use App\Http\Controllers\Api\UserController as ApiUserController;
 use App\Http\Controllers\Settings\AuditCleanupPageController;
 use App\Http\Controllers\Settings\AuditPageController;
 use App\Http\Controllers\Settings\RoleAssignmentController;
@@ -24,6 +24,10 @@ use App\Http\Controllers\Settings\SettingsIndexController;
 use App\Http\Controllers\Settings\UserPageController;
 use App\Http\Controllers\UnitCatalogController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\Vending\DeviceAdministrationController;
+use App\Http\Controllers\Vending\EmployeeMachineAssignmentController;
+use App\Http\Controllers\Vending\MachineGeofenceController;
+use App\Http\Controllers\Vending\VendingMachineController;
 use App\Models\Company;
 use App\Models\Location;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +55,29 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
+    Route::get('/vending-machines', [VendingMachineController::class, 'index'])
+        ->middleware('perm:vending_machines,view')->name('vending-machines.index');
+    Route::post('/vending-machines', [VendingMachineController::class, 'store'])
+        ->middleware('perm:vending_machines,create')->name('vending-machines.store');
+    Route::get('/vending-machines/{vendingMachine}', [VendingMachineController::class, 'show'])
+        ->middleware('perm:vending_machines,view')->name('vending-machines.show');
+    Route::put('/vending-machines/{vendingMachine}', [VendingMachineController::class, 'update'])
+        ->middleware('perm:vending_machines,update')->name('vending-machines.update');
+    Route::post('/vending-machines/{vendingMachine}/assignments', [EmployeeMachineAssignmentController::class, 'store'])
+        ->middleware('perm:vending_machines,assign')->name('vending-machines.assignments.store');
+    Route::patch('/vending-machines/{vendingMachine}/assignments/{assignment}/revoke', [EmployeeMachineAssignmentController::class, 'revoke'])
+        ->middleware('perm:vending_machines,assign')->name('vending-machines.assignments.revoke');
+    Route::post('/vending-machines/{vendingMachine}/geofences', [MachineGeofenceController::class, 'store'])
+        ->middleware('perm:vending_machines,geofence')->name('vending-machines.geofences.store');
+    Route::patch('/vending-machines/{vendingMachine}/geofences/{geofence}/activate', [MachineGeofenceController::class, 'activate'])
+        ->middleware('perm:vending_machines,geofence')->name('vending-machines.geofences.activate');
+    Route::post('/vending-machines/{vendingMachine}/provisioning-tokens', [DeviceAdministrationController::class, 'createToken'])
+        ->middleware('perm:vending_machines,manage')->name('vending-machines.provisioning-tokens.store');
+    Route::patch('/vending-machines/{vendingMachine}/provisioning-tokens/{provisioningToken}/revoke', [DeviceAdministrationController::class, 'revokeToken'])
+        ->middleware('perm:vending_machines,manage')->name('vending-machines.provisioning-tokens.revoke');
+    Route::patch('/vending-machines/{vendingMachine}/devices/{device}/status', [DeviceAdministrationController::class, 'updateStatus'])
+        ->middleware('perm:vending_machines,manage')->name('vending-machines.devices.status');
+
     Route::get('/dashboard/corporativo-reclutamiento', [CorporateRecruitmentDashboardController::class, 'index'])
         ->middleware('perm:dashboard,view')
         ->name('dashboard.corporativo-reclutamiento');

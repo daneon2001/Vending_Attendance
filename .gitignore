@@ -5,8 +5,11 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/framework/local-mysql/
 /vendor
 .env
+.env.*
+!.env.example
 .env.backup
 .env.production
 .phpactor.json
@@ -16,6 +19,17 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+*.pem
+*.key
+*.p12
+*.pfx
+*.apk
+*.aab
+*.ipa
 /auth.json
 /.fleet
 /.idea
@@ -26,3 +40,5 @@ public/images/generated/
 /playwright-report
 /test-results
 /tests/e2e/.auth
+/respaldo_asistencias_dev.sql
+/.tmp_*.php
