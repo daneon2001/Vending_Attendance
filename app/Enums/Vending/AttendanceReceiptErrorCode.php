@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Enums\Vending;
+
+enum AttendanceReceiptErrorCode: string
+{
+    case INVALID_EVENT = 'INVALID_EVENT';
+    case INVALID_EMPLOYEE = 'INVALID_EMPLOYEE';
+    case EVENT_UUID_CONFLICT = 'EVENT_UUID_CONFLICT';
+    case INVALID_TIMESTAMP = 'INVALID_TIMESTAMP';
+    case BATCH_LIMIT_EXCEEDED = 'BATCH_LIMIT_EXCEEDED';
+    case INTERNAL_RECEIVER_ERROR = 'INTERNAL_RECEIVER_ERROR';
+}

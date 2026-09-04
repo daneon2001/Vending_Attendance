@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -171,6 +172,16 @@ class Device extends Model
     public function manifestStates(): HasMany
     {
         return $this->hasMany(DeviceManifestState::class);
+    }
+
+    public function vendingAttendanceEvents(): HasMany
+    {
+        return $this->hasMany(VendingAttendanceEvent::class);
+    }
+
+    public function attendanceMetric(): HasOne
+    {
+        return $this->hasOne(DeviceAttendanceMetric::class);
     }
 
     public function isOperationalVendingDevice(): bool

@@ -4,9 +4,11 @@ namespace App\Http\Middleware;
 
 use App\Models\Device;
 use App\Models\DeviceNonce;
+use App\Services\Audit\AuditLogger;
 use Closure;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -44,6 +46,10 @@ class VerifyDeviceHmac
             ->first();
 
         if (! $device || ($isVendingContext ? ! $device->isOperationalVendingDevice() : ! $device->is_active)) {
+            if ($isVendingContext) {
+                $this->auditAttendanceAuthenticationFailure($request, 'attendance.invalid_device', $device, $deviceIdentity);
+            }
+
             return $this->errorResponse(401, 'DEVICE_NOT_ACTIVE', 'Device not authorized.');
         }
 
@@ -98,6 +104,10 @@ class VerifyDeviceHmac
         ));
 
         if (! hash_equals($expectedSignature, $providedSignature)) {
+            if ($isVendingContext) {
+                $this->auditAttendanceAuthenticationFailure($request, 'attendance.invalid_signature', $device, $deviceIdentity);
+            }
+
             return $this->errorResponse(401, 'INVALID_SIGNATURE', 'Invalid signature.');
         }
 
@@ -144,5 +154,28 @@ class VerifyDeviceHmac
             'reason' => $error,
             'message' => $message,
         ], $status);
+    }
+
+    private function auditAttendanceAuthenticationFailure(
+        Request $request,
+        string $event,
+        ?Device $device,
+        string $deviceIdentity,
+    ): void {
+        if (! $request->is('api/v1/device/attendance/*')) {
+            return;
+        }
+
+        $limit = max(1, (int) config('vending.attendance.auth_audit_per_minute', 10));
+        $key = 'vending-attendance-auth-audit:'.$event.':'.$request->ip();
+        if (RateLimiter::tooManyAttempts($key, $limit)) {
+            return;
+        }
+        RateLimiter::hit($key, 60);
+
+        AuditLogger::log($event, $device, 'Vending attendance authentication rejected.', [
+            'device_id' => $device?->getKey(),
+            'device_identity_fingerprint' => substr(hash('sha256', $deviceIdentity), 0, 16),
+        ]);
     }
 }

@@ -24,6 +24,12 @@ Items remain unresolved unless repository evidence explicitly answers them.
 20. Continuity rules during long outages, clock drift, storage exhaustion and credential expiry.
 21. Delta-manifest threshold, cursor/tombstone format, and retention after FULL SNAPSHOT fleet measurements exist.
 22. Whether sanitized Device ACK error messages require a shorter retention period than manifest state.
+23. Legal and operational retention period for immutable vending attendance evidence.
+24. Policy that will convert `AUTHORIZED`, `DENIED` and `UNVERIFIABLE` evidence into payable/official attendance.
+25. Whether GPS becomes mandatory and which edge/server mismatches must block attendance after field measurements.
+26. Versioned history source for Employee status and assignment permission changes; Phase 4 reports unverifiable history rather than reconstructing it.
+27. Projection contract from vending attendance events to Fortia, including retry and reconciliation ownership.
+28. Production SLO and capacity validation with MySQL, HTTP/HMAC, realistic concurrency and infrastructure latency.
 
 Additional inherited questions:
 

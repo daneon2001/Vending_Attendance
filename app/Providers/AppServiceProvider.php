@@ -101,6 +101,14 @@ class AppServiceProvider extends ServiceProvider
             (int) config('vending.manifests.rate_limits.ack_per_minute', 60)
         )->by('vending-manifest-ack:'.($request->header('X-Device-Id') ?: $request->ip())));
 
+        RateLimiter::for('vending-attendance-single', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.attendance.rate_limits.single_per_minute', 120)
+        )->by('vending-attendance-single:'.($request->header('X-Device-Id') ?: $request->ip())));
+
+        RateLimiter::for('vending-attendance-batch', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.attendance.rate_limits.batch_per_minute', 30)
+        )->by('vending-attendance-batch:'.($request->header('X-Device-Id') ?: $request->ip())));
+
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
         Employee::observe(EmployeeObserver::class);

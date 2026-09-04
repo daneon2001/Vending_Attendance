@@ -105,6 +105,11 @@ class VendingMachine extends Model
         return $this->hasMany(Device::class);
     }
 
+    public function attendanceEvents(): HasMany
+    {
+        return $this->hasMany(VendingAttendanceEvent::class);
+    }
+
     public function provisioningTokens(): HasMany
     {
         return $this->hasMany(DeviceProvisioningToken::class);

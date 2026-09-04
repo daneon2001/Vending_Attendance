@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\FortiaMock\FortiaMockEmployeeController;
 use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
 use App\Http\Controllers\Api\OnPrem\OnPremAttendanceController;
 use App\Http\Controllers\Api\OnPrem\OnPremHeartbeatController;
+use App\Http\Controllers\Api\V1\DeviceAttendanceEventBatchController;
+use App\Http\Controllers\Api\V1\DeviceAttendanceEventController;
 use App\Http\Controllers\Api\V1\DeviceBootstrapController;
 use App\Http\Controllers\Api\V1\DeviceConfigurationManifestController;
 use App\Http\Controllers\Api\V1\DeviceEmployeeManifestController;
@@ -41,6 +43,13 @@ Route::prefix('v1/device')->group(function (): void {
             ->middleware('throttle:vending-device-bootstrap');
         Route::post('heartbeat', DeviceHeartbeatController::class)
             ->middleware('throttle:vending-device-heartbeat');
+
+        Route::prefix('attendance/events')->group(function (): void {
+            Route::post('/', DeviceAttendanceEventController::class)
+                ->middleware('throttle:vending-attendance-single');
+            Route::post('batch', DeviceAttendanceEventBatchController::class)
+                ->middleware('throttle:vending-attendance-batch');
+        });
 
         Route::prefix('manifests')->group(function (): void {
             Route::get('status', DeviceManifestStatusController::class)

@@ -20,4 +20,14 @@ return [
             'ack_per_minute' => max(1, (int) env('VENDING_MANIFEST_ACK_PER_MINUTE', 60)),
         ],
     ],
+    'attendance' => [
+        'batch_max_events' => max(1, (int) env('VENDING_ATTENDANCE_BATCH_MAX_EVENTS', 100)),
+        'future_tolerance_seconds' => max(0, (int) env('VENDING_ATTENDANCE_FUTURE_TOLERANCE_SECONDS', 300)),
+        'minimum_captured_year' => max(1970, (int) env('VENDING_ATTENDANCE_MINIMUM_CAPTURED_YEAR', 2000)),
+        'auth_audit_per_minute' => max(1, (int) env('VENDING_ATTENDANCE_AUTH_AUDIT_PER_MINUTE', 10)),
+        'rate_limits' => [
+            'single_per_minute' => max(1, (int) env('VENDING_ATTENDANCE_SINGLE_PER_MINUTE', 120)),
+            'batch_per_minute' => max(1, (int) env('VENDING_ATTENDANCE_BATCH_PER_MINUTE', 30)),
+        ],
+    ],
 ];
