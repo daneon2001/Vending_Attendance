@@ -14,7 +14,7 @@ Items remain unresolved unless repository evidence explicitly answers them.
 10. Average and peak employees assigned per machine.
 11. Owner and approval workflow for EmployeeMachineAssignment.
 12. Fortia contract: transport, fields, status semantics, cursor, SLA and error codes.
-13. SYBI contract: machine identity, lifecycle, locations, versioning and SLA.
+13. SYBIML follow-up contract: definitive deactivation event, source lifecycle semantics, SLA, rate limits, and whether documented optional filters become supported.
 14. Long-term device credential choice (current per-device symmetric HMAC versus asymmetric/hardware-backed keys), operational rotation ceremony, application-key rotation impact, and hardware binding.
 15. Biometric consent, purpose limitation, encryption and access policy.
 16. Retention and deletion periods for templates, events, raw payloads and audit records.
@@ -30,6 +30,8 @@ Items remain unresolved unless repository evidence explicitly answers them.
 26. Versioned history source for Employee status and assignment permission changes; Phase 4 reports unverifiable history rather than reconstructing it.
 27. Projection contract from vending attendance events to Fortia, including retry and reconciliation ownership.
 28. Production SLO and capacity validation with MySQL, HTTP/HMAC, realistic concurrency and infrastructure latency.
+29. Approval workflow for resolving `geofence_review_required` after a SYBIML coordinate correction.
+30. Whether synchronous catalog refresh remains within the administrative request budget or should become a queued job after real latency measurements.
 
 Additional inherited questions:
 

@@ -42,6 +42,8 @@ use App\Console\Commands\FortiaSyncEmployees;
 use App\Console\Commands\FortiaImportClocks;
 use App\Console\Commands\FortiaSyncOperationalCatalogs;
 use App\Console\Commands\SyncPermissionCatalogCommand;
+use App\Console\Commands\SybiSyncVendingCommand;
+use App\Console\Commands\VendingDemoCleanupCommand;
 use App\Console\Commands\VerifyAttendanceIntegrity;
 use Illuminate\Http\Request;
 
@@ -67,9 +69,11 @@ return Application::configure(basePath: dirname(__DIR__))
         FortiaSyncEmployees::class,
         FortiaSyncOperationalCatalogs::class,
         SyncPermissionCatalogCommand::class,
+        SybiSyncVendingCommand::class,
         ReconcileDevicesFromClocks::class,
         VerifyAttendanceIntegrity::class,
         AuditCleanupCommand::class,
+        VendingDemoCleanupCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)

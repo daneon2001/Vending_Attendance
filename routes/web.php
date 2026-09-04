@@ -27,6 +27,7 @@ use App\Http\Controllers\UnitController;
 use App\Http\Controllers\Vending\DeviceAdministrationController;
 use App\Http\Controllers\Vending\EmployeeMachineAssignmentController;
 use App\Http\Controllers\Vending\MachineGeofenceController;
+use App\Http\Controllers\Vending\SybiVendingSyncController;
 use App\Http\Controllers\Vending\VendingMachineController;
 use App\Models\Company;
 use App\Models\Location;
@@ -59,6 +60,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         ->middleware('perm:vending_machines,view')->name('vending-machines.index');
     Route::post('/vending-machines', [VendingMachineController::class, 'store'])
         ->middleware('perm:vending_machines,create')->name('vending-machines.store');
+    Route::post('/vending-machines/sybi-sync', SybiVendingSyncController::class)
+        ->middleware(['perm:vending_machines,manage', 'throttle:3,1'])
+        ->name('vending-machines.sybi-sync');
     Route::get('/vending-machines/{vendingMachine}', [VendingMachineController::class, 'show'])
         ->middleware('perm:vending_machines,view')->name('vending-machines.show');
     Route::put('/vending-machines/{vendingMachine}', [VendingMachineController::class, 'update'])

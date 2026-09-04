@@ -5,7 +5,7 @@
 The vending domain is introduced beside the inherited BiometricoML domain. It does not replace `branches`, `locations`, or `units` and does not use any of them as machine identity.
 
 - **Fortia** remains the employee System of Record. `Employee` is its local projection.
-- **SYBI** is the expected vending-machine catalog System of Record. `sybi_id` is optional until its definitive contract is available.
+- **SYBIML** is the vending-machine catalog System of Record. Its official read-only API is projected by unique `id_sucursal`; `identificador_vending` is not assumed globally unique at the source boundary.
 - **This system** owns assignments, geofences, device association, operational authorization, auditing, and future synchronization state.
 
 ## Entities and relationships
@@ -22,6 +22,12 @@ Employee 1 ── * EmployeeMachineAssignment * ── 1 VendingMachine
 An independent aggregate identified externally by an immutable UUID. `machine_code` is unique; `sybi_id` is unique when present. Textual address is deliberately separate from latitude/longitude. `coordinates_verified` can only represent a real, non-zero coordinate pair.
 
 Operational states are `DRAFT`, `ACTIVE`, `INACTIVE`, `MAINTENANCE`, and `RETIRED`. Relevant operational changes increment `config_version`. Publishing a geofence also increments it.
+
+Catalog origin is explicit (`LOCAL`, `DEMO`, or `SYBI`). A promoted SYBIML machine retains external city/state IDs without fabricating locality names. New promoted rows are `DRAFT`. Source absence marks `SOURCE_MISSING`; it does not delete or retire the machine.
+
+### SybiVendingSourceRecord
+
+The source projection records what SYBIML published independently of operational eligibility. It is uniquely keyed by `sybi_id`, permits repeated `identificador_vending` values across source rows, retains incomplete or zero coordinates, stores typed validation state and codes, and links to a promoted machine only when unambiguous. It stores normalized governed fields and a content hash, never full payloads or credentials.
 
 ### EmployeeMachineAssignment
 
@@ -45,6 +51,11 @@ The inherited `devices.unit_id` remains for legacy BiometricoML behavior. The op
 - `MachineGeofenceService` allocates versions and publishes them transactionally.
 - `GeofenceValidationService` returns structured spatial results, not a boolean.
 - `VendingMachineImportService` accepts generic rows and reports created, updated, unchanged, and rejected counts. It upserts by `sybi_id`, or by `machine_code` when SYBI ID is absent, and protects manually verified coordinates unless an explicit overwrite policy is passed.
+- `SybiVendingApiClient` is the isolated, read-only server-side adapter for the official catalog contract.
+- `SybiVendingSyncService` ingests the durable source projection, detects typed validation issues, records source/operational metrics, protects empty responses, excludes DEMO data, and never modifies local operational relationships.
+- `SybiVendingPromotionService` is the only path from a `READY` source row to `VendingMachine`; it preserves operational `machine_code` uniqueness and the existing coordinate/geofence review policy.
+
+If SYBIML changes the machine coordinates, the machine `config_version` advances and the existing active geofence remains unchanged. `geofence_review_required` makes this boundary visible until an administrator deliberately publishes a replacement geofence version.
 
 ## Audit events
 

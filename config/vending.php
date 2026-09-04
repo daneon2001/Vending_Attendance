@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'demo' => [
+        'admin_password' => env('VENDING_DEMO_ADMIN_PASSWORD'),
+    ],
+
     'device' => [
         'provisioning_token_ttl_minutes' => max(5, (int) env('VENDING_PROVISIONING_TOKEN_TTL_MINUTES', 30)),
         'clock_drift_warning_seconds' => max(30, (int) env('VENDING_CLOCK_DRIFT_WARNING_SECONDS', 300)),

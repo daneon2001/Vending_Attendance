@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\Vending\CoordinateSource;
 use App\Enums\Vending\GeofenceStatus;
+use App\Enums\Vending\SybiVendingSyncStatus;
+use App\Enums\Vending\VendingCatalogSource;
 use App\Enums\Vending\VendingMachineStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -27,7 +29,10 @@ class VendingMachine extends Model
     ];
 
     protected $fillable = [
-        'uuid', 'sybi_id', 'machine_code', 'operational_code', 'name',
+        'uuid', 'sybi_id', 'source', 'sybi_city_id', 'sybi_state_id',
+        'sybi_full_address', 'sybi_last_seen_at', 'sybi_sync_status',
+        'geofence_review_required', 'sybi_coordinates_changed_at',
+        'machine_code', 'operational_code', 'name',
         'address_line', 'neighborhood', 'locality', 'municipality', 'state',
         'postal_code', 'country', 'latitude', 'longitude', 'coordinate_source',
         'coordinates_verified', 'coordinates_verified_at', 'timezone', 'status',
@@ -40,6 +45,13 @@ class VendingMachine extends Model
         return [
             'status' => VendingMachineStatus::class,
             'coordinate_source' => CoordinateSource::class,
+            'source' => VendingCatalogSource::class,
+            'sybi_sync_status' => SybiVendingSyncStatus::class,
+            'sybi_city_id' => 'integer',
+            'sybi_state_id' => 'integer',
+            'sybi_last_seen_at' => 'immutable_datetime',
+            'sybi_coordinates_changed_at' => 'immutable_datetime',
+            'geofence_review_required' => 'boolean',
             'coordinates_verified' => 'boolean',
             'coordinates_verified_at' => 'datetime',
             'installed_at' => 'datetime',
@@ -108,6 +120,11 @@ class VendingMachine extends Model
     public function attendanceEvents(): HasMany
     {
         return $this->hasMany(VendingAttendanceEvent::class);
+    }
+
+    public function sybiSourceRecord(): HasOne
+    {
+        return $this->hasOne(SybiVendingSourceRecord::class, 'promoted_vending_machine_id');
     }
 
     public function provisioningTokens(): HasMany
