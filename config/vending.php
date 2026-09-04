@@ -11,4 +11,13 @@ return [
             'heartbeat_per_minute' => max(1, (int) env('VENDING_HEARTBEAT_PER_MINUTE', 120)),
         ],
     ],
+    'manifests' => [
+        'stale_after_minutes' => max(1, (int) env('VENDING_MANIFEST_STALE_AFTER_MINUTES', 10)),
+        'stale_version_lag' => max(1, (int) env('VENDING_MANIFEST_STALE_VERSION_LAG', 3)),
+        'rate_limits' => [
+            'status_per_minute' => max(1, (int) env('VENDING_MANIFEST_STATUS_PER_MINUTE', 60)),
+            'download_per_minute' => max(1, (int) env('VENDING_MANIFEST_DOWNLOAD_PER_MINUTE', 30)),
+            'ack_per_minute' => max(1, (int) env('VENDING_MANIFEST_ACK_PER_MINUTE', 60)),
+        ],
+    ],
 ];

@@ -3,12 +3,14 @@
 namespace App\Services\Vending;
 
 use App\Enums\DeviceStatus;
+use App\Enums\Vending\ManifestType;
 use App\Exceptions\DeviceProvisioningException;
 use App\Models\Device;
 use App\Models\DeviceProvisioningToken;
 use App\Models\VendingMachine;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DeviceProvisioningService
 {
@@ -85,6 +87,13 @@ class DeviceProvisioningService
                 'used_at' => $now,
                 'used_by_device_id' => $device->id,
             ])->save();
+
+            if (Schema::hasTable('device_manifest_states')) {
+                $device->manifestStates()->createMany(array_map(
+                    fn (ManifestType $type): array => ['manifest_type' => $type->value],
+                    ManifestType::cases(),
+                ));
+            }
 
             AuditLogger::log('device.provisioned', $device, 'Device provisioned for vending machine.', [
                 'after' => [

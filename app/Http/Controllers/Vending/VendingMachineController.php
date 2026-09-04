@@ -17,6 +17,7 @@ use App\Models\Employee;
 use App\Models\EmployeeMachineAssignment;
 use App\Models\MachineGeofence;
 use App\Models\VendingMachine;
+use App\Services\Vending\DeviceManifestStatusService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -60,7 +61,7 @@ class VendingMachineController extends Controller
         return redirect()->route('vending-machines.show', $machine)->with('success', 'Máquina vending creada.');
     }
 
-    public function show(VendingMachine $vendingMachine): Response
+    public function show(VendingMachine $vendingMachine, DeviceManifestStatusService $manifestStatuses): Response
     {
         $vendingMachine->load([
             'geofences' => fn ($query) => $query->orderByDesc('version'),
@@ -94,6 +95,10 @@ class VendingMachineController extends Controller
             ->latest('id')
             ->limit(25)
             ->get();
+
+        $vendingMachine->devices->each(function (Device $device) use ($manifestStatuses): void {
+            $device->setAttribute('manifest_sync', $manifestStatuses->status($device));
+        });
 
         return Inertia::render('VendingMachines/Show', [
             'machine' => $vendingMachine,

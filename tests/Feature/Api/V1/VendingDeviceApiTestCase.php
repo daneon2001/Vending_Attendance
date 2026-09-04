@@ -4,8 +4,11 @@ namespace Tests\Feature\Api\V1;
 
 use App\Enums\Vending\VendingMachineStatus;
 use App\Models\Device;
+use App\Models\Employee;
+use App\Models\EmployeeMachineAssignment;
 use App\Models\VendingMachine;
 use App\Services\Vending\DeviceProvisioningTokenService;
+use App\Services\Vending\MachineAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -22,6 +25,9 @@ abstract class VendingDeviceApiTestCase extends TestCase
             'vending.device.rate_limits.provision_per_minute' => 1000,
             'vending.device.rate_limits.bootstrap_per_minute' => 1000,
             'vending.device.rate_limits.heartbeat_per_minute' => 1000,
+            'vending.manifests.rate_limits.status_per_minute' => 1000,
+            'vending.manifests.rate_limits.download_per_minute' => 1000,
+            'vending.manifests.rate_limits.ack_per_minute' => 1000,
             'onprem.hmac_tolerance_seconds' => 300,
             'onprem.nonce_ttl_seconds' => 600,
         ]);
@@ -44,6 +50,29 @@ abstract class VendingDeviceApiTestCase extends TestCase
     protected function provisioningToken(VendingMachine $machine, $expiresAt = null): array
     {
         return app(DeviceProvisioningTokenService::class)->create($machine, null, $expiresAt);
+    }
+
+    protected function employee(array $attributes = []): Employee
+    {
+        return Employee::query()->create(array_merge([
+            'fortia_employee_id' => fake()->unique()->numberBetween(10000, 99999),
+            'full_name' => fake()->name(),
+            'status' => 'A',
+        ], $attributes));
+    }
+
+    protected function assignment(VendingMachine $machine, Employee $employee, array $attributes = []): EmployeeMachineAssignment
+    {
+        return app(MachineAssignmentService::class)->create($machine, array_merge([
+            'employee_id' => $employee->id,
+            'assignment_type' => 'PRIMARY',
+            'valid_from' => now()->subMinute(),
+            'valid_until' => null,
+            'attendance_allowed' => true,
+            'enrollment_allowed' => false,
+            'maintenance_allowed' => false,
+            'source' => 'TEST',
+        ], $attributes));
     }
 
     /**

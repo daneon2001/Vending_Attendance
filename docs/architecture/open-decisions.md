@@ -22,6 +22,8 @@ Items remain unresolved unless repository evidence explicitly answers them.
 18. OTA/application update channel, signing and rollback.
 19. Availability, latency, recovery and support SLA.
 20. Continuity rules during long outages, clock drift, storage exhaustion and credential expiry.
+21. Delta-manifest threshold, cursor/tombstone format, and retention after FULL SNAPSHOT fleet measurements exist.
+22. Whether sanitized Device ACK error messages require a shorter retention period than manifest state.
 
 Additional inherited questions:
 

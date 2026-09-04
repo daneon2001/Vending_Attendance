@@ -168,6 +168,11 @@ class Device extends Model
         return $this->hasMany(DeviceProvisioningToken::class, 'used_by_device_id');
     }
 
+    public function manifestStates(): HasMany
+    {
+        return $this->hasMany(DeviceManifestState::class);
+    }
+
     public function isOperationalVendingDevice(): bool
     {
         return $this->vending_machine_id !== null

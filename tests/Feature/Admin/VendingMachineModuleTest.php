@@ -81,6 +81,14 @@ class VendingMachineModuleTest extends TestCase
         $machine = $this->machine('WEB-DEVICE');
         $device = $this->device($machine, 'WEB-DEV-1');
 
+        $this->actingAs($user)->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('machine.devices.0.manifest_sync.configuration.server_version', 1)
+                ->where('machine.devices.0.manifest_sync.configuration.applied_version', null)
+                ->where('machine.devices.0.manifest_sync.employees.server_version', 1)
+                ->where('machine.devices.0.manifest_sync.sync_state', 'PENDING'));
+
         $this->actingAs($user)->patch(route('vending-machines.devices.status', [$machine, $device]), [
             'status' => DeviceStatus::SUSPENDED->value,
         ])->assertRedirect();

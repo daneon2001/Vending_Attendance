@@ -17,6 +17,8 @@ class VendingMachine extends Model
 {
     use HasFactory;
 
+    protected $hidden = ['employee_manifest_state_hash'];
+
     private const VERSIONED_ATTRIBUTES = [
         'sybi_id', 'machine_code', 'operational_code', 'status',
         'latitude', 'longitude', 'coordinate_source', 'coordinates_verified',
@@ -43,6 +45,7 @@ class VendingMachine extends Model
             'installed_at' => 'datetime',
             'retired_at' => 'datetime',
             'config_version' => 'integer',
+            'employee_manifest_version' => 'integer',
             'default_geofence_radius_m' => 'integer',
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
@@ -133,5 +136,4 @@ class VendingMachine extends Model
             && $longitude >= -180 && $longitude <= 180
             && ! ($latitude === 0.0 && $longitude === 0.0);
     }
-
 }

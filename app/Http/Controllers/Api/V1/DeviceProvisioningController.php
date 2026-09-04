@@ -42,6 +42,7 @@ class DeviceProvisioningController extends Controller
                 'identity_header' => 'X-Device-Id',
             ],
             'message' => 'Credential is returned once and cannot be recovered later.',
+            'server_time' => now()->utc()->toIso8601String(),
         ], 201);
     }
 }

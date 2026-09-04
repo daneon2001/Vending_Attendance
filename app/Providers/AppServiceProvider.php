@@ -89,6 +89,18 @@ class AppServiceProvider extends ServiceProvider
             (int) config('vending.device.rate_limits.heartbeat_per_minute', 120)
         )->by('vending-device-heartbeat:'.($request->header('X-Device-Id') ?: $request->ip())));
 
+        RateLimiter::for('vending-manifest-status', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.manifests.rate_limits.status_per_minute', 60)
+        )->by('vending-manifest-status:'.($request->header('X-Device-Id') ?: $request->ip())));
+
+        RateLimiter::for('vending-manifest-download', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.manifests.rate_limits.download_per_minute', 30)
+        )->by('vending-manifest-download:'.($request->header('X-Device-Id') ?: $request->ip())));
+
+        RateLimiter::for('vending-manifest-ack', fn (Request $request) => Limit::perMinute(
+            (int) config('vending.manifests.rate_limits.ack_per_minute', 60)
+        )->by('vending-manifest-ack:'.($request->header('X-Device-Id') ?: $request->ip())));
+
         AttendanceRecord::observe(AttendanceRecordObserver::class);
         AttendanceAudit::observe(AttendanceAuditObserver::class);
         Employee::observe(EmployeeObserver::class);

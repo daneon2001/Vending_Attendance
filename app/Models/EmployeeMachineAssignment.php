@@ -105,6 +105,14 @@ class EmployeeMachineAssignment extends Model
         return $query->where('maintenance_allowed', true);
     }
 
+    public function scopeWithRelevantPermission(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $permissions) => $permissions
+            ->where('attendance_allowed', true)
+            ->orWhere('enrollment_allowed', true)
+            ->orWhere('maintenance_allowed', true));
+    }
+
     public function revoke(?int $actorId = null, ?string $reason = null, DateTimeInterface|string|null $at = null): void
     {
         $this->forceFill([

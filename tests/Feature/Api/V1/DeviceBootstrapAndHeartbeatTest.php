@@ -70,7 +70,7 @@ class DeviceBootstrapAndHeartbeatTest extends VendingDeviceApiTestCase
 
         $device = $provisioned['device']->fresh();
         $this->assertNotNull($device->last_seen_at);
-        $this->assertSame(1, $device->config_version_applied);
+        $this->assertNull($device->config_version_applied, 'Heartbeat telemetry must not replace an explicit manifest ACK.');
         $this->assertSame(4, $device->pending_events_count);
         $this->assertGreaterThanOrEqual(599, $device->clock_drift_seconds);
         $this->assertDatabaseHas('audit_logs', ['event' => 'device.clock_drift_detected', 'auditable_id' => $device->id]);

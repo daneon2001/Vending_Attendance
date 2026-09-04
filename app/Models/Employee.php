@@ -23,6 +23,8 @@ class Employee extends Model
 
     private const SYNC_READY_FACE_STATUSES = ['enrolled', 'ready'];
 
+    public const VENDING_ACTIVE_STATUSES = ['A', 'ACTIVE', 'active'];
+
     protected $fillable = [
         'fortia_employee_id',
         'company_id',
@@ -157,6 +159,11 @@ class Employee extends Model
                 'status', 'source', 'revoked_at', 'revocation_reason',
             ])
             ->withTimestamps();
+    }
+
+    public function scopeActiveForVending(Builder $query): Builder
+    {
+        return $query->whereIn('status', self::VENDING_ACTIVE_STATUSES);
     }
 
     public function getFingerprintStatusAttribute(): string

@@ -28,7 +28,6 @@ class DeviceHeartbeatController extends Controller
         $device->forceFill([
             'app_version' => $data['app_version'] ?? $device->app_version,
             'platform_version' => $data['platform_version'] ?? $device->platform_version,
-            'config_version_applied' => $appliedVersion ?? $device->config_version_applied,
             'battery_level' => $data['battery_level'] ?? null,
             'storage_free_mb' => $data['storage_free_mb'] ?? null,
             'pending_events_count' => $data['pending_events_count'] ?? null,

@@ -6,6 +6,8 @@
 
 An optional signed query parameter, `config_version_applied`, reports the snapshot already installed on the device. If it equals the server machine version, `configuration_changed` is `false`; otherwise it is `true`. Phase 2 always returns a small consistent snapshot and does not implement deltas.
 
+As of Phase 3 this query value is comparison-only. Bootstrap and heartbeat never persist an applied version; only a valid `POST /api/v1/device/manifests/ack` with status `APPLIED` advances manifest state.
+
 ## Response
 
 ```json

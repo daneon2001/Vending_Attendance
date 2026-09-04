@@ -16,12 +16,10 @@ class DeviceBootstrapController extends Controller
         /** @var Device $device */
         $device = $request->attributes->get('vending_device');
         $machine = $device->vendingMachine()->firstOrFail();
-        $geofence = $machine->geofences()->effectiveAt(now())->first();
+        $geofence = $machine->activeGeofence()->first();
         $appliedVersion = $request->validated('config_version_applied');
 
         if ($appliedVersion !== null) {
-            $device->forceFill(['config_version_applied' => $appliedVersion])->save();
-
             if ((int) $appliedVersion > (int) $machine->config_version) {
                 AuditLogger::log('device.invalid_configuration_version', $device, 'Device reported a future configuration version.', [
                     'device_version' => (int) $appliedVersion,

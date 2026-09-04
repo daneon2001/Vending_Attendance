@@ -20,7 +20,11 @@ use App\Http\Controllers\Api\FortiaMock\FortiaMockSyncController;
 use App\Http\Controllers\Api\OnPrem\OnPremAttendanceController;
 use App\Http\Controllers\Api\OnPrem\OnPremHeartbeatController;
 use App\Http\Controllers\Api\V1\DeviceBootstrapController;
+use App\Http\Controllers\Api\V1\DeviceConfigurationManifestController;
+use App\Http\Controllers\Api\V1\DeviceEmployeeManifestController;
 use App\Http\Controllers\Api\V1\DeviceHeartbeatController;
+use App\Http\Controllers\Api\V1\DeviceManifestAckController;
+use App\Http\Controllers\Api\V1\DeviceManifestStatusController;
 use App\Http\Controllers\Api\V1\DeviceProvisioningController;
 use App\Http\Controllers\Api\V1\EmployeeVendingMachineController;
 use App\Http\Controllers\Api\V1\GeofenceValidationController as V1GeofenceValidationController;
@@ -37,6 +41,17 @@ Route::prefix('v1/device')->group(function (): void {
             ->middleware('throttle:vending-device-bootstrap');
         Route::post('heartbeat', DeviceHeartbeatController::class)
             ->middleware('throttle:vending-device-heartbeat');
+
+        Route::prefix('manifests')->group(function (): void {
+            Route::get('status', DeviceManifestStatusController::class)
+                ->middleware('throttle:vending-manifest-status');
+            Route::get('configuration', DeviceConfigurationManifestController::class)
+                ->middleware('throttle:vending-manifest-download');
+            Route::get('employees', DeviceEmployeeManifestController::class)
+                ->middleware('throttle:vending-manifest-download');
+            Route::post('ack', DeviceManifestAckController::class)
+                ->middleware('throttle:vending-manifest-ack');
+        });
     });
 });
 
