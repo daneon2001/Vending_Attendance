@@ -1,6 +1,11 @@
 <?php
 
 return [
+    'pilot' => [
+        'scheduler_supervised' => filter_var(env('PILOT_SCHEDULER_SUPERVISED', false), FILTER_VALIDATE_BOOL),
+        'mobile_api_url' => env('PILOT_MOBILE_API_URL', ''),
+    ],
+
     'demo' => [
         'admin_password' => env('VENDING_DEMO_ADMIN_PASSWORD'),
     ],

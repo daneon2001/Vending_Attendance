@@ -112,4 +112,34 @@ describe('manifest synchronization', () => {
     expect(api.manifestStatus).toHaveBeenCalledTimes(1)
     await service.stop()
   })
+
+  it('retries the complete sync after a recoverable startup failure', async () => {
+    vi.useFakeTimers()
+    const connectivity = {
+      start: vi.fn(), stop: vi.fn(), current: () => 'ONLINE',
+      subscribe: (listener: (state: string) => void) => { listener('ONLINE'); return vi.fn() },
+    } as unknown as ConnectivityService
+    const store = {
+      getAppliedManifestVersion: vi.fn(async () => 1), applyBootstrap: vi.fn(),
+      getPendingOutbox: vi.fn(async () => []),
+      getSummary: vi.fn(async () => ({ configurationVersion: 1, pendingEvents: 0 })),
+      updateClockDrift: vi.fn(),
+    } as unknown as EdgeStore
+    const api = {
+      bootstrap: vi.fn()
+        .mockRejectedValueOnce(new Error('server unavailable'))
+        .mockResolvedValue({}),
+      manifestStatus: vi.fn(async () => ({ configuration: { changed: false }, employees: { changed: false } })),
+      heartbeat: vi.fn(async () => ({ clock_drift_seconds: 0, clock_drift_warning: false, next_heartbeat_seconds: 60 })),
+    } as unknown as EdgeApiService
+    const service = new EdgeSyncService(api, store, connectivity, 50, 0)
+
+    await service.start()
+    expect(api.bootstrap).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(30_100)
+    expect(api.bootstrap).toHaveBeenCalledTimes(2)
+    expect(api.manifestStatus).toHaveBeenCalledOnce()
+    expect(api.heartbeat).toHaveBeenCalledOnce()
+    await service.stop()
+  })
 })

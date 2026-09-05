@@ -71,6 +71,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         ->middleware('perm:vending_machines,manage')->name('vending-releases.policy.update');
     Route::post('/vending/releases/{mobileRelease}/targets', [MobileReleaseController::class, 'addTarget'])
         ->middleware('perm:vending_machines,manage')->name('vending-releases.targets.store');
+    Route::patch('/vending/releases/{mobileRelease}/block', [MobileReleaseController::class, 'block'])
+        ->middleware('perm:vending_machines,manage')->name('vending-releases.block');
     Route::get('/vending-machines', [VendingMachineController::class, 'index'])
         ->middleware('perm:vending_machines,view')->name('vending-machines.index');
     Route::post('/vending-machines', [VendingMachineController::class, 'store'])

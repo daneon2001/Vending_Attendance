@@ -3,6 +3,7 @@
 namespace App\Services\Vending;
 
 use App\Enums\Vending\MobileReleaseChannel;
+use App\Enums\Vending\MobileReleaseStatus;
 use App\Enums\Vending\MobileVersionStatus;
 use App\Models\Device;
 use App\Models\MobileRelease;
@@ -46,9 +47,9 @@ class MobileVersionPolicyService
             return $this->result(MobileVersionStatus::UNKNOWN, $policy);
         }
 
-        $minimum = $policy->minimumRelease;
-        $current = $policy->currentRelease;
-        $recommended = $policy->recommendedRelease;
+        $minimum = $this->published($policy->minimumRelease);
+        $current = $this->published($policy->currentRelease);
+        $recommended = $this->published($policy->recommendedRelease);
 
         if ($minimum && $this->isOlderThan($device, $minimum)) {
             return $this->result(MobileVersionStatus::UNSUPPORTED, $policy);
@@ -74,6 +75,10 @@ class MobileVersionPolicyService
 
     public function eligibleForRollout(Device $device, MobileRelease $release): bool
     {
+        if ($release->status !== MobileReleaseStatus::PUBLISHED) {
+            return false;
+        }
+
         $targets = $release->relationLoaded('targets') ? $release->targets : $release->targets()->get();
         $targetMatches = $targets->isEmpty() || $targets->contains(function ($target) use ($device): bool {
             return match ($target->target_type->value) {
@@ -129,7 +134,8 @@ class MobileVersionPolicyService
     /** @return array<string, mixed> */
     private function result(MobileVersionStatus $status, ?MobileReleasePolicy $policy): array
     {
-        $serialize = static fn (?MobileRelease $release): ?array => $release ? [
+        $serialize = static fn (?MobileRelease $release): ?array => $release
+            && $release->status === MobileReleaseStatus::PUBLISHED ? [
             'uuid' => $release->uuid,
             'version' => $release->version,
             'build_number' => (int) $release->build_number,
@@ -143,6 +149,11 @@ class MobileVersionPolicyService
             'recommended' => $serialize($policy?->recommendedRelease),
             'minimum' => $serialize($policy?->minimumRelease),
         ];
+    }
+
+    private function published(?MobileRelease $release): ?MobileRelease
+    {
+        return $release?->status === MobileReleaseStatus::PUBLISHED ? $release : null;
     }
 
     private function key(string $platform, string $channel): string

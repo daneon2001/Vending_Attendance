@@ -51,6 +51,34 @@ class MobileReleaseManagementService
         AuditLogger::log('mobile_release.target_added', $release, 'Mobile release rollout target added.', $attributes);
     }
 
+    public function block(MobileRelease $release, ?User $actor): MobileRelease
+    {
+        return DB::transaction(function () use ($release, $actor): MobileRelease {
+            $locked = MobileRelease::query()->whereKey($release->getKey())->lockForUpdate()->firstOrFail();
+            if ($locked->status === MobileReleaseStatus::BLOCKED) {
+                return $locked;
+            }
+            if ($locked->status !== MobileReleaseStatus::PUBLISHED) {
+                throw ValidationException::withMessages([
+                    'release' => 'Sólo una release publicada puede bloquearse.',
+                ]);
+            }
+
+            $locked->forceFill([
+                'status' => MobileReleaseStatus::BLOCKED,
+                'rollout_percentage' => 0,
+            ])->save();
+            AuditLogger::log('mobile_release.blocked', $locked, 'Mobile release rollout blocked.', [
+                'actor_id' => $actor?->id,
+                'version' => $locked->version,
+                'build_number' => $locked->build_number,
+                'rollout_percentage' => 0,
+            ]);
+
+            return $locked;
+        });
+    }
+
     public function updatePolicy(array $attributes, ?User $actor): MobileReleasePolicy
     {
         $ids = array_filter(Arr::only($attributes, [

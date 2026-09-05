@@ -41,6 +41,8 @@ class FleetMaintenanceAndUiTest extends TestCase
 
         $this->artisan('device-nonces:prune --batch=100')->assertSuccessful();
         $this->assertDatabaseCount('device_nonces', 6);
+        $this->artisan('device-nonces:prune --batch=100')->assertSuccessful();
+        $this->assertDatabaseCount('device_nonces', 1);
     }
 
     public function test_fleet_dashboard_and_registry_render_without_per_device_manifest_queries(): void
@@ -164,6 +166,30 @@ class FleetMaintenanceAndUiTest extends TestCase
         $this->assertDatabaseCount('mobile_release_targets', 2);
         $this->assertTrue(app(\App\Services\Vending\MobileVersionPolicyService::class)
             ->eligibleForRollout($device, $release->load('targets')));
+    }
+
+    public function test_published_release_can_be_blocked_and_is_no_longer_eligible(): void
+    {
+        $user = User::factory()->create();
+        $device = $this->device($this->machine());
+        $release = MobileRelease::query()->create([
+            'platform' => 'ANDROID', 'channel' => 'PRODUCTION', 'version' => '3.1.0',
+            'build_number' => 31, 'status' => 'PUBLISHED',
+            'artifact_url' => 'https://releases.example.test/app.apk',
+            'artifact_sha256' => str_repeat('d', 64), 'rollout_percentage' => 100,
+            'released_at' => now(),
+        ]);
+
+        $this->actingAs($user)->patch(route('vending-releases.block', $release))->assertRedirect();
+
+        $release->refresh();
+        $this->assertSame('BLOCKED', $release->status->value);
+        $this->assertSame(0, $release->rollout_percentage);
+        $this->assertFalse(app(\App\Services\Vending\MobileVersionPolicyService::class)
+            ->eligibleForRollout($device, $release));
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'mobile_release.blocked', 'auditable_id' => $release->id,
+        ]);
     }
 
     public function test_registry_filters_manifest_lag_without_fetching_another_machine(): void

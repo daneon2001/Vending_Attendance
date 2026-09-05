@@ -59,4 +59,14 @@ class MobileReleaseController extends Controller
 
         return back()->with('success', 'Target de rollout agregado.');
     }
+
+    public function block(
+        \Illuminate\Http\Request $request,
+        MobileRelease $mobileRelease,
+        MobileReleaseManagementService $service,
+    ): RedirectResponse {
+        $service->block($mobileRelease, $request->user());
+
+        return back()->with('success', 'Release bloqueada; el rollout quedó en 0%.');
+    }
 }

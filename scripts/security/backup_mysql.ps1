@@ -35,18 +35,46 @@ function Get-EnvValue {
     return $value
 }
 
+function Resolve-DatabaseTool {
+    param([string]$ConfiguredPath, [string]$Name)
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredPath) -and (Test-Path -LiteralPath $ConfiguredPath)) {
+        return (Resolve-Path -LiteralPath $ConfiguredPath).Path
+    }
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    $laragonRoot = "C:\laragon\bin\mysql"
+    if (Test-Path -LiteralPath $laragonRoot) {
+        $candidate = Get-ChildItem -LiteralPath $laragonRoot -Filter "$Name.exe" -Recurse -File |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if ($candidate) {
+            return $candidate.FullName
+        }
+    }
+
+    throw "$Name executable not found. Configure its path in .env."
+}
+
 $envFile = Join-Path $ProjectRoot ".env"
-$appName = Get-EnvValue -EnvFile $envFile -Key "APP_NAME" -DefaultValue "asistencias_fortia"
+$appName = Get-EnvValue -EnvFile $envFile -Key "APP_NAME" -DefaultValue "vending_attendance"
 $dbHost = Get-EnvValue -EnvFile $envFile -Key "DB_HOST" -DefaultValue "127.0.0.1"
 $dbPort = Get-EnvValue -EnvFile $envFile -Key "DB_PORT" -DefaultValue "3306"
 $dbName = Get-EnvValue -EnvFile $envFile -Key "DB_DATABASE" -DefaultValue ""
 $dbUser = Get-EnvValue -EnvFile $envFile -Key "DB_USERNAME" -DefaultValue ""
 $dbPass = Get-EnvValue -EnvFile $envFile -Key "DB_PASSWORD" -DefaultValue ""
 $mysqldumpPath = Get-EnvValue -EnvFile $envFile -Key "MYSQLDUMP_PATH" -DefaultValue "mysqldump"
+$mysqldumpPath = Resolve-DatabaseTool -ConfiguredPath $mysqldumpPath -Name "mysqldump"
 $offsitePath = Get-EnvValue -EnvFile $envFile -Key "BACKUP_OFFSITE_PATH" -DefaultValue ""
 
 if ([string]::IsNullOrWhiteSpace($dbName) -or [string]::IsNullOrWhiteSpace($dbUser)) {
     throw "DB_DATABASE and DB_USERNAME are required in .env"
+}
+
+$allowedPrefix = Get-EnvValue -EnvFile $envFile -Key "VENDING_BACKUP_ALLOWED_DB_PREFIX" -DefaultValue "vending_attendance_"
+if ([string]::IsNullOrWhiteSpace($allowedPrefix) -or -not $dbName.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing backup: DB_DATABASE must start with the configured vending prefix."
 }
 
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
@@ -64,10 +92,18 @@ $zipPath = Join-Path $BackupRoot "$baseName.zip"
 $shaPath = Join-Path $BackupRoot "$baseName.sha256"
 $auditLogPath = Join-Path $ProjectRoot "storage\\logs\\backup-audit.log"
 
+$clientDefaultsPath = [System.IO.Path]::GetTempFileName()
+$clientDefaults = @(
+    "[client]",
+    "host=$dbHost",
+    "port=$dbPort",
+    "user=$dbUser",
+    "password=$dbPass"
+) -join [Environment]::NewLine
+[System.IO.File]::WriteAllText($clientDefaultsPath, $clientDefaults, [System.Text.Encoding]::ASCII)
+
 $dumpArgs = @(
-    "--host=$dbHost",
-    "--port=$dbPort",
-    "--user=$dbUser",
+    "--defaults-extra-file=$clientDefaultsPath",
     "--single-transaction",
     "--quick",
     "--routines",
@@ -76,10 +112,6 @@ $dumpArgs = @(
     "--default-character-set=utf8mb4",
     $dbName
 )
-
-if (-not [string]::IsNullOrWhiteSpace($dbPass)) {
-    $dumpArgs = @("--password=$dbPass") + $dumpArgs
-}
 
 $dumpError = ""
 $status = "ok"
@@ -91,7 +123,7 @@ try {
         -ArgumentList $dumpArgs `
         -RedirectStandardOutput $sqlPath `
         -RedirectStandardError $stderrFile `
-        -NoNewWindow `
+        -WindowStyle Hidden `
         -PassThru `
         -Wait
 
@@ -144,5 +176,8 @@ catch {
 finally {
     if (Test-Path $stderrFile) {
         Remove-Item -Path $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $clientDefaultsPath) {
+        Remove-Item -LiteralPath $clientDefaultsPath -Force -ErrorAction SilentlyContinue
     }
 }

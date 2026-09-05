@@ -72,16 +72,6 @@ class VerifyDeviceHmac
         $now = now();
         $nonceTtlSeconds = max(60, (int) config('onprem.nonce_ttl_seconds', 600));
 
-        $nonceAlreadyUsed = DeviceNonce::query()
-            ->where('device_id', $device->id)
-            ->where('nonce', $nonce)
-            ->where('expires_at', '>=', $now)
-            ->exists();
-
-        if ($nonceAlreadyUsed) {
-            return $this->errorResponse(409, 'NONCE_REPLAY', 'Nonce already used.');
-        }
-
         $rawBody = (string) $request->getContent();
         $bodyHash = hash('sha256', $rawBody);
         $canonical = $this->canonicalString(

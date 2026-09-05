@@ -1,6 +1,7 @@
 import type { CredentialStore } from '@/security/DeviceCredentialStore'
 import { createDeviceHmacHeaders } from '@/security/hmac'
 import { EdgeError } from '@/domain/errors'
+import { fetchWithTimeout } from './fetchWithTimeout'
 
 const platformFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 
@@ -9,6 +10,7 @@ export class DeviceApiClient {
     private readonly baseUrl: string,
     private readonly credentials: CredentialStore,
     private readonly fetcher: typeof fetch = platformFetch,
+    private readonly timeoutMs = 15_000,
   ) {}
 
   async request<T>(method: 'GET' | 'POST', path: string, payload?: unknown): Promise<T> {
@@ -28,7 +30,7 @@ export class DeviceApiClient {
       rawBody,
     })
 
-    const response = await this.fetcher(url, {
+    const response = await fetchWithTimeout(this.fetcher, url, {
       method,
       headers: {
         Accept: 'application/json',
@@ -36,7 +38,7 @@ export class DeviceApiClient {
         ...headers,
       },
       body: payload === undefined ? undefined : rawBody,
-    })
+    }, this.timeoutMs)
 
     const body = await response.json().catch(() => ({}))
     if (!response.ok) {

@@ -1,5 +1,12 @@
 apply plugin: 'com.android.application'
 
+def releaseStoreFile = System.getenv('VENDING_ANDROID_KEYSTORE')
+def releaseStorePassword = System.getenv('VENDING_ANDROID_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('VENDING_ANDROID_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('VENDING_ANDROID_KEY_PASSWORD')
+def releaseSigningConfigured = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword]
+    .every { it != null && !it.trim().isEmpty() }
+
 android {
     namespace "com.medicalife.vendingattendance"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,11 +23,46 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+}
+
+tasks.register('verifyPilotReleaseConfiguration') {
+    doLast {
+        def deploymentMode = System.getenv('VITE_DEPLOYMENT_MODE') ?: ''
+        def apiUrl = System.getenv('VITE_API_BASE_URL') ?: ''
+        if (!(deploymentMode in ['pilot', 'production'])) {
+            throw new GradleException('Release requires VITE_DEPLOYMENT_MODE=pilot or production.')
+        }
+        if (!apiUrl.toLowerCase().startsWith('https://')) {
+            throw new GradleException('Release requires an HTTPS VITE_API_BASE_URL.')
+        }
+        if (!releaseSigningConfigured || !file(releaseStoreFile).exists()) {
+            throw new GradleException('Release signing must be supplied through VENDING_ANDROID_* environment variables.')
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == 'preReleaseBuild') {
+        dependsOn tasks.named('verifyPilotReleaseConfiguration')
     }
 }
 

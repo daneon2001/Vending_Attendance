@@ -23,6 +23,8 @@ export class EdgeSyncService {
   private appHandle: PluginListenerHandle | null = null
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null
   private started = false
+  private needsFullSync = false
+  private recoveryAttempts = 0
   private lastError: { category: string; code: string; at: string } | null = null
   private state: SyncViewState = {
     phase: 'IDLE',
@@ -70,7 +72,7 @@ export class EdgeSyncService {
     await this.connectivity.stop()
   }
 
-  async syncNow(_trigger: 'startup' | 'network-restored' | 'manual' | 'attendance' | 'foreground'): Promise<void> {
+  async syncNow(_trigger: 'startup' | 'network-restored' | 'manual' | 'attendance' | 'foreground' | 'recovery'): Promise<void> {
     if (this.connectivity.current() !== 'ONLINE') {
       this.publish({ phase: 'OFFLINE', message: 'Sin conexión; sincronización pendiente.' })
       await this.refreshSummary()
@@ -93,6 +95,8 @@ export class EdgeSyncService {
       if (status.employees.changed) await this.syncEmployees()
 
       const heartbeat = await this.sendHeartbeat()
+      this.needsFullSync = false
+      this.recoveryAttempts = 0
       this.publish({
         phase: 'IDLE',
         message: 'Sincronización completa.',
@@ -101,13 +105,15 @@ export class EdgeSyncService {
       await this.refreshSummary()
       this.scheduleHeartbeat(heartbeat.next_heartbeat_seconds)
     } catch (error) {
+      this.needsFullSync = true
+      this.recoveryAttempts++
       this.lastError = this.classifyError(error)
       this.publish({
         phase: 'ERROR',
         message: error instanceof Error ? error.message : 'Falló la sincronización.',
       })
       await this.refreshSummary()
-      this.scheduleHeartbeat(60)
+      this.scheduleHeartbeat(Math.min(300, 15 * (2 ** Math.min(this.recoveryAttempts, 5))))
     }
   }
 
@@ -144,6 +150,10 @@ export class EdgeSyncService {
       this.scheduleHeartbeat(30)
       return
     }
+    if (this.needsFullSync) {
+      await this.syncNow('recovery')
+      return
+    }
     try {
       const heartbeat = await this.sendHeartbeat()
       this.scheduleHeartbeat(heartbeat.next_heartbeat_seconds)
@@ -166,7 +176,7 @@ export class EdgeSyncService {
             ? 'SQLITE'
             : code.includes('GEOFENCE')
               ? 'GEOFENCE'
-              : code === 'OFFLINE'
+              : (code === 'OFFLINE' || code === 'NETWORK_TIMEOUT')
                 ? 'NETWORK'
                 : 'ATTENDANCE'
 

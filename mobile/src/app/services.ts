@@ -14,10 +14,15 @@ import { EdgeSyncService } from '@/services/EdgeSyncService'
 export const credentialStore = new NativeDeviceCredentialStore()
 export const edgeStore = new SqliteEdgeStore()
 export const connectivityService = new ConnectivityService()
-export const deviceApiClient = new DeviceApiClient(runtimeConfig.apiBaseUrl, credentialStore)
+export const deviceApiClient = new DeviceApiClient(
+  runtimeConfig.apiBaseUrl,
+  credentialStore,
+  undefined,
+  runtimeConfig.httpTimeoutMs,
+)
 export const edgeApi = new EdgeApiService(deviceApiClient)
 export const provisioningService = new ProvisioningService(
-  new ProvisioningApiClient(runtimeConfig.apiBaseUrl),
+  new ProvisioningApiClient(runtimeConfig.apiBaseUrl, undefined, runtimeConfig.httpTimeoutMs),
   credentialStore,
   edgeStore,
 )

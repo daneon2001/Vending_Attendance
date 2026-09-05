@@ -55,6 +55,6 @@ async function initializeEdgeClient(): Promise<void> {
       await router.replace('/provision')
     }
   } catch {
-    await router.replace('/provision')
+    await router.replace('/startup-error')
   }
 }

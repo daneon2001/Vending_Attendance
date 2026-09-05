@@ -6,6 +6,7 @@ enum MobileReleaseStatus: string
 {
     case DRAFT = 'DRAFT';
     case PUBLISHED = 'PUBLISHED';
+    case BLOCKED = 'BLOCKED';
     case RETIRED = 'RETIRED';
 
     public static function values(): array

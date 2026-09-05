@@ -12,6 +12,34 @@ use Tests\Feature\Api\V1\VendingDeviceApiTestCase;
 
 class VendingFleetLoadBenchmarkTest extends VendingDeviceApiTestCase
 {
+    public function test_reconnect_storm_cohorts_on_disposable_mysql(): void
+    {
+        if (getenv('RUN_VENDING_RECONNECT_STORM') !== '1') {
+            $this->markTestSkipped('Set RUN_VENDING_RECONNECT_STORM=1 explicitly.');
+        }
+        $this->assertSame('mysql', DB::getDriverName());
+        $database = (string) DB::connection()->getDatabaseName();
+        $this->assertMatchesRegularExpression('/(?:^|_)testing(?:_|$)/', $database);
+        config([
+            'vending.device.rate_limits.heartbeat_per_minute' => 100000,
+            'vending.manifests.rate_limits.status_per_minute' => 100000,
+            'vending.attendance.rate_limits.batch_per_minute' => 100000,
+        ]);
+
+        $fixtures = $this->seedFleet(1000);
+        $results = [];
+        foreach ([100, 250, 500, 1000] as $size) {
+            $results[(string) $size] = $this->reconnectCohort(array_slice($fixtures, 0, $size));
+        }
+
+        fwrite(STDERR, "\nRECONNECT_STORM_RESULT=".json_encode([
+            'database' => $database,
+            'execution_model' => 'single_php_worker_sequential_burst',
+            'cohorts' => $results,
+        ], JSON_UNESCAPED_SLASHES)."\n");
+        $this->assertSame(0, array_sum(array_column($results, 'errors')));
+    }
+
     public function test_one_thousand_device_edge_flow_on_disposable_mysql(): void
     {
         if (getenv('RUN_VENDING_FLEET_BENCHMARK') !== '1') {
@@ -182,6 +210,83 @@ class VendingFleetLoadBenchmarkTest extends VendingDeviceApiTestCase
         return collect($fixtureData)->map(function (array $data, string $uuid) use ($devices, $employee): array {
             return array_merge($data, ['device' => $devices->get($uuid), 'employee_id' => $employee->id]);
         })->values()->all();
+    }
+
+    /** @param array<int, array<string, mixed>> $fixtures */
+    private function reconnectCohort(array $fixtures): array
+    {
+        $latencies = [];
+        $errors = 0;
+        $queries = 0;
+        $countQueries = false;
+        DB::listen(function () use (&$countQueries, &$queries): void {
+            if ($countQueries) {
+                $queries++;
+            }
+        });
+        $locksBefore = (int) (DB::selectOne("SHOW STATUS LIKE 'Innodb_row_lock_waits'")->Value ?? 0);
+        $threadsBefore = (int) (DB::selectOne("SHOW STATUS LIKE 'Threads_connected'")->Value ?? 0);
+        $countQueries = true;
+        $cpuBefore = getrusage();
+        $started = hrtime(true);
+
+        foreach ($fixtures as $fixture) {
+            $requests = [
+                ['POST', '/api/v1/device/heartbeat', [
+                    'app_version' => '1.0.0', 'app_build_number' => 1,
+                    'platform_version' => '15', 'config_version_applied' => 1,
+                    'pending_events_count' => 1, 'network_state' => 'ONLINE',
+                    'device_time' => now()->utc()->toIso8601String(),
+                ]],
+                ['GET', '/api/v1/device/manifests/status', []],
+                ['POST', '/api/v1/device/attendance/events/batch', ['events' => [[
+                    'event_uuid' => (string) Str::uuid(),
+                    'employee_id' => (string) $fixture['employee_id'],
+                    'event_type' => 'CHECK_IN',
+                    'captured_at' => now()->utc()->subMinutes(2)->toIso8601String(),
+                    'employee_manifest_version' => 1,
+                    'configuration_version' => 1,
+                    'assignment_uuid' => $fixture['assignment_uuid'],
+                    'device_timezone' => 'America/Mexico_City',
+                    'location' => ['latitude' => 19.4326, 'longitude' => -99.1332, 'accuracy_m' => 5],
+                    'geofence' => ['version' => 1, 'edge_result' => 'INSIDE'],
+                ]]]],
+            ];
+
+            foreach ($requests as [$method, $path, $payload]) {
+                $requestStarted = hrtime(true);
+                $response = $this->signedDeviceRequest($method, $path, $payload, $fixture['device'], $fixture['credential']);
+                $latencies[] = (hrtime(true) - $requestStarted) / 1_000_000;
+                if ($response->status() !== 200) {
+                    $errors++;
+                }
+            }
+        }
+
+        $duration = (hrtime(true) - $started) / 1_000_000_000;
+        $cpuAfter = getrusage();
+        sort($latencies);
+        $countQueries = false;
+        $locksAfter = (int) (DB::selectOne("SHOW STATUS LIKE 'Innodb_row_lock_waits'")->Value ?? 0);
+        $threadsAfter = (int) (DB::selectOne("SHOW STATUS LIKE 'Threads_connected'")->Value ?? 0);
+
+        return [
+            'devices' => count($fixtures),
+            'requests' => count($latencies),
+            'window_seconds' => round($duration, 3),
+            'throughput_rps' => round(count($latencies) / $duration, 2),
+            'p50_ms' => round($this->percentile($latencies, 50), 2),
+            'p95_ms' => round($this->percentile($latencies, 95), 2),
+            'p99_ms' => round($this->percentile($latencies, 99), 2),
+            'errors' => $errors,
+            'query_count' => $queries,
+            'queries_per_request' => round($queries / count($latencies), 2),
+            'db_connections_before' => $threadsBefore,
+            'db_connections_after' => $threadsAfter,
+            'db_lock_waits_delta' => max(0, $locksAfter - $locksBefore),
+            'cpu_seconds' => round($this->cpuSeconds($cpuBefore, $cpuAfter), 3),
+            'peak_memory_mb' => round(memory_get_peak_usage(true) / 1048576, 2),
+        ];
     }
 
     /** @param callable(array<string,mixed>):void $callback */
