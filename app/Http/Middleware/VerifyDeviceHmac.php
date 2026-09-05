@@ -72,10 +72,6 @@ class VerifyDeviceHmac
         $now = now();
         $nonceTtlSeconds = max(60, (int) config('onprem.nonce_ttl_seconds', 600));
 
-        DeviceNonce::query()
-            ->where('expires_at', '<', $now)
-            ->delete();
-
         $nonceAlreadyUsed = DeviceNonce::query()
             ->where('device_id', $device->id)
             ->where('nonce', $nonce)

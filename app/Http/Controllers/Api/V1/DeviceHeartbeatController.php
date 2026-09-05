@@ -22,15 +22,23 @@ class DeviceHeartbeatController extends Controller
         $clockDrift = $now->timestamp - $deviceTime->timestamp;
         $driftThreshold = (int) config('vending.device.clock_drift_warning_seconds', 300);
         $driftWarning = abs($clockDrift) > $driftThreshold;
+        $previousStatus = $device->last_status;
         $machine = $device->vendingMachine()->firstOrFail();
         $appliedVersion = isset($data['config_version_applied']) ? (int) $data['config_version_applied'] : null;
 
         $device->forceFill([
             'app_version' => $data['app_version'] ?? $device->app_version,
+            'app_build_number' => $data['app_build_number'] ?? $device->app_build_number,
             'platform_version' => $data['platform_version'] ?? $device->platform_version,
             'battery_level' => $data['battery_level'] ?? null,
             'storage_free_mb' => $data['storage_free_mb'] ?? null,
             'pending_events_count' => $data['pending_events_count'] ?? null,
+            'network_state' => $data['network_state'] ?? $device->network_state,
+            'last_error_category' => $data['last_error_category'] ?? $device->last_error_category,
+            'last_error_code' => $data['last_error_code'] ?? $device->last_error_code,
+            'last_error_at' => isset($data['last_error_category'])
+                ? Carbon::parse($data['last_error_at'])
+                : $device->last_error_at,
             'device_time' => $deviceTime,
             'clock_drift_seconds' => $clockDrift,
             'last_seen_at' => $now,
@@ -38,7 +46,7 @@ class DeviceHeartbeatController extends Controller
             'last_status' => $driftWarning ? 'CLOCK_DRIFT_WARNING' : 'OK',
         ])->save();
 
-        if ($driftWarning) {
+        if ($driftWarning && $previousStatus !== 'CLOCK_DRIFT_WARNING') {
             AuditLogger::log('device.clock_drift_detected', $device, 'Device clock drift threshold exceeded.', [
                 'clock_drift_seconds' => $clockDrift,
                 'threshold_seconds' => $driftThreshold,

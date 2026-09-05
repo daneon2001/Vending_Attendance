@@ -56,12 +56,52 @@ class DeviceManifestStatusService
         ];
     }
 
+    /**
+     * Lightweight fleet projection. It uses persisted monotonic versions and
+     * ACK state only; it deliberately does not build or hash full manifests.
+     */
+    public function summary(Device $device, ?Carbon $now = null): array
+    {
+        $now ??= now();
+        $machine = $device->relationLoaded('vendingMachine')
+            ? $device->vendingMachine
+            : $device->vendingMachine()->firstOrFail();
+        $states = ($device->relationLoaded('manifestStates')
+            ? $device->manifestStates
+            : $device->manifestStates()->get())->keyBy(
+                fn (DeviceManifestState $state): string => $state->manifest_type->value,
+            );
+        $configuration = $this->typeStatus(
+            $device,
+            $states->get(ManifestType::CONFIGURATION->value),
+            ManifestType::CONFIGURATION,
+            (int) $machine->config_version,
+            null,
+            $now,
+        );
+        $employees = $this->typeStatus(
+            $device,
+            $states->get(ManifestType::EMPLOYEES->value),
+            ManifestType::EMPLOYEES,
+            (int) $machine->employee_manifest_version,
+            null,
+            $now,
+        );
+
+        return [
+            'configuration' => $configuration,
+            'employees' => $employees,
+            'biometrics' => ['supported' => false],
+            'sync_state' => $this->overallState([$configuration['state'], $employees['state']])->value,
+        ];
+    }
+
     private function typeStatus(
         Device $device,
         ?DeviceManifestState $state,
         ManifestType $type,
         int $serverVersion,
-        string $serverHash,
+        ?string $serverHash,
         Carbon $now,
     ): array {
         $fallbackApplied = $type === ManifestType::CONFIGURATION
@@ -71,14 +111,22 @@ class DeviceManifestStatusService
         $changed = $appliedVersion === null || (int) $appliedVersion !== $serverVersion;
         $syncState = $this->resolveState($device, $state, $serverVersion, $appliedVersion, $changed, $now);
 
-        return [
+        $result = [
             'server_version' => $serverVersion,
-            'server_hash' => $serverHash,
             'applied_version' => $appliedVersion !== null ? (int) $appliedVersion : null,
-            'applied_hash' => $state?->applied_hash,
             'changed' => $changed,
             'state' => $syncState->value,
+            'last_ack_at' => $state?->last_ack_at?->copy()->utc()->toIso8601String(),
+            'last_ack_status' => $state?->last_ack_status?->value,
+            'last_error_code' => $state?->last_error_code,
         ];
+
+        if ($serverHash !== null) {
+            $result['server_hash'] = $serverHash;
+            $result['applied_hash'] = $state?->applied_hash;
+        }
+
+        return $result;
     }
 
     private function resolveState(

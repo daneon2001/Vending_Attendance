@@ -49,7 +49,7 @@ Future Employee and Biometric Manifest versions remain null in this phase.
 
 ## Heartbeat
 
-`POST /api/v1/device/heartbeat` uses the same device identity and HMAC contract. It accepts latest-state telemetry only: app/platform version, applied config version, optional battery, optional free storage, optional pending-event count, and required device time.
+`POST /api/v1/device/heartbeat` uses the same device identity and HMAC contract. It accepts latest-state telemetry only: app version/build, platform version, applied config version, optional battery, optional free storage, optional pending-event count, network state, a sanitized latest error category/code/time, and required device time. The edge client uses the returned `next_heartbeat_seconds` for a lightweight periodic heartbeat; it does not rerun bootstrap or manifest polling each interval.
 
 The server calculates:
 
@@ -57,4 +57,4 @@ The server calculates:
 clock_drift_seconds = server_unix_time - device_unix_time
 ```
 
-Drift does not reject the heartbeat. Absolute drift over the configurable 300-second default produces a response warning and `device.clock_drift_detected` audit event. Reporting a configuration version greater than the server version produces `device.invalid_configuration_version`. Normal heartbeats update current state without creating one audit row per interval.
+Drift does not reject the heartbeat. Absolute drift over the configurable 300-second default produces a response warning. `device.clock_drift_detected` is emitted only when entering the warning state, avoiding one audit row per interval. Reporting a configuration version greater than the server version produces `device.invalid_configuration_version`. Normal heartbeats update current state without an audit row.

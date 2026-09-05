@@ -44,6 +44,7 @@ use App\Console\Commands\FortiaSyncOperationalCatalogs;
 use App\Console\Commands\SyncPermissionCatalogCommand;
 use App\Console\Commands\SybiSyncVendingCommand;
 use App\Console\Commands\VendingDemoCleanupCommand;
+use App\Console\Commands\PruneDeviceNonces;
 use App\Console\Commands\VerifyAttendanceIntegrity;
 use Illuminate\Http\Request;
 
@@ -74,6 +75,7 @@ return Application::configure(basePath: dirname(__DIR__))
         VerifyAttendanceIntegrity::class,
         AuditCleanupCommand::class,
         VendingDemoCleanupCommand::class,
+        PruneDeviceNonces::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Grupo WEB (Inertia, etc.)

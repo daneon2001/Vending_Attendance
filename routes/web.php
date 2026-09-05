@@ -27,7 +27,10 @@ use App\Http\Controllers\UnitController;
 use App\Http\Controllers\Vending\DeviceAdministrationController;
 use App\Http\Controllers\Vending\EmployeeMachineAssignmentController;
 use App\Http\Controllers\Vending\MachineGeofenceController;
+use App\Http\Controllers\Vending\MobileReleaseController;
 use App\Http\Controllers\Vending\SybiVendingSyncController;
+use App\Http\Controllers\Vending\VendingDeviceRegistryController;
+use App\Http\Controllers\Vending\VendingFleetDashboardController;
 use App\Http\Controllers\Vending\VendingMachineController;
 use App\Models\Company;
 use App\Models\Location;
@@ -56,6 +59,18 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
+    Route::get('/vending', VendingFleetDashboardController::class)
+        ->middleware('perm:vending_machines,view')->name('vending-fleet.dashboard');
+    Route::get('/vending/devices', VendingDeviceRegistryController::class)
+        ->middleware('perm:vending_machines,view')->name('vending-devices.index');
+    Route::get('/vending/releases', [MobileReleaseController::class, 'index'])
+        ->middleware('perm:vending_machines,view')->name('vending-releases.index');
+    Route::post('/vending/releases', [MobileReleaseController::class, 'store'])
+        ->middleware('perm:vending_machines,manage')->name('vending-releases.store');
+    Route::put('/vending/releases/policy', [MobileReleaseController::class, 'updatePolicy'])
+        ->middleware('perm:vending_machines,manage')->name('vending-releases.policy.update');
+    Route::post('/vending/releases/{mobileRelease}/targets', [MobileReleaseController::class, 'addTarget'])
+        ->middleware('perm:vending_machines,manage')->name('vending-releases.targets.store');
     Route::get('/vending-machines', [VendingMachineController::class, 'index'])
         ->middleware('perm:vending_machines,view')->name('vending-machines.index');
     Route::post('/vending-machines', [VendingMachineController::class, 'store'])
@@ -81,6 +96,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         ->middleware('perm:vending_machines,manage')->name('vending-machines.provisioning-tokens.revoke');
     Route::patch('/vending-machines/{vendingMachine}/devices/{device}/status', [DeviceAdministrationController::class, 'updateStatus'])
         ->middleware('perm:vending_machines,manage')->name('vending-machines.devices.status');
+    Route::patch('/vending-machines/{vendingMachine}/devices/{device}/release-channel', [DeviceAdministrationController::class, 'updateReleaseChannel'])
+        ->middleware('perm:vending_machines,manage')->name('vending-machines.devices.release-channel');
 
     Route::get('/dashboard/corporativo-reclutamiento', [CorporateRecruitmentDashboardController::class, 'index'])
         ->middleware('perm:dashboard,view')

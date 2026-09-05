@@ -11,7 +11,7 @@ Base prefix: `/api/v1`. Human administration/domain endpoints use `auth:sanctum`
 | POST | `/geofence/validate` | Spatial validation only |
 | POST | `/device/provision` | Consume one provisioning token and issue one Device credential |
 | GET | `/device/bootstrap` | Device-bound initial machine/geofence snapshot |
-| POST | `/device/heartbeat` | Update latest Device telemetry |
+| POST | `/device/heartbeat` | Update bounded latest-state telemetry and receive the next heartbeat interval |
 | GET | `/device/manifests/status` | Compare server and explicitly applied versions |
 | GET | `/device/manifests/configuration` | Download current machine configuration snapshot |
 | GET | `/device/manifests/employees` | Download effective assignment-scoped employee snapshot |

@@ -35,6 +35,20 @@ const navGroups = [
         title: 'OPERACION',
         items: [
             {
+                label: 'Operación vending',
+                description: 'Health, sincronización y alertas',
+                routeName: 'vending-fleet.dashboard',
+                icon: 'dashboard',
+                requiredPermission: { module: 'vending_machines', action: 'view' },
+            },
+            {
+                label: 'Devices vending',
+                description: 'Registro técnico global',
+                routeName: 'vending-devices.index',
+                icon: 'machines',
+                requiredPermission: { module: 'vending_machines', action: 'view' },
+            },
+            {
                 label: 'Panel general',
                 description: 'KPI diarios y alertas',
                 routeName: 'dashboard',
@@ -106,6 +120,13 @@ const navGroups = [
         key: 'administracion',
         title: 'ADMINISTRACION',
         items: [
+            {
+                label: 'Releases móviles',
+                description: 'Política y rollout controlado',
+                routeName: 'vending-releases.index',
+                icon: 'settings',
+                requiredPermission: { module: 'vending_machines', action: 'view' },
+            },
             {
                 label: 'Configuración',
                 description: 'Centro de ajustes y seguridad',

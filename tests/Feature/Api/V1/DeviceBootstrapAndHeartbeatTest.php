@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Enums\DeviceStatus;
+use App\Models\AuditLog;
 use App\Services\Vending\DeviceLifecycleService;
 use App\Services\Vending\MachineGeofenceService;
 
@@ -58,11 +59,16 @@ class DeviceBootstrapAndHeartbeatTest extends VendingDeviceApiTestCase
 
         $this->signedDeviceRequest('POST', '/api/v1/device/heartbeat', [
             'app_version' => '1.2.0',
+            'app_build_number' => 120,
             'platform_version' => '15.1',
             'config_version_applied' => 1,
             'battery_level' => 87.5,
             'storage_free_mb' => 2048,
             'pending_events_count' => 4,
+            'network_state' => 'ONLINE',
+            'last_error_category' => 'SQLITE',
+            'last_error_code' => 'OUTBOX_WRITE_FAILED',
+            'last_error_at' => now()->subMinute()->toIso8601String(),
             'device_time' => now()->subMinutes(10)->toIso8601String(),
         ], $provisioned['device'], $provisioned['credential'])
             ->assertOk()
@@ -72,8 +78,19 @@ class DeviceBootstrapAndHeartbeatTest extends VendingDeviceApiTestCase
         $this->assertNotNull($device->last_seen_at);
         $this->assertNull($device->config_version_applied, 'Heartbeat telemetry must not replace an explicit manifest ACK.');
         $this->assertSame(4, $device->pending_events_count);
+        $this->assertSame(120, $device->app_build_number);
+        $this->assertSame('ONLINE', $device->network_state);
+        $this->assertSame('SQLITE', $device->last_error_category);
         $this->assertGreaterThanOrEqual(599, $device->clock_drift_seconds);
         $this->assertDatabaseHas('audit_logs', ['event' => 'device.clock_drift_detected', 'auditable_id' => $device->id]);
+
+        $this->signedDeviceRequest('POST', '/api/v1/device/heartbeat', [
+            'device_time' => now()->subMinutes(10)->toIso8601String(),
+        ], $device, $provisioned['credential'])->assertOk();
+        $this->assertSame(1, AuditLog::query()
+            ->where('event', 'device.clock_drift_detected')
+            ->where('auditable_id', $device->id)
+            ->count());
     }
 
     public function test_revoked_device_cannot_send_heartbeat(): void

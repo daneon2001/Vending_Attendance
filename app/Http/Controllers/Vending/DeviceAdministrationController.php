@@ -6,10 +6,12 @@ use App\Enums\DeviceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Vending\CreateDeviceProvisioningTokenRequest;
 use App\Http\Requests\Vending\RevokeDeviceProvisioningTokenRequest;
+use App\Http\Requests\Vending\UpdateDeviceReleaseChannelRequest;
 use App\Http\Requests\Vending\UpdateDeviceStatusRequest;
 use App\Models\Device;
 use App\Models\DeviceProvisioningToken;
 use App\Models\VendingMachine;
+use App\Services\Audit\AuditLogger;
 use App\Services\Vending\DeviceLifecycleService;
 use App\Services\Vending\DeviceProvisioningTokenService;
 use Illuminate\Http\JsonResponse;
@@ -56,5 +58,21 @@ class DeviceAdministrationController extends Controller
         $service->transition($device, DeviceStatus::from($request->validated('status')));
 
         return back()->with('success', 'Estado del dispositivo actualizado.');
+    }
+
+    public function updateReleaseChannel(
+        UpdateDeviceReleaseChannelRequest $request,
+        VendingMachine $vendingMachine,
+        Device $device,
+    ): RedirectResponse {
+        abort_unless($device->vending_machine_id === $vendingMachine->id, 404);
+        $before = ['release_channel' => $device->release_channel, 'release_group' => $device->release_group];
+        $device->forceFill($request->safe()->only(['release_channel', 'release_group']))->save();
+        AuditLogger::log('device.release_channel_updated', $device, 'Device release channel updated.', [
+            'old_values' => $before,
+            'new_values' => ['release_channel' => $device->release_channel, 'release_group' => $device->release_group],
+        ]);
+
+        return back()->with('success', 'Canal de release actualizado.');
     }
 }

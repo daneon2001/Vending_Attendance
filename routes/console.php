@@ -93,6 +93,10 @@ Schedule::command('audit:cleanup --optimize')
     ->dailyAt((string) config('audit.cleanup.schedule_time', '03:00'))
     ->withoutOverlapping();
 
+Schedule::command('device-nonces:prune')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 if (config('sybi.vending.sync_enabled', false)) {
     $sybiIntervalMinutes = max(1, (int) config('sybi.vending.sync_interval_minutes', 60));
 

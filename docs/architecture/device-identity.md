@@ -31,7 +31,7 @@ Allowed transitions are `PENDING -> ACTIVE/REVOKED/RETIRED`, `ACTIVE -> SUSPENDE
 
 ## Latest operational state
 
-The device row stores the latest heartbeat state: application/platform version, manifest/config versions applied through explicit ACK, last seen, battery when applicable, free storage, pending-event count, device time, and calculated clock drift. Heartbeats are not appended indefinitely to a telemetry table in this phase and do not advance applied manifest versions.
+The device row stores the latest heartbeat state: application version/build, release channel, platform version, manifest/config versions applied through explicit ACK, last seen, battery when applicable, free storage, pending-event count, network state, sanitized latest error category/code/time, device time, and calculated clock drift. Heartbeats are not appended indefinitely to a telemetry table and do not advance applied manifest versions.
 
 ## Audit boundary
 

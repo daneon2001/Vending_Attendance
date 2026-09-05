@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EdgeSyncService } from '@/services/EdgeSyncService'
 import type { EdgeStore } from '@/storage/EdgeStore'
 import type { ConnectivityService } from '@/services/ConnectivityService'
@@ -7,13 +7,14 @@ import type { EdgeApiService } from '@/api/EdgeApiService'
 vi.mock('@capacitor/device', () => ({ Device: { getInfo: vi.fn(async () => ({ osVersion: '15' })) } }))
 vi.mock('@capacitor/app', () => ({
   App: {
-    getInfo: vi.fn(async () => ({ version: '1.0.0' })),
+    getInfo: vi.fn(async () => ({ version: '1.0.0', build: '10' })),
     addListener: vi.fn(async () => ({ remove: vi.fn() })),
   },
 }))
 vi.mock('@/security/manifestHash', () => ({ manifestHashMatches: vi.fn(async () => true) }))
 
 describe('manifest synchronization', () => {
+  afterEach(() => vi.useRealTimers())
   it('persists each full snapshot before sending APPLIED ACK', async () => {
     const calls: string[] = []
     const store = {
@@ -81,6 +82,34 @@ describe('manifest synchronization', () => {
     connectivityState = 'ONLINE'
     networkListener?.('ONLINE')
     await vi.waitFor(() => expect(api.bootstrap).toHaveBeenCalledOnce())
+    await service.stop()
+  })
+
+  it('sends lightweight periodic heartbeats without polling bootstrap or manifests', async () => {
+    vi.useFakeTimers()
+    const connectivity = {
+      start: vi.fn(), stop: vi.fn(), current: () => 'ONLINE',
+      subscribe: (listener: (state: string) => void) => { listener('ONLINE'); return vi.fn() },
+    } as unknown as ConnectivityService
+    const store = {
+      getAppliedManifestVersion: vi.fn(async () => 1), applyBootstrap: vi.fn(),
+      getPendingOutbox: vi.fn(async () => []),
+      getSummary: vi.fn(async () => ({ configurationVersion: 1, pendingEvents: 0 })),
+      updateClockDrift: vi.fn(),
+    } as unknown as EdgeStore
+    const api = {
+      bootstrap: vi.fn(async () => ({})),
+      manifestStatus: vi.fn(async () => ({ configuration: { changed: false }, employees: { changed: false } })),
+      heartbeat: vi.fn(async () => ({ clock_drift_seconds: 0, clock_drift_warning: false, next_heartbeat_seconds: 15 })),
+    } as unknown as EdgeApiService
+    const service = new EdgeSyncService(api, store, connectivity)
+
+    await service.start()
+    expect(api.heartbeat).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(18_100)
+    expect(api.heartbeat).toHaveBeenCalledTimes(2)
+    expect(api.bootstrap).toHaveBeenCalledTimes(1)
+    expect(api.manifestStatus).toHaveBeenCalledTimes(1)
     await service.stop()
   })
 })

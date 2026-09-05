@@ -21,6 +21,9 @@ export class EdgeSyncService {
   private listeners = new Set<(state: SyncViewState) => void>()
   private unsubscribeConnectivity: (() => void) | null = null
   private appHandle: PluginListenerHandle | null = null
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null
+  private started = false
+  private lastError: { category: string; code: string; at: string } | null = null
   private state: SyncViewState = {
     phase: 'IDLE',
     message: null,
@@ -33,6 +36,7 @@ export class EdgeSyncService {
     private readonly store: EdgeStore,
     private readonly connectivity: ConnectivityService,
     private readonly batchSize = 50,
+    private readonly heartbeatJitterRatio = 0.2,
   ) {}
 
   subscribe(listener: (state: SyncViewState) => void): () => void {
@@ -42,6 +46,7 @@ export class EdgeSyncService {
   }
 
   async start(): Promise<void> {
+    this.started = true
     await this.connectivity.start()
     this.unsubscribeConnectivity = this.connectivity.subscribe((status) => {
       if (status === 'ONLINE') void this.syncNow('network-restored')
@@ -55,6 +60,9 @@ export class EdgeSyncService {
   }
 
   async stop(): Promise<void> {
+    this.started = false
+    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer)
+    this.heartbeatTimer = null
     this.unsubscribeConnectivity?.()
     this.unsubscribeConnectivity = null
     await this.appHandle?.remove()
@@ -84,28 +92,85 @@ export class EdgeSyncService {
       if (status.configuration.changed) await this.syncConfiguration()
       if (status.employees.changed) await this.syncEmployees()
 
-      const summary = await this.store.getSummary()
-      const [info, appInfo] = await Promise.all([Device.getInfo(), App.getInfo()])
-      const heartbeat = await this.api.heartbeat({
-        configVersionApplied: summary.configurationVersion,
-        pendingEvents: summary.pendingEvents,
-        appVersion: appInfo.version,
-        platformVersion: info.osVersion,
-      })
-      await this.store.updateClockDrift(heartbeat.clock_drift_seconds)
+      const heartbeat = await this.sendHeartbeat()
       this.publish({
         phase: 'IDLE',
         message: 'Sincronización completa.',
         clockDriftWarning: heartbeat.clock_drift_warning,
       })
       await this.refreshSummary()
+      this.scheduleHeartbeat(heartbeat.next_heartbeat_seconds)
     } catch (error) {
+      this.lastError = this.classifyError(error)
       this.publish({
         phase: 'ERROR',
         message: error instanceof Error ? error.message : 'Falló la sincronización.',
       })
       await this.refreshSummary()
+      this.scheduleHeartbeat(60)
     }
+  }
+
+  private async sendHeartbeat(): Promise<Awaited<ReturnType<EdgeApiService['heartbeat']>>> {
+    const summary = await this.store.getSummary()
+    const [info, appInfo] = await Promise.all([Device.getInfo(), App.getInfo()])
+    const heartbeat = await this.api.heartbeat({
+      configVersionApplied: summary.configurationVersion,
+      pendingEvents: summary.pendingEvents,
+      appVersion: appInfo.version,
+      appBuildNumber: Number.parseInt(appInfo.build, 10) || undefined,
+      platformVersion: info.osVersion,
+      networkState: this.connectivity.current(),
+      lastError: this.lastError,
+    })
+    this.lastError = null
+    await this.store.updateClockDrift(heartbeat.clock_drift_seconds)
+
+    return heartbeat
+  }
+
+  private scheduleHeartbeat(seconds: number): void {
+    if (!this.started) return
+    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer)
+    const baseSeconds = Math.max(15, Number.isFinite(seconds) ? seconds : 60)
+    const jitter = 1 + ((Math.random() * 2) - 1) * this.heartbeatJitterRatio
+    const delay = Math.max(15, baseSeconds * jitter) * 1000
+    this.heartbeatTimer = setTimeout(() => void this.runPeriodicHeartbeat(), delay)
+  }
+
+  private async runPeriodicHeartbeat(): Promise<void> {
+    if (!this.started) return
+    if (this.connectivity.current() !== 'ONLINE' || this.running) {
+      this.scheduleHeartbeat(30)
+      return
+    }
+    try {
+      const heartbeat = await this.sendHeartbeat()
+      this.scheduleHeartbeat(heartbeat.next_heartbeat_seconds)
+    } catch (error) {
+      this.lastError = this.classifyError(error)
+      this.scheduleHeartbeat(60)
+    }
+    await this.refreshSummary()
+  }
+
+  private classifyError(error: unknown): { category: string; code: string; at: string } {
+    const code = error instanceof EdgeError ? error.code : 'UNKNOWN'
+    const category = code === 'AUTHENTICATION_FAILED'
+      ? 'AUTH'
+      : code.startsWith('GPS') || code === 'LOW_ACCURACY'
+        ? 'GPS'
+        : code.includes('MANIFEST')
+          ? 'MANIFEST'
+          : code === 'DATABASE_ERROR'
+            ? 'SQLITE'
+            : code.includes('GEOFENCE')
+              ? 'GEOFENCE'
+              : code === 'OFFLINE'
+                ? 'NETWORK'
+                : 'ATTENDANCE'
+
+    return { category, code, at: new Date().toISOString() }
   }
 
   private async syncConfiguration(): Promise<void> {

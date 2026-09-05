@@ -143,7 +143,7 @@ class VendingMachineController extends Controller
             ->get();
 
         $vendingMachine->devices->each(function (Device $device) use ($manifestStatuses): void {
-            $device->setAttribute('manifest_sync', $manifestStatuses->status($device));
+            $device->setAttribute('manifest_sync', $manifestStatuses->summary($device));
         });
 
         return Inertia::render('VendingMachines/Show', [

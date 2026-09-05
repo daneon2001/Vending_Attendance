@@ -16,6 +16,7 @@ export interface HeartbeatResponse {
   clock_drift_threshold_seconds: number
   server_config_version: number
   configuration_changed: boolean
+  next_heartbeat_seconds: number
 }
 
 export class EdgeApiService {
@@ -62,13 +63,23 @@ export class EdgeApiService {
     configVersionApplied: number | null
     pendingEvents: number
     appVersion?: string
+    appBuildNumber?: number
     platformVersion?: string
+    networkState?: 'ONLINE' | 'OFFLINE' | 'UNKNOWN'
+    lastError?: { category: string; code: string; at: string } | null
   }): Promise<HeartbeatResponse> {
     return this.client.request('POST', '/api/v1/device/heartbeat', {
       app_version: payload.appVersion,
+      app_build_number: payload.appBuildNumber,
       platform_version: payload.platformVersion,
       config_version_applied: payload.configVersionApplied,
       pending_events_count: payload.pendingEvents,
+      network_state: payload.networkState,
+      ...(payload.lastError ? {
+        last_error_category: payload.lastError.category,
+        last_error_code: payload.lastError.code,
+        last_error_at: payload.lastError.at,
+      } : {}),
       device_time: new Date().toISOString(),
     })
   }
