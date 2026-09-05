@@ -10,6 +10,21 @@ use Illuminate\Support\Facades\DB;
 
 class DeviceProvisioningTest extends VendingDeviceApiTestCase
 {
+    public function test_capacitor_localhost_origin_can_provision_without_web_csrf(): void
+    {
+        $machine = $this->machine();
+        $token = $this->provisioningToken($machine);
+
+        $this->withHeader('Origin', 'https://localhost')
+            ->postJson('/api/v1/device/provision', [
+                'provisioning_token' => $token['plain_token'],
+                'device_serial' => 'CAPACITOR-001',
+                'platform' => 'android',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('machine.uuid', $machine->uuid);
+    }
+
     public function test_valid_single_use_token_provisions_active_device_and_returns_credential_once(): void
     {
         $machine = $this->machine();

@@ -97,6 +97,12 @@ return Application::configure(basePath: dirname(__DIR__))
             SubstituteBindings::class,
         ]);
 
+        // Capacitor runs from a localhost origin, but Device endpoints never use a
+        // human web session: provisioning is token-based and operations use HMAC.
+        $middleware->validateCsrfTokens(except: [
+            'api/v1/device/*',
+        ]);
+
         // Aliases de middleware (los que usarás en las rutas)
         $middleware->alias([
             // auth por defecto, permite usar 'auth' y 'auth:sanctum' en las rutas

@@ -1,0 +1,43 @@
+{
+  "name": "vending-attendance-mobile",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "cap:sync": "cap sync",
+    "android:build": "npm run build && cap sync android && cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "7.1.6",
+    "@capacitor-community/sqlite": "7.0.3",
+    "@capacitor/app": "7.1.0",
+    "@capacitor/core": "7.6.9",
+    "@capacitor/device": "7.0.5",
+    "@capacitor/geolocation": "7.1.8",
+    "@capacitor/network": "7.0.4",
+    "@ionic/vue": "^9.0.0",
+    "@ionic/vue-router": "^9.0.0",
+    "ionicons": "^8.1.0",
+    "vue": "^3.5.0",
+    "vue-router": "^5.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/cli": "7.6.9",
+    "@capacitor/ios": "7.6.9",
+    "@vitejs/plugin-legacy": "^8.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "terser": "^5.16.0",
+    "typescript": "~5.9.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0",
+    "vue-tsc": "3.3.11"
+  },
+  "description": "An Ionic project"
+}

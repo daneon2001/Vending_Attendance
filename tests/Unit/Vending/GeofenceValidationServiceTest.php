@@ -50,6 +50,35 @@ class GeofenceValidationServiceTest extends TestCase
         $this->assertSame('ACCURACY_OVERLAPS_BOUNDARY', $overlap['reason']);
     }
 
+    public function test_shared_mobile_parity_fixtures(): void
+    {
+        $fixtures = json_decode(
+            file_get_contents(dirname(__DIR__, 3).'/tests/Fixtures/vending-geofence-validation.json'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        foreach ($fixtures as $fixture) {
+            $geofence = $this->geofence([
+                'center_latitude' => $fixture['geofence']['latitude'],
+                'center_longitude' => $fixture['geofence']['longitude'],
+                'radius_m' => $fixture['geofence']['radius_m'],
+                'minimum_acceptable_accuracy_m' => $fixture['geofence']['minimum_acceptable_accuracy_m'],
+                'tolerance_m' => $fixture['geofence']['tolerance_m'],
+            ]);
+            $result = $this->service->validate(
+                $geofence,
+                $fixture['location']['latitude'],
+                $fixture['location']['longitude'],
+                $fixture['location']['accuracy_m'],
+                '2026-09-04T12:00:00Z',
+            );
+
+            $this->assertSame($fixture['result'], $result['result'], $fixture['name']);
+            $this->assertSame($fixture['reason'], $result['reason'], $fixture['name']);
+        }
+    }
+
     #[DataProvider('invalidInputProvider')]
     public function test_invalid_inputs_are_rejected(array $attributes, float $latitude, float $longitude, ?float $accuracy): void
     {

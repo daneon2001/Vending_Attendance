@@ -1,0 +1,23 @@
+[
+  {
+    "name": "same point",
+    "geofence": { "latitude": 19.432608, "longitude": -99.133209, "radius_m": 50, "minimum_acceptable_accuracy_m": 30, "tolerance_m": 10 },
+    "location": { "latitude": 19.432608, "longitude": -99.133209, "accuracy_m": 5 },
+    "result": "INSIDE",
+    "reason": "DEFINITELY_INSIDE"
+  },
+  {
+    "name": "clearly outside",
+    "geofence": { "latitude": 19.432608, "longitude": -99.133209, "radius_m": 50, "minimum_acceptable_accuracy_m": 30, "tolerance_m": 10 },
+    "location": { "latitude": 19.434608, "longitude": -99.133209, "accuracy_m": 5 },
+    "result": "OUTSIDE",
+    "reason": "DEFINITELY_OUTSIDE"
+  },
+  {
+    "name": "low accuracy",
+    "geofence": { "latitude": 19.432608, "longitude": -99.133209, "radius_m": 50, "minimum_acceptable_accuracy_m": 30, "tolerance_m": 10 },
+    "location": { "latitude": 19.432708, "longitude": -99.133209, "accuracy_m": 80 },
+    "result": "UNCERTAIN",
+    "reason": "ACCURACY_BELOW_REQUIREMENT"
+  }
+]
