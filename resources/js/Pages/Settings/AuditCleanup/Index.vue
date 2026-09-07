@@ -328,7 +328,7 @@ const selectionSummary = computed(() => {
                             <input v-model.number="settingsForm.batch_size" type="number" min="100" max="50000" class="input w-full" />
                         </label>
                         <label class="space-y-2">
-                            <span class="text-sm font-medium text-app">Heartbeat audit cada (min)</span>
+                            <span class="text-sm font-medium text-app">Registrar conexión en auditoría cada (min)</span>
                             <input v-model.number="settingsForm.heartbeat_log_interval_minutes" type="number" min="1" max="1440" class="input w-full" />
                         </label>
                         <label class="space-y-2">
@@ -436,7 +436,7 @@ const selectionSummary = computed(() => {
                             :disabled="busy.preview || busy.execute"
                             @click="previewCleanup"
                         >
-                            {{ busy.preview ? 'Simulando...' : 'Preview limpieza' }}
+                            {{ busy.preview ? 'Simulando...' : 'Vista previa de limpieza' }}
                         </button>
                         <button
                             type="button"
@@ -452,7 +452,7 @@ const selectionSummary = computed(() => {
 
             <div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
                 <article class="card p-6">
-                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Preview / resultado</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Vista previa / resultado</p>
                     <h2 class="mt-2 text-xl font-semibold text-app">Impacto estimado</h2>
 
                     <div v-if="previewResult" class="mt-6 grid gap-4 md:grid-cols-2">

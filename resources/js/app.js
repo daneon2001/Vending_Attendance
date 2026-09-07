@@ -8,7 +8,7 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initTheme } from './composables/useTheme';
 import { resolveZiggyConfig } from './utils/url';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = 'Vending Attendance';
 
 initTheme();
 bootSearchableSelects();

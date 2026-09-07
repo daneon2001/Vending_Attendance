@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Actions\SyncPermissionCatalog;
 use App\Enums\DeviceStatus;
+use App\Enums\Employees\EmployeeSource;
 use App\Enums\Vending\AssignmentStatus;
 use App\Enums\Vending\AssignmentType;
 use App\Enums\Vending\CoordinateSource;
@@ -241,6 +242,9 @@ class VendingDemoSeeder extends Seeder
             $employees[$alias] = Employee::query()->updateOrCreate(
                 ['fortia_employee_id' => $number],
                 [
+                    'employee_number' => $alias,
+                    'source' => EmployeeSource::DEMO,
+                    'source_external_id' => (string) $number,
                     'name' => $name,
                     'last_name' => $lastName,
                     'second_last_name' => null,

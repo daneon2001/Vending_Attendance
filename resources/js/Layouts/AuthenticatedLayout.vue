@@ -1,12 +1,13 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { canUse, visibleNavigation } from '@/presentation/navigation';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { useTheme } from '@/composables/useTheme';
 import { useSidebar } from '@/composables/useSidebar';
-import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
+import Modal from '@/Components/Modal.vue';
 
 const props = defineProps({
     contentOverflowVisible: {
@@ -18,152 +19,17 @@ const props = defineProps({
 const mobileSidebarOpen = ref(false);
 const { theme, toggleTheme } = useTheme();
 const { isCollapsed, collapseSidebar, expandSidebar } = useSidebar();
-useBodyScrollLock(() => mobileSidebarOpen.value);
+let desktopMedia;
+const closeMobileOnDesktop = () => { if (desktopMedia?.matches) mobileSidebarOpen.value = false; };
+onMounted(() => { desktopMedia = window.matchMedia('(min-width: 1024px)'); desktopMedia.addEventListener('change', closeMobileOnDesktop); });
+onBeforeUnmount(() => desktopMedia?.removeEventListener('change', closeMobileOnDesktop));
 
 const page = usePage();
+watch(() => page.url, () => { mobileSidebarOpen.value = false; });
 const permissions = computed(() => page.props.auth.permissions ?? {});
-const can = (module, action = 'view') => {
-    const actions = permissions.value?.[module] ?? [];
-    return actions.includes(action) || actions.includes('manage');
-};
+const can = (module, action = 'view') => canUse(permissions.value, module, action);
 
 const SIDEBAR_GROUPS_STORAGE_KEY = 'sidebar_open_groups';
-
-const navGroups = [
-    {
-        key: 'operacion',
-        title: 'OPERACION',
-        items: [
-            {
-                label: 'Operación vending',
-                description: 'Health, sincronización y alertas',
-                routeName: 'vending-fleet.dashboard',
-                icon: 'dashboard',
-                requiredPermission: { module: 'vending_machines', action: 'view' },
-            },
-            {
-                label: 'Devices vending',
-                description: 'Registro técnico global',
-                routeName: 'vending-devices.index',
-                icon: 'machines',
-                requiredPermission: { module: 'vending_machines', action: 'view' },
-            },
-            {
-                label: 'Panel general',
-                description: 'KPI diarios y alertas',
-                routeName: 'dashboard',
-                icon: 'dashboard',
-            },
-            {
-                label: 'Corpo y Reclutamiento',
-                description: 'Seguimiento puntual de unidades 87 y 171',
-                routeName: 'dashboard.corporativo-reclutamiento',
-                icon: 'dashboard',
-                requiredPermission: { module: 'dashboard', action: 'view' },
-            },
-            {
-                label: 'Relojes biometricos',
-                description: 'Catalogo y monitoreo',
-                routeName: 'clocks.index',
-                icon: 'clocks',
-            },
-            {
-                label: 'Central de asistencias',
-                description: 'Registros crudos y ajustes',
-                routeName: 'admin.asistencias.index',
-                icon: 'attendance',
-                requiredPermission: { module: 'asistencias', action: 'view' },
-            },
-            {
-                label: 'Tarjeta de asistencia',
-                description: 'Consulta RH y exportacion',
-                routeName: 'attendance-cards.index',
-                icon: 'attendance',
-                requiredPermission: { module: 'asistencias', action: 'view' },
-            },
-        ],
-    },
-    {
-        key: 'catalogos',
-        title: 'CATALOGOS',
-        items: [
-            {
-                label: 'Catalogo de empleados',
-                description: 'Estado y huellas',
-                routeName: 'employees.index',
-                icon: 'users',
-            },
-            {
-                label: 'Catalogo de empresas',
-                description: 'Alta, edicion y estatus',
-                routeName: 'companies.index',
-                icon: 'companies',
-                requiredPermission: { module: 'companies', action: 'view' },
-            },
-            {
-                label: 'Catalogo de unidades',
-                description: 'Alta, edicion y estatus',
-                routeName: 'units.index',
-                icon: 'branches',
-                requiredPermission: { module: 'units', action: 'view' },
-            },
-            {
-                label: 'Máquinas vending',
-                description: 'Catálogo, asignaciones y geocercas',
-                routeName: 'vending-machines.index',
-                icon: 'machines',
-                requiredPermission: { module: 'vending_machines', action: 'view' },
-            },
-        ],
-    },
-    {
-        key: 'administracion',
-        title: 'ADMINISTRACION',
-        items: [
-            {
-                label: 'Releases móviles',
-                description: 'Política y rollout controlado',
-                routeName: 'vending-releases.index',
-                icon: 'settings',
-                requiredPermission: { module: 'vending_machines', action: 'view' },
-            },
-            {
-                label: 'Configuración',
-                description: 'Centro de ajustes y seguridad',
-                routeName: 'settings.index',
-                icon: 'settings',
-                requiredPermission: { module: 'settings', action: 'view' },
-            },
-            {
-                label: 'Roles y permisos',
-                description: 'Configuración y seguridad',
-                routeName: 'settings.roles.page',
-                icon: 'settings',
-                requiredPermission: { module: 'settings', action: 'view' },
-            },
-            {
-                label: 'Usuarios del sistema',
-                description: 'Gestión de cuentas internas',
-                routeName: 'settings.users.page',
-                icon: 'users',
-                requiredPermission: { module: 'users', action: 'view' },
-            },
-        ],
-    },
-    {
-        key: 'auditoria',
-        title: 'AUDITORIA',
-        items: [
-            {
-                label: 'Bitácora',
-                description: 'Audit trail del sistema',
-                routeName: 'settings.audit.page',
-                icon: 'audit',
-                requiredPermission: { module: 'audit', action: 'view' },
-            },
-        ],
-    },
-];
 
 const iconPaths = {
     dashboard: ['M4 5h16', 'M4 19h16', 'M7 12v7', 'M12 9v10', 'M17 14v5'],
@@ -235,22 +101,17 @@ const currentYear = new Date().getFullYear();
 
 const isActive = (item) => {
     if (!item.routeName) return false;
-    return route().current(item.routeName);
+    if (!route().current(item.routeName)) return false;
+    const url = new URL(page.url, 'http://localhost');
+    if (item.hash) return url.hash === '#' + item.hash;
+    if (item.routeName === 'vending-fleet.dashboard') return url.hash !== '#alertas';
+    if (item.routeName === 'vending-machines.index') return (url.searchParams.get('catalog_view') || 'operational') === (item.params?.catalog_view || 'operational');
+    return true;
 };
 
-const resolveHref = (item) => (item.routeName ? route(item.routeName) : '#');
+const resolveHref = (item) => (item.routeName ? route(item.routeName, item.params ?? {}) + (item.hash ? '#' + item.hash : '') : '#');
 
-const visibleNavGroups = computed(() =>
-    navGroups
-        .map((group) => ({
-            ...group,
-            items: group.items.filter((item) => {
-                if (!item.requiredPermission) return true;
-                return can(item.requiredPermission.module, item.requiredPermission.action);
-            }),
-        }))
-        .filter((group) => group.items.length > 0),
-);
+const visibleNavGroups = computed(() => visibleNavigation(permissions.value));
 
 const flatNavItems = computed(() => visibleNavGroups.value.flatMap((group) => group.items));
 
@@ -603,7 +464,7 @@ watch(
 
                 <footer class="border-t border-app bg-white/80 px-3 py-4 text-xs text-soft  dark:bg-slate-900/80 sm:px-6 lg:px-10">
                     <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <p>&copy; {{ currentYear }} Medicallife suite | Gestion humana digital.</p>
+                        <p>&copy; {{ currentYear }} Medical Life · Vending Attendance.</p>
                         <p class="text-[11px] uppercase tracking-[0.3em] text-soft dark:text-soft">
                             Datos protegidos
                         </p>
@@ -612,13 +473,13 @@ watch(
             </div>
         </div>
 
-        <Transition enter-active-class="duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div v-if="mobileSidebarOpen" class="fixed inset-0 z-40 flex overflow-hidden lg:hidden">
+        <Modal :show="mobileSidebarOpen" max-width="sm" aria-label="Menú principal" @close="mobileSidebarOpen = false">
+            <div>
                 <div class="sidebar-mobile-sheet">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <ApplicationLogo class="h-8 w-8 text-indigo-600" />
-                            <p class="text-base font-semibold text-app">Opensync HR</p>
+                            <p class="text-base font-semibold text-app">Vending Attendance</p>
                         </div>
                         <button class="rounded-full border border-app p-2" aria-label="Cerrar menu lateral" @click="mobileSidebarOpen = false">
                             <span class="sr-only">Cerrar menu</span>
@@ -696,8 +557,8 @@ watch(
                         </section>
                     </nav>
                 </div>
-                <div class="flex-1 bg-slate-900/30" @click="mobileSidebarOpen = false"></div>
+
             </div>
-        </Transition>
+        </Modal>
     </div>
 </template>

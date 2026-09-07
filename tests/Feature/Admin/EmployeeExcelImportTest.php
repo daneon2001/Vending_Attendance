@@ -39,6 +39,8 @@ class EmployeeExcelImportTest extends TestCase
         parent::setUp();
 
         $this->withoutVite();
+        // Explicit historical compatibility mode; pilot imports use the staged endpoints.
+        config(['employees.import.legacy_enabled' => true]);
         SyncPermissionCatalog::run();
     }
 
@@ -1127,8 +1129,7 @@ class EmployeeExcelImportTest extends TestCase
         string $fileName = 'employees.xlsx',
         string $storageExtension = 'xlsx',
         bool $sparseRows = false
-    ): UploadedFile
-    {
+    ): UploadedFile {
         $basePath = tempnam(sys_get_temp_dir(), 'employees-import-');
         if ($basePath === false) {
             throw new \RuntimeException('No se pudo crear archivo temporal.');
@@ -1180,14 +1181,14 @@ class EmployeeExcelImportTest extends TestCase
             $sharedStringsXml .= "<si><t>{$escapedValue}</t></si>";
         }
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $opened = $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
 
         if ($opened !== true) {
             throw new \RuntimeException('No se pudo construir el archivo xlsx de prueba.');
         }
 
-        $zip->addFromString('[Content_Types].xml', <<<XML
+        $zip->addFromString('[Content_Types].xml', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
     <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -1198,14 +1199,14 @@ class EmployeeExcelImportTest extends TestCase
 </Types>
 XML);
 
-        $zip->addFromString('_rels/.rels', <<<XML
+        $zip->addFromString('_rels/.rels', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
     <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>
 XML);
 
-        $zip->addFromString('xl/workbook.xml', <<<XML
+        $zip->addFromString('xl/workbook.xml', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
     <sheets>
@@ -1214,7 +1215,7 @@ XML);
 </workbook>
 XML);
 
-        $zip->addFromString('xl/_rels/workbook.xml.rels', <<<XML
+        $zip->addFromString('xl/_rels/workbook.xml.rels', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
     <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>

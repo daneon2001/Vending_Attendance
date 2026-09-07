@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\Employees\EmployeeSource;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,11 @@ class Employee extends Model
 
     protected $fillable = [
         'fortia_employee_id',
+        'employee_number',
+        'source',
+        'source_external_id',
+        'source_synced_at',
+        'source_updated_at',
         'company_id',
         'company_name',
         'base_location_id',
@@ -68,6 +74,9 @@ class Employee extends Model
         'can_check_all_branches' => 'boolean',
         'hire_date' => 'date',
         'termination_date' => 'date',
+        'source' => EmployeeSource::class,
+        'source_synced_at' => 'datetime',
+        'source_updated_at' => 'datetime',
     ];
 
     protected $appends = [
@@ -330,14 +339,19 @@ class Employee extends Model
 
         $query = $this->newQuery();
 
-        if (is_numeric($value)) {
-            return $query
-                ->whereKey((int) $value)
-                ->orWhere('fortia_employee_id', (int) $value)
-                ->first();
+        // Existing routes accept internal IDs and legacy Fortia numbers.
+        // Noncanonical numeric strings (e.g. 00042) must not lose their zeroes.
+        if (ctype_digit((string) $value) && (string) (int) $value === (string) $value) {
+            $legacy = (clone $query)->whereKey((int) $value)
+                ->orWhere('fortia_employee_id', (int) $value)->first();
+            if ($legacy) {
+                return $legacy;
+            }
         }
 
-        return $query->where($this->getRouteKeyName(), $value)->first();
+        return Schema::hasColumn($this->getTable(), 'employee_number')
+            ? $query->where('employee_number', (string) $value)->first()
+            : null;
     }
 
     public function getResolvedCheckScopeAttribute(): string
@@ -374,7 +388,7 @@ class Employee extends Model
 
     public function visibleEmployeeKey(): ?string
     {
-        foreach (['fortia_employee_id', 'employee_code', 'code', 'clave_empleado'] as $field) {
+        foreach (['employee_number', 'fortia_employee_id', 'employee_code', 'code', 'clave_empleado'] as $field) {
             $value = $this->getAttribute($field);
 
             if ($value !== null && trim((string) $value) !== '') {

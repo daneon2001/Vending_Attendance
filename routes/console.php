@@ -1,10 +1,12 @@
 <?php
 
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
-use Carbon\Carbon;
+
+Schedule::command('employees:prune-imports')->hourly()->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -15,6 +17,7 @@ Artisan::command(
     function (): int {
         if (app()->environment('production')) {
             $this->error('Comando bloqueado en production.');
+
             return self::FAILURE;
         }
 
@@ -25,6 +28,7 @@ Artisan::command(
 
         if ($vendorTemplateId === '') {
             $this->error('vendor_template_id es requerido.');
+
             return self::FAILURE;
         }
 
@@ -32,6 +36,7 @@ Artisan::command(
             $deletedAt = $deletedAtRaw ? Carbon::parse((string) $deletedAtRaw) : now();
         } catch (\Throwable $e) {
             $this->error('deleted_at invalido. Usa formato ISO o YmdHis.');
+
             return self::FAILURE;
         }
 
@@ -45,6 +50,7 @@ Artisan::command(
         ]);
 
         $this->info("Tombstone creado. id={$id}, vendor={$vendor}, vendor_template_id={$vendorTemplateId}, deleted_at={$deletedAt->toIso8601String()}");
+
         return self::SUCCESS;
     }
 )->purpose('Inserta tombstone DEV para templates');
@@ -54,6 +60,7 @@ Artisan::command(
     function (): int {
         if (app()->environment('production')) {
             $this->error('Comando bloqueado en production.');
+
             return self::FAILURE;
         }
 
@@ -71,6 +78,7 @@ Artisan::command(
                 $query->where('deleted_at', '>', $since);
             } catch (\Throwable $e) {
                 $this->error('since invalido. Usa formato ISO o YmdHis.');
+
                 return self::FAILURE;
             }
         }
@@ -78,6 +86,7 @@ Artisan::command(
         $rows = $query->get();
         if ($rows->isEmpty()) {
             $this->warn('Sin tombstones.');
+
             return self::SUCCESS;
         }
 
@@ -85,6 +94,7 @@ Artisan::command(
             ['id', 'vendor', 'vendor_template_id', 'employee_id', 'deleted_at'],
             $rows->map(fn ($row) => (array) $row)->all()
         );
+
         return self::SUCCESS;
     }
 )->purpose('Lista tombstones DEV de templates');

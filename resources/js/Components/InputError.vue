@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '@/presentation/labels';
 defineProps({
     message: {
         type: String,
@@ -9,7 +10,7 @@ defineProps({
 <template>
     <div v-show="message">
         <p class="text-sm text-red-600">
-            {{ message }}
+            {{ friendlyError(message) }}
         </p>
     </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup>
+import { formatDateTime as formatOperationalDate } from '@/presentation/labels';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
@@ -332,7 +333,7 @@ const formatRelative = (timestamp) => {
 
 const formatDateTime = (timestamp) => {
     if (!timestamp) return 'Sin registro';
-    return new Date(timestamp).toLocaleString();
+    return formatOperationalDate(timestamp, 'Sin registro');
 };
 
 const collapseStorageKey = 'clock-card-collapsed';
@@ -829,7 +830,7 @@ const resetLogsFilters = () => {
                     <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100">
                         {{ totalWarning }}
                     </p>
-                    <p class="text-sm text-slate-500 dark:text-slate-400">Heartbeat con rezago durante el dia actual</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Conexión con demora durante el día actual</p>
                 </article>
                 <article class="card-kpi bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-900">
                     <p class="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">

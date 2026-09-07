@@ -1,4 +1,5 @@
 <script setup>
+import { formatDateTime as formatOperationalDate } from '@/presentation/labels';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import PaginationBar from '@/Components/PaginationBar.vue';
@@ -255,7 +256,7 @@ const clearFilters = () => {
     filters.status = '';
 };
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'Sin fecha');
+const formatDate = (value) => formatOperationalDate(value, 'Sin fecha');
 </script>
 
 <template>

@@ -14,6 +14,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\Dashboard\CorporateRecruitmentDashboardController;
 use App\Http\Controllers\Employees\EmployeeCatalogExportController;
 use App\Http\Controllers\Employees\EmployeeCatalogPageController;
+use App\Http\Controllers\Employees\VendingEmployeeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Settings\AuditCleanupPageController;
 use App\Http\Controllers\Settings\AuditPageController;
@@ -59,6 +60,16 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
+    Route::get('/vending/employees', [VendingEmployeeController::class, 'index'])
+        ->middleware('perm.strict:employees,view')->name('vending-employees.index');
+    Route::post('/vending/employees/imports', [VendingEmployeeController::class, 'upload'])
+        ->middleware(['perm.strict:employees,import', 'throttle:10,1'])->name('vending-employees.imports.store');
+    Route::get('/vending/employees/imports/{uuid}', [VendingEmployeeController::class, 'preview'])
+        ->middleware('perm.strict:employees,import')->name('vending-employees.imports.show');
+    Route::post('/vending/employees/imports/{uuid}/apply', [VendingEmployeeController::class, 'apply'])
+        ->middleware(['perm.strict:employees,import', 'throttle:10,1'])->name('vending-employees.imports.apply');
+    Route::post('/vending/employees/fortia-sync', [VendingEmployeeController::class, 'sync'])
+        ->middleware(['perm.strict:employees,sync', 'throttle:3,1'])->name('vending-employees.sync');
     Route::get('/vending', VendingFleetDashboardController::class)
         ->middleware('perm:vending_machines,view')->name('vending-fleet.dashboard');
     Route::get('/vending/devices', VendingDeviceRegistryController::class)

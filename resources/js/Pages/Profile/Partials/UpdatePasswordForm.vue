@@ -47,7 +47,7 @@ const updatePassword = () => {
 
         <form @submit.prevent="updatePassword" class="mt-6 space-y-6">
             <div>
-                <InputLabel for="current_password" value="Current Password" />
+                <InputLabel for="current_password" value="Contraseña actual" />
 
                 <TextInput
                     id="current_password"
@@ -73,7 +73,7 @@ const updatePassword = () => {
                     v-model="form.password"
                     type="password"
                     class="mt-1 block w-full"
-                    autocomplete="Nueva contraseña"
+                    autocomplete="new-password"
                 />
 
                 <InputError :message="form.errors.password" class="mt-2" />
@@ -90,7 +90,7 @@ const updatePassword = () => {
                     v-model="form.password_confirmation"
                     type="password"
                     class="mt-1 block w-full"
-                    autocomplete="Nueva contraseña"
+                    autocomplete="new-password"
                 />
 
                 <InputError
@@ -112,7 +112,7 @@ const updatePassword = () => {
                         v-if="form.recentlySuccessful"
                         class="text-sm text-gray-600"
                     >
-                        Saved.
+                        Cambios guardados.
                     </p>
                 </Transition>
             </div>

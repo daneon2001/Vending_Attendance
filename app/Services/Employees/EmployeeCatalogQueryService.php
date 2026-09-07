@@ -190,6 +190,7 @@ class EmployeeCatalogQueryService
     {
         $columns = [
             'id',
+            'employee_number',
             'full_name',
             'name',
             'last_name',

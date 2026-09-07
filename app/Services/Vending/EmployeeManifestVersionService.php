@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class EmployeeManifestVersionService
 {
     private const EMPLOYEE_MANIFEST_ATTRIBUTES = [
-        'fortia_employee_id', 'name', 'last_name', 'second_last_name', 'full_name', 'status',
+        'employee_number', 'fortia_employee_id', 'name', 'last_name', 'second_last_name', 'full_name', 'status',
     ];
 
     public function bumpMachine(int|VendingMachine $machine, string $reason): int

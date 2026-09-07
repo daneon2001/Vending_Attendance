@@ -167,6 +167,57 @@ class SybiVendingSourceProjectionTest extends TestCase
         $this->assertSame(VendingMachineStatus::ACTIVE, $demo->fresh()->status);
     }
 
+    public function test_unicode_survives_raw_and_escaped_http_json_mapper_storage_and_inertia_serialization(): void
+    {
+        $this->withoutVite();
+        $role = \App\Models\Role::create(['name' => 'Unicode catalog reader']);
+        $role->permissions()->sync(\App\Actions\SyncPermissionCatalog::resolveIds(['vending_machines' => ['view']]));
+        $user = \App\Models\User::factory()->create(['estatus' => true, 'email_verified_at' => now()]);
+        $user->roles()->attach($role);
+        $this->actingAs($user);
+        $words = ['Zürich', 'Ampliación', 'México', 'Ceylán', 'Niño', 'José'];
+        $text = implode(' · ', $words);
+        $record = $this->record(['nombre_sucursal' => $text, 'ubicacion' => [
+            'calle' => $text, 'colonia' => $text, 'direccion_completa' => $text,
+        ]]);
+        foreach ([0, JSON_UNESCAPED_UNICODE] as $flags) {
+            $body = json_encode(['ok' => true, 'total' => 1, 'data' => [$record]], $flags | JSON_THROW_ON_ERROR);
+            Http::fake(['*' => Http::response($body, 200, ['Content-Type' => 'application/json; charset=UTF-8'])]);
+            $decoded = app(\App\Integrations\Sybi\SybiVendingApiClient::class)->fetchMachines();
+            $this->assertSame($text, $decoded->data[0]['nombre_sucursal']);
+            $mapped = app(\App\Integrations\Sybi\SybiVendingRecordMapper::class)->map($decoded->data[0])->candidate;
+            $this->assertSame($text, $mapped->name);
+            $this->assertSame($text, $mapped->addressLine);
+            app(SybiVendingSyncService::class)->sync();
+            $source = SybiVendingSourceRecord::where('sybi_id', '501')->firstOrFail();
+            $machine = $source->promotedVendingMachine;
+            foreach (['name', 'address_line', 'neighborhood', 'sybi_full_address'] as $field) {
+                $this->assertSame($text, $source->getAttribute($field));
+                $this->assertSame($text, $machine->getAttribute($field));
+                $this->assertSame($text, json_decode($source->toJson(), true, 512, JSON_THROW_ON_ERROR)[$field]);
+            }
+            $version = app(\App\Http\Middleware\HandleInertiaRequests::class)->version(\Illuminate\Http\Request::create('/'));
+            $page = $this->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $version ?? ''])
+                ->get(route('vending-machines.index', ['catalog_view' => 'sybi']))
+                ->assertOk()->assertJsonPath('props.sourceRecords.data.0.name', $text);
+            foreach ($words as $word) {
+                $this->assertStringContainsString($word, $page->json('props.sourceRecords.data.0.sybi_full_address'));
+            }
+        }
+        $this->assertSame(1, SybiVendingSourceRecord::count());
+        $this->assertSame(1, VendingMachine::count());
+    }
+
+    public function test_upstream_mojibake_is_preserved_as_source_evidence_not_silently_repaired(): void
+    {
+        $value = "Lago Z\u{00c3}\u{00ba}rich · Ampliaci\u{00c3}\u{00b3}n Granada";
+        $this->sync([$this->record(['nombre_sucursal' => $value, 'ubicacion' => ['calle' => $value, 'direccion_completa' => $value]])]);
+        $source = SybiVendingSourceRecord::firstOrFail();
+        $this->assertSame($value, $source->address_line);
+        $this->assertSame($value, $source->promotedVendingMachine->address_line);
+        $this->assertSame($value, json_decode($source->toJson(), true, 512, JSON_THROW_ON_ERROR)['address_line']);
+    }
+
     private function sync(array $records): array
     {
         Http::fake(['*' => Http::response(['ok' => true, 'total' => count($records), 'data' => $records])]);

@@ -13,8 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
-use Throwable;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class EmployeeController extends Controller
 {
@@ -84,8 +84,7 @@ class EmployeeController extends Controller
         Request $request,
         FortiaEmployeeService $fortiaService,
         FortiaMockSyncService $mockSyncService
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $filters = [];
         if ($request->filled('company_id')) {
             $filters['company_id'] = (int) $request->input('company_id');
@@ -128,6 +127,7 @@ class EmployeeController extends Controller
 
     public function updateStatus(Employee $employee, Request $request): JsonResponse
     {
+        abort_if($employee->source === \App\Enums\Employees\EmployeeSource::FORTIA, 409, 'El estado de este empleado pertenece a Fortia.');
         $validated = $request->validate([
             'status' => ['required', Rule::in(['A', 'B', 'active', 'inactive'])],
         ]);

@@ -501,7 +501,7 @@ onBeforeUnmount(() => {
                             <p class="mt-1 text-sm text-slate-500">Total checadas {{ formatNumber(location.summary.total_checks) }}</p>
                         </div>
                         <div class="rounded-3xl bg-slate-50 px-4 py-4">
-                            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Online / Offline</p>
+                            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">En línea / Sin conexión</p>
                             <p class="mt-2 text-2xl font-semibold text-slate-900">
                                 {{ formatNumber(location.clocks.online) }} / {{ formatNumber(location.clocks.offline) }}
                             </p>
@@ -524,7 +524,7 @@ onBeforeUnmount(() => {
                             <p class="mt-2 text-xl font-semibold text-rose-700">{{ formatNumber(location.summary.exits) }}</p>
                         </div>
                         <div class="rounded-2xl border border-slate-200 px-4 py-3">
-                            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Heartbeat</p>
+                            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Conexión</p>
                             <p class="mt-2 text-sm font-semibold text-slate-900">{{ formatRelative(location.clocks.last_heartbeat_at) }}</p>
                             <p class="mt-1 text-xs text-slate-500">{{ formatDateTime(location.clocks.last_heartbeat_at) }}</p>
                         </div>

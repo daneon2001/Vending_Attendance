@@ -62,7 +62,7 @@ class EmployeeManifestService
             ->withRelevantPermission()
             ->whereHas('employee', fn ($query) => $query->activeForVending())
             ->with(['employee' => fn ($query) => $query->select([
-                'id', 'fortia_employee_id', 'name', 'last_name', 'second_last_name', 'full_name', 'status',
+                'id', 'employee_number', 'fortia_employee_id', 'name', 'last_name', 'second_last_name', 'full_name', 'status',
             ])])
             ->orderBy('employee_id')
             ->orderBy('uuid')

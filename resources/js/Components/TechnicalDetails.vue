@@ -1,0 +1,1 @@
+<template><details class="mt-2 text-xs text-soft"><summary class="min-h-11 cursor-pointer py-2 font-medium">Detalle técnico</summary><div class="space-y-2 break-words rounded-lg border border-app p-3"><slot /></div></details></template>

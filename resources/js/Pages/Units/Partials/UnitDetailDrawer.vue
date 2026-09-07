@@ -1,4 +1,5 @@
 <script setup>
+import { formatDateTime as formatOperationalDate } from '@/presentation/labels';
 import { computed } from 'vue';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
 
@@ -33,7 +34,7 @@ const monitoringStyles = {
 const unit = computed(() => props.detail?.unit ?? null);
 const clocks = computed(() => props.detail?.clocks ?? []);
 
-const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'Sin latidos');
+const formatDateTime = (value) => formatOperationalDate(value, 'Sin conexión registrada');
 </script>
 
 <template>

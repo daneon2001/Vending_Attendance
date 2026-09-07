@@ -7,9 +7,11 @@ use App\Models\AuditCleanupSetting;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class AuditCleanupModuleTest extends TestCase
@@ -19,6 +21,10 @@ class AuditCleanupModuleTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        config()->set('operations.timezone', 'America/Mexico_City');
+        // UTC and CDMX intentionally have different dates at this instant.
+        $this->travelTo(Carbon::parse('2026-09-07 01:14:22', 'UTC'));
 
         $this->withoutVite();
         SyncPermissionCatalog::run();
@@ -47,15 +53,15 @@ class AuditCleanupModuleTest extends TestCase
     {
         $user = $this->createUserWithAuditPermissions(['manage']);
 
-        $criticalId = $this->insertAuditLog('auth.login.failed', now()->subDays(40), 'login', 'users');
-        $importantId = $this->insertAuditLog('employees.sync', now()->subDays(40), 'sync', 'employees');
-        $noiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now()->subDays(40), 'heartbeat', 'devices');
-        $freshNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now()->subMinutes(10), 'heartbeat', 'devices');
+        $criticalId = $this->insertAuditLog('auth.login.failed', now('UTC')->subDays(40), 'login', 'users');
+        $importantId = $this->insertAuditLog('employees.sync', now('UTC')->subDays(40), 'sync', 'employees');
+        $noiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now('UTC')->subDays(40), 'heartbeat', 'devices');
+        $freshNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now('UTC')->subMinutes(10), 'heartbeat', 'devices');
 
         $payload = [
             'selection' => [
                 'delete_except_critical' => true,
-                'before_date' => now()->toDateString(),
+                'before_date' => now(config('operations.timezone'))->toDateString(),
                 'optimize' => false,
                 'simulate' => true,
             ],
@@ -98,9 +104,9 @@ class AuditCleanupModuleTest extends TestCase
             'optimize_min_deleted_mb' => 4096,
         ]);
 
-        $oldNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now()->subDays(20), 'heartbeat', 'devices');
-        $recentNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now()->subDays(2), 'heartbeat', 'devices');
-        $importantId = $this->insertAuditLog('employees.sync', now()->subDays(20), 'sync', 'employees');
+        $oldNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now('UTC')->subDays(20), 'heartbeat', 'devices');
+        $recentNoiseId = $this->insertAuditLog('onprem.heartbeat.sampled', now('UTC')->subDays(2), 'heartbeat', 'devices');
+        $importantId = $this->insertAuditLog('employees.sync', now('UTC')->subDays(20), 'sync', 'employees');
 
         $this->artisan('audit:cleanup')
             ->expectsOutput('Limpieza de bitacora completada.')
@@ -114,6 +120,60 @@ class AuditCleanupModuleTest extends TestCase
             'status' => 'completed',
             'deleted_records' => 1,
         ]);
+    }
+
+    #[DataProvider('cleanupClockInstants')]
+    public function test_selection_uses_exclusive_cdmx_day_boundary_independently_of_clock(string $nowUtc): void
+    {
+        $this->travelTo(Carbon::parse($nowUtc, 'UTC'));
+        $user = $this->createUserWithAuditPermissions(['manage']);
+
+        // 2026-09-07 00:00:00 in CDMX is 06:00:00 UTC. Only strictly older
+        // non-critical records belong to this explicit calendar selection.
+        $beforeCutoff = Carbon::parse('2026-09-07 05:59:59', 'UTC');
+        $criticalId = $this->insertAuditLog('auth.login.failed', $beforeCutoff, 'login', 'users');
+        $deletedId = $this->insertAuditLog('onprem.heartbeat.sampled', $beforeCutoff, 'heartbeat', 'devices');
+        $atCutoffId = $this->insertAuditLog('onprem.heartbeat.sampled', Carbon::parse('2026-09-07 06:00:00', 'UTC'), 'heartbeat', 'devices');
+        $afterCutoffId = $this->insertAuditLog('onprem.heartbeat.sampled', Carbon::parse('2026-09-07 06:00:01', 'UTC'), 'heartbeat', 'devices');
+
+        $payload = ['selection' => [
+            'delete_except_critical' => true,
+            'before_date' => '2026-09-07',
+            'optimize' => false,
+            'simulate' => true,
+        ]];
+
+        $this->actingAs($user)->postJson('/api/audit-cleanup/preview', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.records_to_delete', 1);
+
+        $this->postJson('/api/audit-cleanup/execute', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.deleted_records', 1);
+
+        $this->assertDatabaseMissing('audit_logs', ['id' => $deletedId]);
+        $this->assertDatabaseHas('audit_logs', ['id' => $criticalId]);
+        $this->assertDatabaseHas('audit_logs', ['id' => $atCutoffId]);
+        $this->assertDatabaseHas('audit_logs', ['id' => $afterCutoffId]);
+        $this->assertDatabaseHas('audit_cleanup_runs', [
+            'status' => 'completed',
+            'deleted_records' => 1,
+        ]);
+    }
+
+    public static function cleanupClockInstants(): array
+    {
+        return [
+            'before UTC midnight' => ['2026-09-06 23:59:59'],
+            'UTC midnight' => ['2026-09-07 00:00:00'],
+            'original failure window' => ['2026-09-07 01:14:22'],
+            'before CDMX midnight' => ['2026-09-07 05:59:59'],
+            'CDMX midnight' => ['2026-09-07 06:00:00'],
+            'ten-minute fixture before cutoff' => ['2026-09-07 06:09:59'],
+            'ten-minute fixture at cutoff' => ['2026-09-07 06:10:00'],
+            'ten-minute fixture after cutoff' => ['2026-09-07 06:10:01'],
+            'CDMX noon' => ['2026-09-07 18:00:00'],
+        ];
     }
 
     private function createUserWithAuditPermissions(array $actions): User

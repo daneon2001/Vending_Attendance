@@ -139,11 +139,11 @@
     }
 
     .sidebar-group-title {
-        @apply truncate text-[11px] font-semibold uppercase tracking-[0.28em] text-soft;
+        @apply min-w-0 flex-1 whitespace-normal break-words text-[11px] font-semibold uppercase tracking-[0.28em] text-soft;
     }
 
     .sidebar-group-chevron {
-        @apply h-4 w-4 text-soft transition-transform duration-200;
+        @apply h-4 w-4 shrink-0 text-soft transition-transform duration-200;
     }
 
     .sidebar-group-chevron.is-open {
@@ -187,11 +187,11 @@
     }
 
     .sidebar-item-label {
-        @apply block truncate text-sm font-semibold leading-5;
+        @apply block whitespace-normal break-words text-sm font-semibold leading-5;
     }
 
     .sidebar-item-description {
-        @apply mt-0.5 block truncate text-xs leading-4 text-soft;
+        @apply mt-0.5 block whitespace-normal break-words text-xs leading-4 text-soft;
     }
 
     .sidebar-mobile-sheet {
@@ -342,4 +342,15 @@
 .dark [class~="hover:bg-gray-100"]:hover:not([class*="dark:hover:bg-"]),
 .dark [class~="focus:bg-gray-100"]:focus:not([class*="dark:focus:bg-"]) {
     background-color: rgb(30 41 59 / 0.72);
+}
+
+
+/* Shared actions for the operational catalog and import wizard. */
+@layer components {
+    .btn-primary {
+        @apply inline-flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50;
+    }
+    .btn-secondary {
+        @apply inline-flex min-h-11 items-center justify-center rounded-xl border border-app px-4 py-2 text-sm font-semibold text-app hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800;
+    }
 }

@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '@/presentation/labels';
 import Checkbox from '@/Components/Checkbox.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
@@ -31,12 +32,13 @@ const submit = () => {
 <template>
     <GuestLayout>
         <Head title="Iniciar sesión" />
+        <h2 class="mb-6 text-xl font-semibold text-slate-900">Iniciar sesión</h2>
 
         <div
             v-if="status"
             class="mb-6 rounded-2xl border border-[#c3ebd4] bg-[#e8f9ef] px-4 py-3 text-sm font-medium text-[#1f7a3a]"
         >
-            {{ status }}
+            {{ friendlyError(status) }}
         </div>
 
         <form @submit.prevent="submit" class="space-y-6">
@@ -48,7 +50,7 @@ const submit = () => {
                     id="email"
                     type="email"
                     class="block w-full rounded-2xl border border-[#d0ddea] bg-[#f9fcff] px-5 py-3 text-base text-[#0F3F6F] shadow-sm focus:border-[#36A144] focus:ring-2 focus:ring-[#36A144]"
-                    placeholder="admin@medical.life"
+                    placeholder="Tu correo de acceso"
                     v-model="form.email"
                     required
                     autofocus
@@ -92,7 +94,7 @@ const submit = () => {
                     />
                     <span class="ms-2 text-sm text-[#0F3F6F]">Mantener sesión activa</span>
                 </label>
-                <span class="text-xs uppercase tracking-[0.4em] text-[#36A144]">Medical Life ID</span>
+                <span class="text-xs uppercase tracking-[0.4em] text-[#36A144]">Medical Life</span>
             </div>
 
             <div>
@@ -106,19 +108,6 @@ const submit = () => {
             </div>
         </form>
 
-        <div class="mt-10 grid gap-4 text-sm text-slate-500 sm:grid-cols-2">
-            <div class="rounded-2xl border border-[#d0ddea] bg-[#f9fcff] p-5">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.4em] text-[#36A144]">RRHH</p>
-                <p class="mt-2 text-2xl font-semibold text-[#0F3F6F]">Portal de Registro</p>
-                <p class="mt-1 text-sm">Solicitudes de registro de asistencia.</p>
-            </div>
-            <div class="rounded-2xl border border-[#d0ddea] bg-[#fefaf4] p-5">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.4em] text-[#FF8A00]">Operación</p>
-                <p class="mt-2 text-2xl font-semibold text-[#0F3F6F]">Tableros en vivo</p>
-                <p class="mt-1 text-sm">
-                    Sesiones firmadas con Sanctum, alertas de dispositivos y auditoría minuto a minuto.
-                </p>
-            </div>
-        </div>
+        <p class="mt-6 text-center text-sm text-slate-600">Acceso autorizado a la operación de máquinas vending.</p>
     </GuestLayout>
 </template>

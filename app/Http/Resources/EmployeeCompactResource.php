@@ -48,6 +48,7 @@ class EmployeeCompactResource extends JsonResource
 
         return [
             'id' => (int) $this->id,
+            'employee_number' => $this->employee_number !== null ? (string) $this->employee_number : null,
             'fortia_employee_id' => $this->fortia_employee_id !== null ? (string) $this->fortia_employee_id : null,
             'code' => $employeeKey ?? (string) $this->id,
             'employee_key' => $employeeKey,
@@ -65,6 +66,10 @@ class EmployeeCompactResource extends JsonResource
             'curp' => $this->curp,
             'status' => $this->normalizeStatus($this->status),
             'status_code' => $this->normalizeStatusCode($this->status),
+            'source' => $this->source instanceof \BackedEnum ? $this->source->value : ($this->source ?: 'LEGACY'),
+            'source_external_id' => $this->source_external_id,
+            'source_synced_at' => optional($this->source_synced_at)->toISOString(),
+            'source_updated_at' => optional($this->source_updated_at)->toISOString(),
 
             'check_scope' => $this->check_scope ? (string) $this->check_scope : null,
             'resolved_check_scope' => (string) ($this->resolved_check_scope ?? 'HOME_ONLY'),

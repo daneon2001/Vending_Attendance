@@ -23,14 +23,15 @@ class EmployeeExcelImportService
     public function __construct(
         private readonly TabularDataReader $reader,
         private readonly EmployeeExcelCatalogResolutionService $catalogResolutionService
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
      */
     public function preview(UploadedFile $file): array
     {
+        $this->assertLegacyImportEnabled();
+
         return $this->formatResult(
             $this->analyzeFile($file)
         );
@@ -41,6 +42,7 @@ class EmployeeExcelImportService
      */
     public function createMissingCatalogs(UploadedFile $file): array
     {
+        $this->assertLegacyImportEnabled();
         $analysis = $this->analyzeFile($file);
         $creation = $this->catalogResolutionService->createMissingCatalogs($analysis['prepared_rows'] ?? []);
         $rechecked = $this->formatResult($this->analyzeFile($file));
@@ -58,6 +60,7 @@ class EmployeeExcelImportService
      */
     public function import(UploadedFile $file): array
     {
+        $this->assertLegacyImportEnabled();
         $analysis = $this->analyzeFile($file);
         $result = $this->formatResult($analysis);
 
@@ -285,8 +288,9 @@ class EmployeeExcelImportService
 
         $existingEmployees = Employee::query()
             ->whereIn('fortia_employee_id', $this->extractExistingLookupIds($preRows))
+            ->when(Schema::hasColumn('employees', 'employee_number'), fn ($query) => $query->orWhereIn('employee_number', array_column(array_column($preRows, 'values'), 'cla_trab')))
             ->get()
-            ->keyBy(fn (Employee $employee) => (string) $employee->fortia_employee_id);
+            ->keyBy(fn (Employee $employee) => (string) ($employee->fortia_employee_id ?? $employee->employee_number));
 
         $preparedRows = [];
         foreach ($preRows as $preRow) {
@@ -443,6 +447,9 @@ class EmployeeExcelImportService
         }
 
         $existing = $claTrab !== null ? $existingEmployees->get((string) $claTrab) : null;
+        if ($existing && $existing->source !== null && $existing->source !== \App\Enums\Employees\EmployeeSource::LEGACY) {
+            $errors[] = 'CONFLICT_SOURCE: el import legacy no puede modificar identidades administradas por Vending.';
+        }
         $isTermination = $this->isTerminationStatus($status);
         $fechaIngreso = $this->normalizeDate($values['fecha_ing'] ?? null, 'FECHA_ING', $errors);
         $fechaIngresoGrupo = $this->normalizeDate($values['fecha_ing_grupo'] ?? null, 'FECHA_ING_GRUPO', $errors);
@@ -696,8 +703,7 @@ class EmployeeExcelImportService
         bool $hasEmployeeDetailsTable,
         bool $hasEmployeeImportMetadataTable,
         bool $hasEmployeeStatusChangesTable
-    ): string
-    {
+    ): string {
         if (($preparedRow['skip_import'] ?? false) === true) {
             return 'termination_skipped';
         }
@@ -734,7 +740,7 @@ class EmployeeExcelImportService
 
         $action = 'updated';
         if ($employee === null) {
-            $employee = new Employee();
+            $employee = new Employee;
             $action = 'created';
         }
 
@@ -811,8 +817,7 @@ class EmployeeExcelImportService
         ?string $newStatus,
         ?string $effectiveDate,
         bool $hasEmployeeStatusChangesTable
-    ): void
-    {
+    ): void {
         if (
             $oldStatus === $newStatus
             || ! $hasEmployeeStatusChangesTable
@@ -1098,5 +1103,12 @@ class EmployeeExcelImportService
         }
 
         return strtolower((string) pathinfo($file->getPathname(), PATHINFO_EXTENSION));
+    }
+
+    private function assertLegacyImportEnabled(): void
+    {
+        if (config('employees.import.legacy_enabled') !== true) {
+            throw new \RuntimeException('El import legacy está desactivado. Usa el preview y confirmación de Empleados Vending.');
+        }
     }
 }

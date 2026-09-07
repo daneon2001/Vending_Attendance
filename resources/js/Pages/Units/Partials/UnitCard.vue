@@ -1,4 +1,5 @@
 <script setup>
+import { formatDateTime as formatOperationalDate } from '@/presentation/labels';
 import { computed } from 'vue';
 
 const props = defineProps({
@@ -32,7 +33,7 @@ const statusStyles = computed(() =>
         : 'bg-rose-50 text-rose-700 border border-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800',
 );
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—');
+const formatDate = (value) => formatOperationalDate(value, 'Sin fecha');
 const showColumn = (key) => props.visibleColumns.includes(key);
 const hasExtraDetails = computed(() =>
     ['id', 'fortia_location_id', 'description', 'state', 'country', 'timezone', 'address', 'company_id', 'active_clocks_count', 'offline_clocks_count', 'created_at', 'updated_at']
@@ -55,7 +56,7 @@ const hasExtraDetails = computed(() =>
                     {{ unit.city ?? 'Sin ciudad' }}{{ unit.state ? `, ${unit.state}` : '' }}
                 </span>
                 <span v-if="showColumn('last_heartbeat_at')" class="text-xs text-slate-500">
-                    {{ unit.last_heartbeat_at_display ? `Heartbeat ${unit.last_heartbeat_at_display}` : 'Sin heartbeat' }}
+                    {{ unit.last_heartbeat_at_display ? `Conexión ${unit.last_heartbeat_at_display}` : 'Sin conexión registrada' }}
                 </span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -150,10 +151,10 @@ const hasExtraDetails = computed(() =>
                         Operación
                     </dt>
                     <dd class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
-                        {{ showColumn('timezone') ? (unit.timezone ?? 'No definida') : (unit.last_heartbeat_at_display ?? 'Sin heartbeat') }}
+                        {{ showColumn('timezone') ? (unit.timezone ?? 'No definida') : (unit.last_heartbeat_at_display ?? 'Sin conexión registrada') }}
                     </dd>
                     <dd v-if="showColumn('last_heartbeat_at')" class="text-xs text-slate-500">
-                        {{ unit.last_heartbeat_at_display ? `Heartbeat ${unit.last_heartbeat_at_display}` : 'Sin heartbeat registrado' }}
+                        {{ unit.last_heartbeat_at_display ? `Conexión ${unit.last_heartbeat_at_display}` : 'Sin conexión registrada' }}
                     </dd>
                     <dd v-else-if="showColumn('created_at')" class="text-xs text-slate-500">
                         Última actualización {{ formatDate(unit.created_at) }}

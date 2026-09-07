@@ -242,7 +242,8 @@ Route::prefix('fortia-mock')->middleware('dev.only.api')->group(function () {
     Route::get('employees', [FortiaMockEmployeeController::class, 'index']);
     Route::post('employees', [FortiaMockEmployeeController::class, 'store']);
     Route::patch('employees/{employee}/status', [FortiaMockEmployeeController::class, 'updateStatus']);
-    Route::post('sync-employees', [FortiaMockSyncController::class, 'sync']);
+    Route::post('sync-employees', [FortiaMockSyncController::class, 'sync'])
+        ->middleware(['auth:web,sanctum', 'perm.strict:employees,sync']);
 });
 
 Route::get('dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');

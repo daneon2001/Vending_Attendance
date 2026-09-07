@@ -2,68 +2,42 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Fortia\CatalogAlignmentService;
-use App\Services\Fortia\FortiaEmployeeService;
-use App\Services\FortiaMock\FortiaMockSyncService;
-use Database\Seeders\EmployeeDetailsSeeder;
+use App\Services\Employees\FortiaEmployeeSyncService;
 use Illuminate\Console\Command;
 
 class FortiaSyncEmployees extends Command
 {
     protected $signature = 'fortia:sync-employees
-        {--company_id= : Filtra por company_id}
-        {--fortia_employee_id= : Sincroniza solo un empleado por clave Fortia}
-        {--skip-catalog-sync : Omite sincronizacion de companies/locations}
-        {--skip-details : Omite ejecucion de EmployeeDetailsSeeder}';
+        {--dry-run : Fetch, validate and calculate diff without any writes}
+        {--apply : Explicitly apply after reviewing a dry-run; server write gate must also be enabled}
+        {--skip-catalog-sync : Compatibility flag; catalog writes are no longer performed}
+        {--skip-details : Compatibility flag; personal details are never imported}
+        {--company_id= : Source company filter}
+        {--fortia_employee_id= : Source employee number filter}';
 
-    protected $description = 'Sincroniza employees desde Fortia/Fortia mock y opcionalmente alinea catalogos operativos.';
+    protected $description = 'Project minimal Fortia employee identity; defaults to dry-run.';
 
-    public function __construct(
-        private readonly FortiaEmployeeService $fortiaService,
-        private readonly FortiaMockSyncService $mockSyncService,
-        private readonly CatalogAlignmentService $alignmentService
-    ) {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(FortiaEmployeeSyncService $service): int
     {
-        $filters = [];
-        if ($this->option('company_id') !== null) {
-            $filters['company_id'] = (int) $this->option('company_id');
+        if ($this->option('apply') && $this->option('dry-run')) {
+            $this->error('Use --dry-run or --apply, not both.');
+
+            return self::INVALID;
         }
-
-        $syncMode = $this->fortiaService->describeMode();
-        $this->line('Modo de sync: '.json_encode($syncMode, JSON_UNESCAPED_UNICODE));
-
+        $filters = array_filter([
+            'company_id' => $this->option('company_id'),
+            'fortia_employee_id' => $this->option('fortia_employee_id'),
+        ], fn ($value) => $value !== null);
         try {
-            if ($this->fortiaService->usingMockMode()) {
-                $summary = $this->mockSyncService->syncIncremental($filters);
-            } elseif ($this->option('fortia_employee_id') !== null) {
-                $summary = $this->fortiaService->syncEmployeeById((int) $this->option('fortia_employee_id'));
-            } else {
-                $summary = $this->fortiaService->syncEmployees($filters);
-            }
-        } catch (\Throwable $exception) {
-            $this->error('Error en sincronizacion de employees: '.$exception->getMessage());
+            $dryRun = ! $this->option('apply');
+            $summary = $service->sync($dryRun, $filters);
+            $this->line(json_encode(['dry_run' => $dryRun, ...$summary], JSON_THROW_ON_ERROR));
+
+            return self::SUCCESS;
+        } catch (\RuntimeException $exception) {
+            $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
-
-        $this->line('Resumen employees: '.json_encode($summary, JSON_UNESCAPED_UNICODE));
-
-        if (! (bool) $this->option('skip-catalog-sync')) {
-            $catalogSummary = $this->alignmentService->syncOperationalCatalogs(false);
-            $this->line('Resumen catalogos: '.json_encode($catalogSummary, JSON_UNESCAPED_UNICODE));
-        }
-
-        if (! (bool) $this->option('skip-details')) {
-            $this->call('db:seed', [
-                '--class' => EmployeeDetailsSeeder::class,
-                '--no-interaction' => true,
-            ]);
-        }
-
-        return self::SUCCESS;
     }
 }
