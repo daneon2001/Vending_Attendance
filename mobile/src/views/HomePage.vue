@@ -32,6 +32,7 @@
             <div><dt>Versión de empleados</dt><dd>{{ state.summary?.employeeManifestVersion ?? 'Sin información' }}</dd></div>
             <div><dt>Última confirmación de configuración</dt><dd>{{ formattedLastSync }}</dd></div>
           </dl>
+          <TerminalGeofence :configuration-version="state.summary?.configurationVersion ?? null" />
         </details>
       </main>
     </ion-content>
@@ -49,6 +50,7 @@ import type { ConnectivityState } from '@/domain/types'
 import type { SyncViewState } from '@/services/EdgeSyncService'
 import { deviceStatusLabel, syncPhaseLabel } from '@/presentation/operationLabels'
 import TerminalStatus from '@/components/TerminalStatus.vue'
+import TerminalGeofence from '@/components/TerminalGeofence.vue'
 
 const employees = ref<EffectiveEmployee[]>([])
 const search = ref('')

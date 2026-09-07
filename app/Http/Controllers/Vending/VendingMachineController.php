@@ -12,6 +12,7 @@ use App\Enums\Vending\SybiVendingValidationStatus;
 use App\Enums\Vending\VendingCatalogSource;
 use App\Enums\Vending\VendingMachineStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Vending\StoreMachineGeofenceRequest;
 use App\Http\Requests\Vending\StoreVendingMachineRequest;
 use App\Http\Requests\Vending\UpdateVendingMachineRequest;
 use App\Models\AuditLog;
@@ -148,6 +149,13 @@ class VendingMachineController extends Controller
 
         return Inertia::render('VendingMachines/Show', [
             'machine' => $vendingMachine,
+            'geofenceEditor' => [
+                'limits' => StoreMachineGeofenceRequest::EDITOR_LIMITS,
+                'source_location' => $vendingMachine->source === VendingCatalogSource::SYBI
+                    ? ($vendingMachine->sybiSourceRecord()->first(['latitude', 'longitude'])?->only(['latitude', 'longitude'])
+                        ?? $vendingMachine->only(['latitude', 'longitude']))
+                    : null,
+            ],
             'auditLogs' => $auditLogs,
             'employees' => Employee::query()->orderBy('full_name')->limit(2000)->get(['id', 'fortia_employee_id', 'full_name', 'name', 'last_name']),
             'statuses' => VendingMachineStatus::values(),

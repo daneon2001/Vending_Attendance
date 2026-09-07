@@ -83,7 +83,8 @@ for(const [role,matrix] of Object.entries(roles)){
  test(role+' machine detail only renders authorized mutation controls',async()=>{
   const html=await renderVue('resources/js/Pages/VendingMachines/Show.vue',{machine:{uuid:'machine',machine_code:'VM-DEMO-001',latitude:19,longitude:-99,geofences:[],devices:[],assignments:[],provisioning_tokens:[]},auditLogs:[],employees:[],assignmentTypes:['PRIMARY'],geofenceStatuses:['DRAFT','ACTIVE']},matrix);
   assert.equal(html.includes('Generar código de activación'),role==='Admin');
-  assert.equal(html.includes('Nueva geocerca circular'),role==='Admin');
+  assert.equal(html.includes('Crear geocerca'),role==='Admin');
+  assert.equal(html.includes('Configurar geocerca'),false,'El editor permanece cerrado hasta una acción explícita');
   assert.equal(html.includes('Asignar empleado'),['Admin','Operator'].includes(role));
  });
 }

@@ -27,6 +27,7 @@ class MachineGeofenceObserver
         $event = match ($geofence->getAttributes()['status'] ?? null) {
             GeofenceStatus::ACTIVE->value => 'geofence.activated',
             GeofenceStatus::SUPERSEDED->value => 'geofence.superseded',
+            GeofenceStatus::INACTIVE->value => 'geofence.deactivated',
             default => 'geofence.updated',
         };
 

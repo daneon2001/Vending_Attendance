@@ -105,6 +105,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         ->middleware('perm:vending_machines,geofence')->name('vending-machines.geofences.store');
     Route::patch('/vending-machines/{vendingMachine}/geofences/{geofence}/activate', [MachineGeofenceController::class, 'activate'])
         ->middleware('perm:vending_machines,geofence')->name('vending-machines.geofences.activate');
+    Route::patch('/vending-machines/{vendingMachine}/geofences/{geofence}/deactivate', [MachineGeofenceController::class, 'deactivate'])
+        ->middleware('perm:vending_machines,geofence')->name('vending-machines.geofences.deactivate');
+    Route::patch('/vending-machines/{vendingMachine}/verify-location', [MachineGeofenceController::class, 'verifyLocation'])
+        ->middleware('perm:vending_machines,geofence')->name('vending-machines.location.verify');
     Route::post('/vending-machines/{vendingMachine}/provisioning-tokens', [DeviceAdministrationController::class, 'createToken'])
         ->middleware('perm:vending_machines,manage')->name('vending-machines.provisioning-tokens.store');
     Route::patch('/vending-machines/{vendingMachine}/provisioning-tokens/{provisioningToken}/revoke', [DeviceAdministrationController::class, 'revokeToken'])

@@ -3,6 +3,7 @@
 export const auditEventLabels = Object.freeze({
  'vending_machine.created': 'Máquina registrada',
  'vending_machine.updated': 'Máquina actualizada',
+ 'vending_machine.location_verified': 'Ubicación registrada verificada',
  'vending_machine.activated': 'Máquina habilitada',
  'vending_machine.deactivated': 'Máquina deshabilitada',
  'vending_machine.retired': 'Máquina retirada',
@@ -13,6 +14,7 @@ export const auditEventLabels = Object.freeze({
  'geofence.created': 'Geocerca creada',
  'geofence.updated': 'Geocerca actualizada',
  'geofence.activated': 'Geocerca activada',
+ 'geofence.deactivated': 'Geocerca desactivada',
  'geofence.superseded': 'Versión de geocerca sustituida',
  'geofence.review_required': 'Geocerca requiere revisión',
  'assignment.created': 'Empleado asignado',

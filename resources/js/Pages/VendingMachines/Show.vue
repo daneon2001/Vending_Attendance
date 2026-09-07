@@ -1,6 +1,7 @@
 <script setup>
 import StatusBadge from '@/Components/StatusBadge.vue';
 import TechnicalDetails from '@/Components/TechnicalDetails.vue';
+import GeofenceEditor from '@/Components/GeofenceEditor.vue';
 import { statusLabel, friendlyError, formatDateTime } from '@/presentation/labels';
 import { auditEventLabel } from '@/presentation/audit';
 import { canUse } from '@/presentation/navigation';
@@ -12,11 +13,9 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { ref } from 'vue';
 
-const props = defineProps({ machine: Object, auditLogs: Array, employees: Array, assignmentTypes: Array, geofenceStatuses: Array });
+const props = defineProps({ machine: Object, auditLogs: Array, employees: Array, assignmentTypes: Array, geofenceStatuses: Array, geofenceEditor: Object });
 const assignment = useForm({ employee_id: '', assignment_type: 'PRIMARY', valid_from: new Date().toISOString().slice(0, 16), valid_until: '', attendance_allowed: true, enrollment_allowed: false, maintenance_allowed: false, source: 'MANUAL' });
-const geofence = useForm({ center_latitude: props.machine.latitude ?? '', center_longitude: props.machine.longitude ?? '', radius_m: props.machine.default_geofence_radius_m ?? 40, minimum_acceptable_accuracy_m: 25, tolerance_m: 0, valid_from: '', valid_until: '', status: 'DRAFT', source: 'MANUAL' });
 const revoke = (item) => useForm({ reason: 'Revocación administrativa' }).patch(route('vending-machines.assignments.revoke', [props.machine.uuid, item.uuid]), { preserveScroll: true });
-const activate = (item) => useForm({}).patch(route('vending-machines.geofences.activate', [props.machine.uuid, item.uuid]), { preserveScroll: true });
 const employeeName = (item) => item.employee?.full_name || `${item.employee?.name ?? ''} ${item.employee?.last_name ?? ''}`.trim() || '—';
 const permissions = (item) => [item.attendance_allowed && 'Asistencia', item.enrollment_allowed && 'Enrolamiento', item.maintenance_allowed && 'Mantenimiento'].filter(Boolean).join(', ') || 'Sin permisos';
 const provisioningToken = ref(null);
@@ -46,11 +45,11 @@ const provisioningState = (token) => token.used_at ? 'USED' : token.revoked_at ?
         <div class="space-y-6">
             <section class="grid gap-4 lg:grid-cols-2">
                 <article class="card p-5"><h2 class="font-semibold text-app">Datos generales</h2><dl class="mt-4 grid grid-cols-2 gap-3 text-sm"><template v-for="row in [['Código',machine.machine_code],['Estado',statusLabel(machine.status)],['Dirección',machine.address_line],['Municipio',machine.municipality],['Localidad',machine.locality],['CP',machine.postal_code]]" :key="row[0]"><dt class="text-soft">{{ row[0] }}</dt><dd class="text-app">{{ row[1] || '—' }}</dd></template></dl></article>
-                <article class="card p-5"><h2 class="font-semibold text-app">Ubicación</h2><dl class="mt-4 grid grid-cols-2 gap-3 text-sm"><template v-for="row in [['Latitud',machine.latitude],['Longitud',machine.longitude],['Origen',statusLabel(machine.coordinate_source)],['Verificada',machine.coordinates_verified ? 'Sí':'No'],['Fecha verificación',formatDateTime(machine.coordinates_verified_at)]]" :key="row[0]"><dt class="text-soft">{{ row[0] }}</dt><dd class="text-app">{{ row[1] || '—' }}</dd></template></dl></article>
+                <article class="card p-5"><h2 class="font-semibold text-app">Ubicación registrada</h2><p class="mt-4 text-sm text-app">Origen: {{ statusLabel(machine.coordinate_source) }}</p><p class="mt-2 text-sm text-soft">{{ machine.coordinates_verified ? 'Verificada' : 'Pendiente de verificación' }} · {{ formatDateTime(machine.coordinates_verified_at, 'Sin fecha de verificación') }}</p><p class="mt-2 text-sm text-soft">Consulta el mapa y administra el centro operacional en Geocerca.</p><TechnicalDetails><p>Latitud: {{ machine.latitude ?? 'Sin información' }}</p><p>Longitud: {{ machine.longitude ?? 'Sin información' }}</p></TechnicalDetails></article>
             </section>
 
             <section class="card p-5">
-                <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-semibold text-app">Información de origen SYBI</h2><p class="text-sm text-soft">Identidad, dirección y coordenadas de origen son de sólo lectura cuando la fuente es SYBI.</p></div><span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200">Origen · {{ statusLabel(machine.source) }}</span></div>
+                <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-semibold text-app">{{ machine.source === 'SYBI' ? 'Información de origen SYBI' : 'Información de origen' }}</h2><p class="text-sm text-soft">Identidad, dirección y coordenadas de origen son de sólo lectura cuando la fuente es SYBI.</p></div><span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200">Origen · {{ statusLabel(machine.source) }}</span></div>
                 <div v-if="machine.geofence_review_required" class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">SYBI reportó un cambio de coordenadas. La geocerca activa no fue desplazada y requiere revisión administrativa.</div>
                 <dl class="mt-4 grid gap-3 text-sm md:grid-cols-3">
                     <div><dt class="text-soft">Estado de sincronización</dt><dd class="text-app">{{ statusLabel(machine.sybi_sync_status) }}</dd></div>
@@ -63,10 +62,7 @@ const provisioningState = (token) => token.used_at ? 'USED' : token.revoked_at ?
                 </details>
             </section>
 
-            <section class="card p-5"><div class="flex items-center justify-between"><h2 class="font-semibold text-app">Geocercas</h2><span class="text-sm text-soft">Configuración {{ machine.config_version }}</span></div>
-                <div class="mt-4 overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left text-soft"><th class="p-2">Versión</th><th class="p-2">Centro</th><th class="p-2">Radio</th><th class="p-2">Precisión requerida</th><th class="p-2">Tolerancia</th><th class="p-2">Estado</th><th class="p-2"></th></tr></thead><tbody><tr v-for="item in machine.geofences" :key="item.uuid" class="border-t border-app"><td class="p-2">{{ item.version }}</td><td class="p-2 font-mono text-xs">{{ item.center_latitude }}, {{ item.center_longitude }}</td><td class="p-2">{{ item.radius_m }} m</td><td class="p-2">{{ item.minimum_acceptable_accuracy_m ?? '—' }}</td><td class="p-2">{{ item.tolerance_m }} m</td><td class="p-2"><StatusBadge :value="item.status" /></td><td class="p-2"><button v-if="can('geofence') && ['DRAFT', 'INACTIVE'].includes(item.status)" class="text-indigo-600" @click="activate(item)">Activar</button></td></tr><tr v-if="!machine.geofences?.length"><td colspan="7" class="p-5 text-soft">No hay geocercas registradas.</td></tr></tbody></table></div>
-                <details v-if="can('geofence')" class="mt-4"><summary class="min-h-11 cursor-pointer py-2 font-semibold text-indigo-600">Crear geocerca</summary><form class="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800 md:grid-cols-4" @submit.prevent="geofence.post(route('vending-machines.geofences.store', machine.uuid), { preserveScroll: true, onSuccess: () => geofence.reset() })"><h3 class="font-semibold text-app md:col-span-4">Nueva geocerca circular</h3><p class="text-xs text-soft md:col-span-4">El radio define la distancia permitida al centro. La precisión indica el margen aceptable del GPS; la tolerancia agrega el margen configurado a la evaluación. Una nueva versión no borra las anteriores.</p><label v-for="field in [{k:'center_latitude',l:'Latitud'},{k:'center_longitude',l:'Longitud'},{k:'radius_m',l:'Radio (m)'},{k:'minimum_acceptable_accuracy_m',l:'Precisión requerida (m)'},{k:'tolerance_m',l:'Tolerancia (m)'}]" :key="field.k" class="text-sm">{{ field.l }}<input v-model="geofence[field.k]" type="number" step="0.01" class="mt-1 w-full rounded-xl border-app" /><span class="text-xs text-rose-600">{{ friendlyError(geofence.errors[field.k]) }}</span></label><label class="text-sm">Estado<select v-model="geofence.status" class="mt-1 w-full rounded-xl border-app"><option v-for="status in geofenceStatuses" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label><div class="flex items-end"><button class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Crear versión</button></div></form></details>
-            </section>
+            <GeofenceEditor :key="machine.uuid" :machine="machine" :editor="geofenceEditor" :can-edit="can('geofence')" />
 
             <section class="card p-5">
                 <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-semibold text-app">Dispositivos</h2><p class="text-sm text-soft">Consulta la conexión de los dispositivos asociados a esta máquina.</p></div><button v-if="can('manage')" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="provisioningLoading" @click="generateProvisioningToken">Generar código de activación</button></div>

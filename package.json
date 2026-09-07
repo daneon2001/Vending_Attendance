@@ -8,6 +8,7 @@
         "test:e2e:update": "playwright test --update-snapshots"
     },
     "dependencies": {
+        "leaflet": "1.9.4",
         "chart.js": "^4.5.1",
         "tom-select": "^2.6.1"
     },
