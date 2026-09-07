@@ -4,17 +4,17 @@
     <ion-content>
       <main class="page-shell">
         <h1>Vincular esta instalación</h1>
-        <p class="muted">Ingresa el token efímero generado desde la administración de la máquina.</p>
+        <p class="muted">Ingresa el código temporal proporcionado por el responsable de la máquina.</p>
         <ion-list inset>
-          <ion-item><ion-input v-model="token" label="Token de provisioning" label-placement="stacked"
+          <ion-item><ion-input v-model="token" label="Código de activación" label-placement="stacked"
             type="password" autocomplete="off" :clear-input="true" /></ion-item>
-          <ion-item><ion-input v-model="serial" label="Serial (opcional)" label-placement="stacked" /></ion-item>
+          <ion-item><ion-input v-model="serial" label="Número de serie (opcional)" label-placement="stacked" /></ion-item>
         </ion-list>
         <ion-button expand="block" :disabled="busy || !validToken" @click="provision">
           {{ busy ? 'Activando…' : 'Activar dispositivo' }}
         </ion-button>
         <ion-text v-if="message" :color="failed ? 'danger' : 'success'"><p>{{ message }}</p></ion-text>
-        <ion-note>El token y la credencial no se registran en logs ni SQLite.</ion-note>
+        <ion-note>No compartas el código de activación.</ion-note>
       </main>
     </ion-content>
   </ion-page>

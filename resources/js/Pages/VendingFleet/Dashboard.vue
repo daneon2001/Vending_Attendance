@@ -8,7 +8,7 @@ import { statusLabel, friendlyError, formatDateTime, formatDurationSeconds } fro
 const props = defineProps({ generated_at: String, kpis: Object, app_versions: Array, alerts: Array, last_sybi_sync: Object, thresholds: Object });
 const primary = [
  ['Máquinas operativas','machines_operational','Activas o en mantenimiento, según el criterio vigente'],
- ['Dispositivos conectados','devices_online','En línea según el estado operativo vigente'],
+ ['Dispositivos conectados','devices_online','En línea y sin incidencias según el criterio operativo. Una incidencia reciente puede excluir un dispositivo cuya red reporta conexión.'],
  ['Empleados asignados','employees_assigned','Empleados distintos con asignación vigente'],
  ['Asistencias de hoy','attendance_today','Registros recibidos por el servidor'],
  ['Registros pendientes','pending_edge_events','Pendientes reportados por los dispositivos'],

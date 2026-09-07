@@ -75,7 +75,7 @@ const employeeProps={employees:{data:[],current_page:1,last_page:1,total:0},filt
 for(const [role,matrix] of Object.entries(roles)){
  test(role+' employee actions follow capabilities and always disclose Fortia mock',async()=>{
   const html=await renderVue('resources/js/Pages/Employees/VendingCatalog.vue',{...employeeProps,capabilities:{import:canUse(matrix,'employees','import',true),sync:canUse(matrix,'employees','sync',true)}},matrix);
-  assert.match(html,/Fortia[\s\S]*Modo de prueba/);
+  assert.match(html,/Fortia[\s\S]*Fuente de prueba/);
   assert.equal(html.includes('Importar empleados'),['Admin','Operator'].includes(role));
   assert.equal(html.includes('Consultar cambios'),['Admin','Operator'].includes(role));
   assert.doesNotMatch(html,/driver mock|dry-run|auth.failed/);
@@ -123,7 +123,9 @@ for(const [role,matrix] of Object.entries(roles)) {
    sourceRecords:{data:[],links:[]},filters:{},statuses:['ACTIVE'],coordinateSources:[],catalogSources:[],syncStatuses:[],sourceStatuses:[],validationStatuses:[],municipalities:[],localities:[],
    sybiIntegration:{manual_creation_allowed:true,configured:true,automatic_sync_enabled:false},
   },matrix);
-  for(const action of ['Nueva máquina','Sincronizar ahora','>Editar<'])assert.equal(html.includes(action),role==='Admin',action);
+  for(const action of ['Nueva máquina','>Editar<'])assert.equal(html.includes(action),role==='Admin',action);
+  assert.ok(!html.includes('Sincronizar ahora'), 'Source synchronization stays on the SYBI catalog view');
+  assert.ok(html.includes('Ver catálogo SYBI'));
   assert.doesNotMatch(html,/88rem/);
  });
  test(role+' releases expose administration only to allowed management',async()=>{

@@ -1,5 +1,49 @@
 # Checklist de demo controlada — Fase 11
 
+## Revisión de presentación Fase 12
+
+Estado: PASS para cierre UI/UX de demo, no aprobación productiva.
+WEB: EXTERNAL_VISUAL_REVIEW_PREVIOUSLY_COMPLETED. Android final: HOME,
+Limpiar con teclado y pendiente→confirmado verificados físicamente. La única
+Salida autorizada de cierre añadió el id 19; los 18 eventos previos permanecen
+intactos. Wi-Fi y datos móviles quedaron habilitados como al inicio.
+Informe y límites: [ui-ux-final-review.md](ui-ux-final-review.md).
+Preflight posterior PASS: red ONLINE, manifests 2/2 y 5/5, outbox 0, HIGH 0.
+Repetir preflight antes de cada demo; esta evidencia no es telemetría en vivo.
+
+### Histórico del primer pulido de Fase 12
+
+Las casillas siguientes conservan el resultado de aquella ronda, no el estado
+actual. Limpiar y la revisión externa se cerraron en el informe enlazado;
+TalkBack integral y auditoría completa de accesibilidad siguen pendientes.
+
+- [x] Preflight local antes/después del pulido: PASS, sin reset ni cambio de datos
+  para aparentar salud. Preflight final: heartbeat 4 s, ONLINE, configuración 2/2,
+  empleados 5/5, pending 0, HIGH 0, MEDIUM 1.
+- [x] HONOR: tres actualizaciones `adb install -r`; sin desinstalar, borrar datos
+  o reprovisionar. Dos empleados visibles; selección y Entrada/Salida accesibles.
+- [x] Resultado GPS real, pendiente local y posterior recibo confirmado observados.
+  Eventos DEMO nuevos 12/13; total acumulado 13. No borrar para reiniciar la demo.
+- [x] Wi-Fi restaurada a habilitada; datos móviles siguen deshabilitados como antes.
+- [x] Búsqueda por número, limpieza, teclado y regreso Android revisados físicamente.
+- [ ] Revisión externa de «Limpiar»: con teclado se divide en dos líneas en el
+  HONOR. Funciona, pero queda pendiente el ajuste visual; se respetó el máximo
+  de tres iteraciones automáticas.
+- [ ] Validación hablada con TalkBack. Hay etiquetas ARIA en español y el botón
+  Limpiar aparece nombrado en uiautomator; el nombre del campo vacío no fue
+  expuesto por esa herramienta. No declarar certificación de lector de pantalla.
+- [ ] Revisar web en 1920×1080 y 1366×768 con Admin, Operator, Support y Viewer.
+  Validar foco/teclado, filtros, detalle, tabla y login. Render SSR no certifica
+  apariencia, contraste calculado en navegador ni ausencia de overflow real.
+- [ ] Fortia debe mostrar «Fuente de prueba» cuando driver=mock; no ejecutar
+  sincronización ni habilitar escrituras para mostrar la pantalla.
+- [ ] Antes de cada demo, volver a ejecutar `php artisan vending:demo-preflight`
+  y confirmar físicamente el Android. Demostrar OFFLINE sólo después de un
+  arranque ONLINE saludable; nunca fabricar heartbeat, ACK, GPS ni contadores.
+
+PRODUCT_DISPLAY_NAME sigue pendiente del propietario del producto. Se conserva
+Vending Attendance; no se traduce arbitrariamente el nombre comercial.
+
 Baseline: `vending-phase-10-pass` (`94275636386e666ebf251f976dff367e0ab66202`).
 FASE 10 UX/DEMO: PASS por revisión externa aprobada por el usuario.
 FASE 11 DEMO SCENARIO: PASS.

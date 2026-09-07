@@ -20,7 +20,7 @@ describe('GPS waiting presentation without changing capture semantics', () => {
     await vi.advanceTimersByTimeAsync(9999)
     expect(progress.message.value).toBe('Obteniendo ubicación…')
     await vi.advanceTimersByTimeAsync(1)
-    expect(progress.message.value).toBe('Estamos buscando una señal GPS precisa. Esto puede tardar un poco más sin conexión.')
+    expect(progress.message.value).toBe('Estamos buscando una señal GPS precisa. Sin conexión puede tardar un poco más.')
     progress.stop()
     expect(progress.message.value).toBe('')
     expect(vi.getTimerCount()).toBe(0)

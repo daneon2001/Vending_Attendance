@@ -112,7 +112,8 @@ describe('read-only attendance receipt', () => {
       await vi.waitFor(() => expect(sendAttendanceBatch).toHaveBeenCalledOnce())
       await presentation.refresh()
       expect(presentation.receipt.value?.status).toBe('SYNCING')
-      expect(attendanceSyncMessage(presentation.receipt.value)).toContain('Se enviará automáticamente')
+      expect(attendanceSyncMessage(presentation.receipt.value)).toBe('Enviando asistencia. Esperando confirmación del servidor.')
+      expect(attendanceSyncMessage(presentation.receipt.value)).not.toContain('conexión')
       expect(db.run).not.toHaveBeenCalled()
       respond([{ event_uuid: 'event-a', status, error_code: status === 'REJECTED' ? 'INVALID_EMPLOYEE' : undefined }])
       await syncing
@@ -120,7 +121,8 @@ describe('read-only attendance receipt', () => {
       expect(presentation.receipt.value?.status).toBe(status === 'REJECTED' ? 'REJECTED' : 'SYNCED')
       expect(attendanceSyncMessage(presentation.receipt.value)).toBe(status === 'REJECTED'
         ? 'No se pudo validar al empleado. Comunícate con tu supervisor.'
-        : 'Asistencia registrada correctamente.')
+        : 'Sincronizada correctamente.')
+      if (status !== 'REJECTED') expect(attendanceSyncMessage(presentation.receipt.value)).not.toMatch(/Se enviará|conexión|guardada/)
       expect(sendAttendanceBatch).toHaveBeenCalledWith([payload])
       expect(JSON.stringify(payload)).toBe(originalPayload)
     } finally {

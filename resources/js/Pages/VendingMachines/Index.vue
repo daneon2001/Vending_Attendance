@@ -116,7 +116,18 @@ const synchronizeSybi = () => {
         </template>
 
         <section class="space-y-5">
-            <article class="card p-5">
+            <article v-if="filters.catalog_view === 'operational'" class="card p-5" aria-label="Resumen de fuente SYBI">
+                <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="font-semibold text-app">Fuente SYBI</h2><Link class="inline-flex min-h-11 items-center text-sm font-semibold text-indigo-600" :href="route('vending-machines.index', { catalog_view: 'sybi' })">Ver catálogo SYBI</Link></div>
+                <p class="text-xs text-soft">Resultados de la última ejecución; no representan un conteo en tiempo real.</p>
+                <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div><dt class="text-soft">Última sincronización</dt><dd>{{ formatDateTime(sybiIntegration.latest_run?.finished_at || sybiIntegration.latest_run?.started_at, 'Sin ejecuciones') }}</dd></div>
+                    <div><dt class="text-soft">Listas para operar</dt><dd>{{ sybiIntegration.latest_run?.operational_ready ?? 'Sin información' }}</dd></div>
+                    <div><dt class="text-soft">Por revisar (incompletas)</dt><dd>{{ sybiIntegration.latest_run?.operational_incomplete ?? 'Sin información' }}</dd></div>
+                    <div><dt class="text-soft">Conflictos</dt><dd>{{ sybiIntegration.latest_run?.operational_conflicts ?? 'Sin información' }}</dd></div>
+                </dl>
+                <p v-if="!sybiIntegration.configured" class="mt-3 text-sm text-amber-700 dark:text-amber-300">La integración SYBI aún no está configurada.</p>
+            </article>
+            <article v-else class="card p-5">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div><h2 class="font-semibold text-app">Catálogo SYBI</h2><p class="text-sm text-soft">Consulta la información de origen y revisa qué máquinas están listas para operar.</p></div>
                     <button v-if="can('manage')" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="!sybiIntegration.configured || syncForm.processing" @click="synchronizeSybi">{{ syncForm.processing ? 'Sincronizando…' : 'Sincronizar ahora' }}</button>

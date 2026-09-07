@@ -5,7 +5,7 @@ import AttendanceResultCard from '@/components/AttendanceResultCard.vue'
 import type { AttendanceCaptureResult } from '@/services/AttendanceCaptureService'
 import type { AttendanceReceipt } from '@/storage/EdgeStore'
 import type { AttendanceEventType, GeofenceResult, OutboxStatus } from '@/domain/types'
-import { attendanceDistance, attendanceResultColor, attendanceSyncMessage } from '@/presentation/attendanceResult'
+import { attendanceDistance, attendanceResultColor, attendanceSyncMessage, attendanceLocalTime, attendanceResultHeading } from '@/presentation/attendanceResult'
 
 vi.mock('@ionic/vue', async () => {
   const { defineComponent, h } = await import('vue')
@@ -40,6 +40,27 @@ function render(result: AttendanceCaptureResult, receipt: AttendanceReceipt | nu
 
 describe('attendance result presentation', () => {
   it.each([
+    ['PENDING', 'Asistencia guardada'], ['SYNCING', 'Asistencia guardada'],
+    ['SYNCED', 'Asistencia registrada'], ['REJECTED', 'La asistencia requiere revisión'],
+  ] as const)('prioritizes a truthful headline for %s', async (status, heading) => {
+    const receipt = { status, errorCode: null }
+    expect(attendanceResultHeading(receipt)).toBe(heading)
+    const html = await renderToString(createSSRApp({ render: () => h(AttendanceResultCard, {
+      result: capture(), receipt, employeeName: 'Empleado Demo Uno',
+    }) }))
+    expect(html).toContain(heading)
+    expect(html).toContain('Empleado Demo Uno')
+    expect(html).toContain('Entrada · 21:13')
+    expect(html).not.toContain('2026-09-07T')
+  })
+  it('uses the event timezone without changing its timestamp or inventing invalid times', () => {
+    expect(attendanceLocalTime('2026-09-07T03:13:00Z', 'America/Mexico_City')).toBe('21:13')
+    expect(attendanceLocalTime('2026-09-07T03:13:00Z', 'UTC')).toBe('03:13')
+    expect(attendanceLocalTime('invalid', 'UTC')).toBe('Hora no disponible')
+    expect(attendanceLocalTime('2026-09-07T03:13:00Z', 'invalid')).toBe('Hora no disponible')
+    expect(attendanceResultHeading(null)).toBe('Asistencia guardada')
+  })
+  it.each([
     ['INSIDE', 'Dentro de la zona permitida'],
     ['OUTSIDE', 'Fuera de la zona permitida'],
     ['UNCERTAIN', 'No fue posible confirmar tu ubicación'],
@@ -71,23 +92,36 @@ describe('attendance result presentation', () => {
     expect(attendanceDistance(meters)).toBe(label)
   })
 
-  it.each(['PENDING', 'SYNCING'] as const)('shows local storage, not server success, for %s', async (status) => {
+  it.each([
+    ['PENDING', 'Se enviará automáticamente al recuperar conexión.'],
+    ['SYNCING', 'Enviando asistencia. Esperando confirmación del servidor.'],
+  ] as const)('shows local storage, not server success, for %s', async (status, message) => {
     const html = await render(capture(), { status, errorCode: null })
-    expect(html).toContain('Asistencia guardada en este dispositivo. Se enviará automáticamente cuando haya conexión.')
-    expect(html).not.toContain('Asistencia registrada correctamente.')
+    expect(html).toContain('Asistencia guardada')
+    expect(html).toContain(message)
+    if (status === 'SYNCING') expect(html).not.toContain('recuperar conexión')
+    expect(html).not.toContain('Sincronizada correctamente.')
     expect(html).not.toContain(status)
   })
 
   it('shows success for the confirmed receipt', async () => {
     const html = await render(capture('INSIDE'), { status: 'SYNCED', errorCode: null })
-    expect(html).toContain('Asistencia registrada correctamente.')
+    expect(html).toContain('Sincronizada correctamente.')
+    expect(html).not.toMatch(/Asistencia guardada|Se enviará|conexión|Esperando confirmación/)
     expect(html).toContain('color="success"')
   })
 
   it('does not invent confirmation if the receipt cannot be read', async () => {
     const html = await render(capture(), null)
     expect(html).toContain('Aún no se ha confirmado su envío.')
-    expect(html).not.toContain('Asistencia registrada correctamente.')
+    expect(html).not.toContain('Sincronizada correctamente.')
+  })
+
+  it.each(['PENDING', 'SYNCED', 'REJECTED'] as const)('explains OUTSIDE without promising authorization or a review workflow for %s', async status => {
+    const html = await render(capture('OUTSIDE'), { status, errorCode: null })
+    expect(html).toContain('Tu ubicación está fuera de la zona asignada.')
+    expect(html).not.toMatch(/autorizado|para su validación|OUTSIDE/)
+    if (status !== 'REJECTED') expect(html).not.toContain('No se pudo registrar')
   })
 
   it.each([

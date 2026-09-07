@@ -4,6 +4,7 @@ import PaginationBar from '@/Components/PaginationBar.vue';
 import Toast from '@/Components/Toast.vue';
 import LoadingState from '@/Components/LoadingState.vue';
 import EmptyState from '@/Components/EmptyState.vue';
+import { auditEventLabel, auditSubjectLabel } from '@/presentation/audit';
 import ErrorState from '@/Components/ErrorState.vue';
 import { apiUrl } from '@/utils/url';
 import { useBodyScrollLock } from '@/composables/useBodyScrollLock';
@@ -476,14 +477,14 @@ onMounted(() => {
 </script>
 
 <template>
-    <Head title="Bitacora de auditoria" />
+    <Head title="Auditoría" />
 
     <AuthenticatedLayout>
         <template #header>
             <div>
-                <h1 class="text-app text-2xl font-semibold">Configuracion  Bitacora</h1>
+                <h1 class="text-app text-2xl font-semibold">Auditoría</h1>
                 <p class="text-sm text-muted">
-                    Registra cada accion relevante realizada por los usuarios.
+                    Consulta la actividad registrada y abre el detalle cuando necesites más información.
                 </p>
             </div>
         </template>
@@ -578,14 +579,15 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <div class="card p-4 text-sm">
+                <details class="card self-start p-4 text-sm">
+                    <summary class="min-h-11 cursor-pointer py-2 font-semibold text-app">Conservación de auditoría</summary>
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-soft">Limpieza segura</p>
-                            <h2 class="text-lg font-semibold text-app">Purgar auditoria</h2>
+                            <h2 class="text-lg font-semibold text-app">Limpieza de auditoría</h2>
                         </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-soft dark:bg-slate-800">
-                            Dry-run disponible
+                            Vista previa disponible
                         </span>
                     </div>
 
@@ -679,7 +681,7 @@ onMounted(() => {
                         <p><strong class="text-app">Espacio estimado:</strong> {{ purgeResult.estimated_bytes_human }}</p>
                         <p><strong class="text-app">Duracion:</strong> {{ purgeResult.duration_ms }} ms</p>
                     </div>
-                </div>
+                </details>
             </div>
 
             <PaginationBar
@@ -718,9 +720,9 @@ onMounted(() => {
                         <p class="mt-1 text-sm font-semibold text-app">{{ log.user?.name ?? 'Sistema' }}</p>
                         <p class="truncate text-xs text-muted" :title="log.user?.email ?? ''">{{ log.user?.email ?? '' }}</p>
                         <span class="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-soft dark:bg-slate-800">
-                            {{ log.event }}
+                            {{ auditEventLabel(log.event) }}
                         </span>
-                        <p class="mt-2 line-clamp-3 text-sm text-muted">{{ log.description ?? '' }}</p>
+                        <p class="mt-2 text-sm text-muted">{{ auditSubjectLabel(log.auditable_type) }}</p>
                         <button
                             type="button"
                             class="mt-3 w-full rounded-2xl border border-app px-3 py-2 text-xs font-semibold text-indigo-600"
@@ -732,14 +734,14 @@ onMounted(() => {
                 </div>
 
                 <div class="hidden overflow-x-auto sm:block">
-                    <table class="w-full min-w-[72rem] text-left text-sm">
+                    <table class="w-full text-left text-sm">
+                        <caption class="sr-only">Actividad de auditoría</caption>
                         <thead>
-                            <tr class="text-xs uppercase tracking-[0.3em] text-soft">
+                            <tr class="text-sm text-soft">
                                 <th class="px-4 py-3">Fecha</th>
                                 <th class="px-4 py-3">Usuario</th>
-                                <th class="px-4 py-3">Accion</th>
-                                <th class="px-4 py-3">Entidad</th>
-                                <th class="px-4 py-3">Descripcion</th>
+                                <th class="px-4 py-3">Actividad</th>
+                                <th class="px-4 py-3">Elemento afectado</th>
                                 <th class="px-4 py-3 text-right">Detalles</th>
                             </tr>
                         </thead>
@@ -758,22 +760,18 @@ onMounted(() => {
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-soft dark:bg-slate-800">
-                                        {{ log.event }}
+                                        {{ auditEventLabel(log.event) }}
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="text-xs text-muted">
-                                        {{ log.auditable_type ?? '' }}
-                                        <template v-if="log.auditable_id">#{{ log.auditable_id }}</template>
+                                        {{ auditSubjectLabel(log.auditable_type) }}
                                     </span>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <p class="line-clamp-2 text-sm text-muted">{{ log.description ?? '' }}</p>
                                 </td>
                                 <td class="px-4 py-3 text-right">
                                     <button
                                         type="button"
-                                        class="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                                        class="min-h-11 text-sm font-semibold text-indigo-600 hover:text-indigo-500"
                                         @click="openDetail(log)"
                                     >
                                         Ver detalles
@@ -827,9 +825,10 @@ onMounted(() => {
                             {{ detailModal.metadata.user?.name ?? 'Sistema' }}  {{ detailModal.metadata.user?.email ?? '' }}
                         </p>
                         <p>
-                            <strong class="text-app">Descripcion:</strong>
+                            <strong class="text-app">Descripción:</strong>
                             {{ detailModal.metadata.description ?? '' }}
                         </p>
+                        <p><strong class="text-app">Elemento técnico:</strong> {{ detailModal.log?.auditable_type }} #{{ detailModal.log?.auditable_id }}</p>
                         <p>
                             <strong class="text-app">IP:</strong> {{ detailModal.metadata.ip_address ?? '' }}
                         </p>

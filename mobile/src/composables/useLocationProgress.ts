@@ -6,7 +6,7 @@ export function useLocationProgress() {
   const delayed = ref(false)
   let timer: ReturnType<typeof setTimeout> | undefined
   const message = computed(() => !active.value ? '' : delayed.value
-    ? 'Estamos buscando una señal GPS precisa. Esto puede tardar un poco más sin conexión.'
+    ? 'Estamos buscando una señal GPS precisa. Sin conexión puede tardar un poco más.'
     : 'Obteniendo ubicación…')
 
   function stop(): void {

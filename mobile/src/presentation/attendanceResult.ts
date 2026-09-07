@@ -30,7 +30,7 @@ export function attendanceDistance(distanceM: number): string | null {
 }
 
 export function attendanceSyncMessage(receipt: AttendanceReceipt | null): string {
-  if (receipt?.status === 'SYNCED') return 'Asistencia registrada correctamente.'
+  if (receipt?.status === 'SYNCED') return 'Sincronizada correctamente.'
   if (receipt?.status === 'REJECTED') {
     // Only known reasons get specific copy; never display a server message or code.
     switch (receipt.errorCode) {
@@ -44,10 +44,25 @@ export function attendanceSyncMessage(receipt: AttendanceReceipt | null): string
         return 'No se pudo registrar la asistencia. Comunícate con tu supervisor.'
     }
   }
-  if (receipt?.status === 'PENDING' || receipt?.status === 'SYNCING') {
-    return 'Asistencia guardada en este dispositivo. Se enviará automáticamente cuando haya conexión.'
+  if (receipt?.status === 'SYNCING') return 'Enviando asistencia. Esperando confirmación del servidor.'
+  if (receipt?.status === 'PENDING') {
+    return 'Se enviará automáticamente al recuperar conexión.'
   }
   return 'Asistencia guardada en este dispositivo. Aún no se ha confirmado su envío.'
+}
+
+export function attendanceResultHeading(receipt: AttendanceReceipt | null): string {
+  if (receipt?.status === 'SYNCED') return 'Asistencia registrada'
+  if (receipt?.status === 'REJECTED') return 'La asistencia requiere revisión'
+  return 'Asistencia guardada'
+}
+
+export function attendanceLocalTime(capturedAt: string, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('es-MX', {
+      timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(new Date(capturedAt))
+  } catch { return 'Hora no disponible' }
 }
 
 export function attendanceResultColor(result: GeofenceResult, receipt: AttendanceReceipt | null): string {

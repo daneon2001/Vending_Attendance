@@ -51,7 +51,7 @@ describe('per-event receipt presentation', () => {
     await h.presentation.refresh()
     expect(h.read).toHaveBeenLastCalledWith('event-a')
     expect(h.presentation.receipt.value?.status).toBe('PENDING')
-    expect(attendanceSyncMessage(h.presentation.receipt.value)).not.toContain('registrada correctamente')
+    expect(attendanceSyncMessage(h.presentation.receipt.value)).not.toContain('Sincronizada correctamente')
   })
 
   it.each(['IDLE', 'ERROR'] as const)('reads the individual persisted confirmation after sync %s', async (phase) => {
@@ -62,7 +62,8 @@ describe('per-event receipt presentation', () => {
     h.notify(phase)
     await vi.waitFor(() => expect(h.presentation.receipt.value?.status).toBe('SYNCED'))
     // Later manifest/heartbeat errors do not erase a confirmed attendance receipt.
-    expect(attendanceSyncMessage(h.presentation.receipt.value)).toBe('Asistencia registrada correctamente.')
+    expect(attendanceSyncMessage(h.presentation.receipt.value)).toBe('Sincronizada correctamente.')
+    expect(attendanceSyncMessage(h.presentation.receipt.value)).not.toMatch(/Se enviará|conexión|guardada/)
   })
 
   it('refreshes rejection reasons without publishing technical codes', async () => {

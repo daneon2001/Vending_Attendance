@@ -6,14 +6,14 @@ const item = (label, routeName, module, description, icon = 'dashboard', extra =
 export const navigationGroups = [
  { key:'operacion', title:'OPERACIÓN', items:[
  item('Resumen','vending-fleet.dashboard','vending_machines','Estado de la operación'),
+ item('Máquinas','vending-machines.index','vending_machines','Asignaciones y geocercas','machines'),
  item('Dispositivos','vending-devices.index','vending_machines','Conexión y estado','clocks'),
+ item('Empleados','vending-employees.index','employees','Catálogo e importación','users',{strict:true}),
  item('Alertas','vending-fleet.dashboard','vending_machines','Incidencias','audit',{hash:'alertas'}),
  item('Asistencias','admin.asistencias.index','asistencias','Consultar registros','attendance'),
  item('Tarjetas de asistencia','attendance-cards.index','asistencias','Consulta por empleado','attendance'),
  ]},
- {key:'personal',title:'PERSONAL',items:[item('Empleados','vending-employees.index','employees','Catálogo e importación','users',{strict:true})]},
- {key:'vending',title:'VENDING',items:[
- item('Máquinas','vending-machines.index','vending_machines','Asignaciones y geocercas','machines'),
+ {key:'integraciones',title:'INTEGRACIONES',items:[
  item('Catálogo SYBI','vending-machines.index','vending_machines','Información de origen','machines',{params:{catalog_view:'sybi'}}),
  ]},
  {key:'administracion',title:'ADMINISTRACIÓN',items:[

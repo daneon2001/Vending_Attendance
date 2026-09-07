@@ -1,5 +1,44 @@
 # Demo Vending Attendance — recorrido controlado de 14 minutos
 
+## Presentación Fase 12 — revisión final completada
+
+La preparación funcional de Fase 11 se conserva. El cierre UI/UX de Fase 12
+cuenta con revisión externa web y validación física final de Android;
+ver [ui-ux-final-review.md](ui-ux-final-review.md). No equivale a aprobación productiva.
+No repetir un reset para mejorar contadores: ejecutar primero
+`php artisan vending:demo-preflight`, que es de sólo lectura y valida la demo local.
+`vending:pilot-preflight` conserva sus requisitos productivos y no lo sustituye.
+
+En Android, presentar el flujo así:
+
+1. Revisar «En línea» y el número real de asistencias pendientes. La red por sí
+   sola no demuestra recepción por el servidor.
+2. «Selecciona tu nombre»: usar nombre o número; «Limpiar» restablece la lista.
+   Las versiones y la máquina se consultan en «Información de la terminal»,
+   colapsada inicialmente. No son el paso principal del trabajador.
+3. Confirmar empleado y pulsar «Registrar entrada» o «Registrar salida».
+   Durante GPS, esperar; no repetir la captura mientras los botones estén deshabilitados.
+4. «Asistencia guardada» significa almacenamiento local, todavía sin confirmación.
+   «Asistencia registrada» aparece únicamente al leer un recibo SYNCED real.
+   Entrada/Salida y hora local se muestran sin UUID, coordenadas ni precisión GPS.
+5. «Fuera de la zona permitida» es una advertencia independiente de la recepción.
+   No mover la geocerca ni presentar la recepción como ubicación válida.
+
+En web, usar OPERACIÓN / INTEGRACIONES / ADMINISTRACIÓN. No se agregaron rutas
+ni permisos. Dispositivos muestra sincronización agregada y pendientes; «Ver
+detalle» conserva versiones y estados de configuración/empleados. Fortia mock
+se identifica como «Fuente de prueba». El wizard de importación y su confirmación
+siguen intactos; no importar archivos reales para esta revisión visual.
+
+Ensayo histórico inicial del 7 de septiembre de 2026: dos eventos DEMO adicionales, ids
+12/13, conservando los once anteriores. Entrada online recibida en 3 s; Salida
+offline recibida después de recuperar Wi-Fi (71 s desde captura). Estos tiempos
+son evidencia de ese ensayo, no una promesa de latencia ni de estado futuro.
+El ensayo final de cierre añadió una única Salida expresamente autorizada,
+id 19, observada pendiente sin conexión y confirmada al recuperarla. Los 18
+registros anteriores quedaron intactos; Wi-Fi y datos móviles se restauraron.
+Las secciones históricas siguientes corresponden al cierre funcional de Fase 11.
+
 Baseline UX: vending-phase-10-pass. Fase 11: PASS.
 Validación funcional: PASS / READY_FOR_LIVE_DEMO.
 Completar [demo-checklist.md](demo-checklist.md) antes de presentar.

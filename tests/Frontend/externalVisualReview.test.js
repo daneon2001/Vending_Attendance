@@ -16,7 +16,7 @@ const deviceProps = (heartbeat = null) => ({
  devices: { data: [{
   uuid: 'review-device', device_serial: 'PILOT-01', platform: 'ANDROID', status: 'ACTIVE',
   last_heartbeat_at: heartbeat, app_version: '1.0.0', machine: { uuid: 'machine', machine_code: 'VM-DEMO-001' },
-  fleet: { status: 'OFFLINE', manifest: { configuration: { state: 'ERROR' }, employees: { state: 'PENDING' } }, app_version: { status: 'CURRENT' }, reasons: [] },
+  fleet: { status: 'OFFLINE', manifest: { sync_state: 'ERROR', configuration: { state: 'ERROR' }, employees: { state: 'PENDING' } }, app_version: { status: 'CURRENT' }, reasons: [] },
  }], links: [] },
  filters: { status: 'ACTIVE' }, machines: [], statuses: ['ACTIVE', 'REVOKED'], platforms: ['ANDROID'],
  appVersions: [], errorCategories: [], thresholds: {}, canManage: false,
@@ -55,11 +55,18 @@ test('external devices review separates administrative filter and operational st
  assert.ok(!html.includes('Sin conexión registrada'));
  assert.equal(JSON.stringify(props), original);
 });
-test('external devices review keeps both synchronization issues in compact labelled lines', async () => {
+test('phase 12 devices use server aggregate state, retaining both issues in initially hidden detail', async () => {
  const html = await renderVue('resources/js/Pages/VendingFleet/Devices.vue', deviceProps(), operator);
- const lines = [...html.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/g)].map(match => textOnly(match[0]));
- assert.ok(lines.includes('Configuración · Con error'));
- assert.ok(lines.includes('Empleados · Pendiente'));
+ assert.ok(html.includes('>Con error</span>'));
+ assert.ok(html.includes('>Pendientes</th>'));
+ assert.ok(!html.includes('>Versión</th>'));
+ assert.ok(html.includes('aria-expanded="false"'));
+ const source = await readFile('resources/js/Pages/VendingFleet/Devices.vue', 'utf8');
+ assert.ok(source.includes(':value="device.fleet.manifest.sync_state"'));
+ const detail = source.slice(source.indexOf('<tr v-if="expanded === device.uuid"'));
+ assert.ok(detail.includes('device.fleet.manifest.configuration.state'));
+ assert.ok(detail.includes('device.fleet.manifest.employees.state'));
+ assert.ok(detail.includes('Versión instalada'));
  expectClosed(html, 'Filtros avanzados');
 });
 test('external devices review preserves readable Mexico City connection dates', async () => {
@@ -82,8 +89,8 @@ test('external Fortia review keeps one compact honest notice with capability-gat
   const props = { ...employeeProps, capabilities };
   const original = JSON.stringify(props);
   const html = await renderVue('resources/js/Pages/Employees/VendingCatalog.vue', props, permissions);
-  assert.ok(textOnly(html).includes('Fortia · Modo de prueba'));
-  assert.equal((html.match(/Modo de prueba/g) || []).length, 1);
+  assert.ok(textOnly(html).includes('Fortia · Fuente de prueba'));
+  assert.equal((html.match(/Fuente de prueba/g) || []).length, 1);
   assert.ok(html.includes('La conexión productiva aún no está habilitada.'));
   assert.equal(html.includes('Consultar cambios</button>'), capabilities.sync);
   assert.ok(!html.includes('Aplicar sincronización'));
@@ -100,7 +107,7 @@ test('external Fortia review does not falsely label a real driver as mock or cla
   const html = await renderVue('resources/js/Pages/Employees/VendingCatalog.vue', {
    ...employeeProps, fortia: { driver: 'http', real_api_ready: ready, write_enabled: false },
   }, operator);
-  assert.ok(!html.includes('Modo de prueba'));
+  assert.ok(!html.includes('Fuente de prueba'));
   assert.equal(html.includes('La conexión productiva aún no está habilitada.'), !ready);
   assert.ok(!html.includes('Fortia conectado'));
  }

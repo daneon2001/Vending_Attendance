@@ -38,7 +38,7 @@ const advanced = computed(() => [
   <template #header><div><h1 class="text-xl font-semibold text-app">Dispositivos</h1><p class="text-sm text-soft">Revisa la conexión y la información sincronizada de cada máquina.</p></div></template>
   <div class="space-y-5">
    <form class="card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4" @submit.prevent="apply">
-    <label class="text-sm">Buscar<input v-model="filters.search" class="mt-1 w-full rounded-xl border-app" placeholder="Código, UUID o número de serie" /></label>
+    <label class="text-sm">Buscar<input v-model="filters.search" class="mt-1 w-full rounded-xl border-app" placeholder="Código de máquina o número de serie" /></label>
     <label class="text-sm">Estado administrativo<select v-model="filters.status" class="mt-1 w-full rounded-xl border-app"><option value="">Todos</option><option v-for="status in statuses" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label>
     <label class="text-sm">Máquina<select v-model="filters.machine" class="mt-1 w-full rounded-xl border-app"><option value="">Todas</option><option v-for="machine in machines" :key="machine.id" :value="machine.id">{{ machine.machine_code }}</option></select></label>
     <div class="flex items-end gap-2"><button class="rounded-xl bg-indigo-600 px-4 py-2 text-white">Buscar</button><button type="button" class="rounded-xl border border-app px-4 py-2" @click="clear">Limpiar</button></div>
@@ -46,26 +46,24 @@ const advanced = computed(() => [
    </form>
    <section class="card overflow-x-auto">
     <table class="w-full text-left text-sm"><caption class="sr-only">Dispositivos y conexión actual</caption>
-     <thead class="bg-slate-50 text-soft dark:bg-slate-800"><tr><th class="p-3">Máquina</th><th class="p-3">Dispositivo</th><th class="p-3">Estado operativo</th><th class="p-3">Última conexión</th><th class="p-3">Sincronización</th><th class="p-3">Versión</th><th class="p-3">Acciones</th></tr></thead>
+     <thead class="bg-slate-50 text-soft dark:bg-slate-800"><tr><th scope="col" class="p-3">Máquina</th><th scope="col" class="p-3">Dispositivo</th><th scope="col" class="p-3">Estado operativo</th><th scope="col" class="p-3">Última conexión</th><th scope="col" class="p-3">Sincronización</th><th scope="col" class="p-3">Pendientes</th><th scope="col" class="p-3">Acciones</th></tr></thead>
      <tbody><template v-for="device in devices.data" :key="device.uuid">
       <tr class="border-t border-app align-top">
        <td class="p-3"><Link v-if="device.machine" :href="route('vending-machines.show',device.machine.uuid)" class="font-semibold text-indigo-600">{{ device.machine.machine_code }}</Link><span v-else>Sin máquina</span></td>
        <td class="max-w-40 break-words p-3">{{ device.device_serial || 'Sin número de serie' }}<p class="text-xs text-soft">{{ statusLabel(device.platform) }}</p></td>
-       <td class="p-3"><StatusBadge :value="device.fleet.status" /></td>
+       <td class="p-3"><StatusBadge :value="device.fleet.status" /><p v-if="device.network_state" class="mt-1 text-xs text-soft">Red reportada: {{ statusLabel(device.network_state) }}</p><p v-if="device.fleet.reasons?.includes('RECENT_NETWORK')" class="mt-1 text-xs text-soft">Incidencia reciente de red</p></td>
        <td class="p-3">{{ formatDateTime(device.last_heartbeat_at, 'Aún no se ha conectado') }}</td>
-       <td class="space-y-1 p-3">
-        <p class="flex flex-wrap items-center gap-1 text-xs"><span class="text-soft">Configuración · </span><StatusBadge :value="device.fleet.manifest.configuration.state" /></p>
-        <p class="flex flex-wrap items-center gap-1 text-xs"><span class="text-soft">Empleados · </span><StatusBadge :value="device.fleet.manifest.employees.state" /></p>
-       </td>
-       <td class="p-3">{{ device.app_version || 'Sin información' }}<p class="mt-1 text-xs text-soft">{{ statusLabel(device.fleet.app_version.status) }}</p></td>
+       <td class="p-3"><StatusBadge :value="device.fleet.manifest.sync_state" /></td>
+       <td class="p-3">{{ device.pending_events_count ?? 'Sin información' }}</td>
        <td class="p-3"><button type="button" class="min-h-11 font-semibold text-indigo-600" :aria-expanded="expanded === device.uuid" :aria-controls="'device-' + device.uuid" @click="expanded = expanded === device.uuid ? null : device.uuid">{{ expanded === device.uuid ? 'Cerrar detalle' : 'Ver detalle' }}</button></td>
       </tr>
       <tr v-if="expanded === device.uuid" class="border-t border-app"><td colspan="7" class="p-4"><section :id="'device-' + device.uuid" class="space-y-4" :aria-label="'Detalle del dispositivo ' + (device.device_serial || device.uuid)">
        <h2 class="font-semibold">Detalle del dispositivo</h2>
+       <dl class="flex flex-wrap gap-4 text-sm"><div><dt class="text-soft">Configuración</dt><dd><StatusBadge :value="device.fleet.manifest.configuration.state" /></dd></div><div><dt class="text-soft">Empleados</dt><dd><StatusBadge :value="device.fleet.manifest.employees.state" /></dd></div><div><dt class="text-soft">Versión instalada</dt><dd>{{ device.app_version || 'Sin información' }} · {{ statusLabel(device.fleet.app_version.status) }}</dd></div></dl>
        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div><p class="text-sm text-soft">Estado administrativo</p><StatusBadge :value="device.status" /><ul class="mt-2 space-y-1"><li v-for="reason in device.fleet.reasons" :key="reason">{{ friendlyError(reason) }}</li></ul></div>
         <dl class="space-y-2"><div><dt class="text-soft">Registros pendientes</dt><dd>{{ device.pending_events_count ?? 'Sin información' }}</dd></div><div><dt class="text-soft">Geocerca</dt><dd>{{ device.machine?.geofence_ready ? 'Lista' : 'Requiere revisión' }}</dd></div><div><dt class="text-soft">Diferencia de hora</dt><dd>{{ device.clock_drift_seconds == null ? 'Sin información' : device.clock_drift_seconds + ' s' }}</dd></div></dl>
-        <dl class="space-y-2"><div><dt class="text-soft">Asistencias recibidas en 24 horas</dt><dd>{{ device.attendance?.received_last_24h ?? 'Sin información' }}</dd></div><div><dt class="text-soft">Última asistencia recibida</dt><dd>{{ formatDateTime(device.attendance?.last_received_at) }}</dd></div><div><dt class="text-soft">Conexión de red</dt><dd>{{ statusLabel(device.network_state) }}</dd></div></dl>
+        <dl class="space-y-2"><div><dt class="text-soft">Asistencias recibidas en 24 horas</dt><dd>{{ device.attendance?.received_last_24h ?? 'Sin información' }}</dd></div><div><dt class="text-soft">Última asistencia recibida</dt><dd>{{ formatDateTime(device.attendance?.last_received_at) }}</dd></div><div><dt class="text-soft">Última conexión de red reportada</dt><dd>{{ statusLabel(device.network_state) }}</dd></div></dl>
        </div>
        <TechnicalDetails>
         <p>UUID: {{ device.uuid }}</p><p>Sistema: {{ statusLabel(device.platform) }} {{ device.platform_version }} · Compilación: {{ device.app_build_number ?? '—' }}</p>

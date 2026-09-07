@@ -34,3 +34,13 @@ export function auditEventLabel(event) {
  return typeof event === 'string' && Object.prototype.hasOwnProperty.call(auditEventLabels, event)
   ? auditEventLabels[event] : 'Actividad registrada';
 }
+
+const subjectLabels = Object.freeze({
+ VendingMachine: 'Máquina vending', MachineGeofence: 'Geocerca',
+ EmployeeMachineAssignment: 'Asignación de empleado', Device: 'Dispositivo',
+ Employee: 'Empleado', User: 'Usuario', Role: 'Rol',
+});
+export function auditSubjectLabel(type) {
+ const name = typeof type === 'string' ? type.split('\\').at(-1) : '';
+ return Object.prototype.hasOwnProperty.call(subjectLabels, name) ? subjectLabels[name] : 'Registro';
+}
