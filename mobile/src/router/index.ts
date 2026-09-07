@@ -11,6 +11,11 @@ const routes: RouteRecordRaw[] = [
   { path: '/home', name: 'Home', component: HomePage },
   { path: '/attendance/:employeeId/:assignmentUuid', name: 'Attendance', component: AttendancePage },
   { path: '/startup-error', name: 'StartupError', component: StartupErrorPage },
+  { path: '/support', name: 'Support', component: () => import('@/support/SupportHomePage.vue') },
+  { path: '/support/report', name: 'SupportReport', component: () => import('@/support/SupportReportPage.vue') },
+  { path: '/support/reports', name: 'SupportReports', component: () => import('@/support/SupportReportsPage.vue') },
+  { path: '/support/tickets/:localUuid', name: 'SupportTicket', component: () => import('@/support/SupportTicketPage.vue') },
+  { path: '/support/verify', name: 'SupportVerification', component: () => import('@/support/SupportVerificationPage.vue') },
 ]
 
 export default createRouter({

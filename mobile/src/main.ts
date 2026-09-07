@@ -42,6 +42,8 @@ async function initializeEdgeClient(): Promise<void> {
     if (identity) {
       await router.replace('/home')
       await edgeSyncService.start()
+      // Support owns its startup failures; attendance is already operational.
+      void import('./support/services').then(({ initializeSupport }) => initializeSupport()).catch(() => undefined)
     } else {
       await router.replace('/provision')
     }

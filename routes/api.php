@@ -34,6 +34,8 @@ use App\Http\Controllers\Api\V1\VendingMachineController as V1VendingMachineCont
 use App\Http\Controllers\Employees\EmployeeImportController;
 use Illuminate\Support\Facades\Route;
 
+require __DIR__.'/support-api.php';
+
 Route::prefix('v1/device')->group(function (): void {
     Route::post('provision', DeviceProvisioningController::class)
         ->middleware('throttle:vending-device-provision');

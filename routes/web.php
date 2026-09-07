@@ -38,6 +38,8 @@ use App\Models\Location;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+require __DIR__.'/support-web.php';
+
 Route::get('/', function () {
     return redirect()->route('login');
 });

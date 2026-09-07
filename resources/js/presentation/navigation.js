@@ -13,6 +13,10 @@ export const navigationGroups = [
  item('Asistencias','admin.asistencias.index','asistencias','Consultar registros','attendance'),
  item('Tarjetas de asistencia','attendance-cards.index','asistencias','Consulta por empleado','attendance'),
  ]},
+ {key:'soporte',title:'SOPORTE',items:[
+ item('Tickets','support.tickets.index','support','Reportes y seguimiento','audit',{strict:true}),
+ item('Verificaciones','support.verifications.index','support','Revisión de equipos','clocks',{strict:true}),
+ ]},
  {key:'integraciones',title:'INTEGRACIONES',items:[
  item('Catálogo SYBI','vending-machines.index','vending_machines','Información de origen','machines',{params:{catalog_view:'sybi'}}),
  ]},

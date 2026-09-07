@@ -21,6 +21,7 @@
           </ion-item>
           <ion-item v-if="filteredEmployees.length === 0"><ion-label class="ion-text-wrap muted">{{ search.trim() ? 'No encontramos ese nombre o número. Revisa la búsqueda.' : 'No hay empleados disponibles. Sincroniza o solicita apoyo al responsable.' }}</ion-label></ion-item>
         </ion-list>
+        <ion-button expand="block" fill="outline" router-link="/support" class="support-entry">Soporte</ion-button>
         <details class="terminal-details">
           <summary>Información de la terminal</summary>
           <dl>
@@ -40,7 +41,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar,
+  IonButton, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar,
 } from '@ionic/vue'
 import { connectivityService, edgeStore, edgeSyncService } from '@/app/services'
 import type { EffectiveEmployee } from '@/storage/EdgeStore'

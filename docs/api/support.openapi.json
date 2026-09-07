@@ -1,0 +1,2088 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Canonical Support Integration API",
+    "version": "0.1.0-phase13",
+    "description": "External SupportIntegration identity only, not a Device or human account. Exact per-action scopes and current machine allowlist are both enforced. No credentials shipped. Webhooks deferred; use commit-ordered polling. Device HMAC routes and captured_machine_uuid expected-binding are documented separately in the integration runbook."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/support/integration/tickets/{ticket}/evidence": {
+      "post": {
+        "operationId": "rejectIntegrationEvidenceUpload",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-supported": false,
+        "description": "This shared route exists but external integration evidence creation is not supported. No integration scope grants evidence.create. An authenticated integration addressing an allowed ticket receives 403 before upload validation or reservation; an out-of-scope ticket receives 404. Device/web evidence upload is outside this external API contract.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Invalid service identity or Cookie header supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integration evidence creation is not supported; no enabling scope exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticket absent or outside current machine allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Read or write rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120,
+          "write_per_minute_default": 30
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets": {
+      "get": {
+        "operationId": "listSupportTickets",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.tickets.read",
+        "description": "Exact scope: support.tickets.read. Machine-level authorization applies independently. Results are ordered by descending internal ticket ID; filters are applied inside current machine scope.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "IN_PROGRESS",
+                "WAITING",
+                "RESOLVED",
+                "CLOSED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "CRITICAL"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 32
+            }
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "vending_machine_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive CDMX calendar date"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive CDMX calendar date"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tickets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Ticket"
+                      }
+                    },
+                    "pagination": {
+                      "$ref": "#/components/schemas/Pagination"
+                    }
+                  },
+                  "required": [
+                    "tickets",
+                    "pagination"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      },
+      "post": {
+        "operationId": "createSupportTicket",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.tickets.create",
+        "description": "Exact scope: support.tickets.create. Machine-level authorization applies independently. Scope does not require support.tickets.read. Identical operation replay returns HTTP 201 and the stored result. Matching external_reference with a different operation returns the existing ticket only for matching canonical creation content. Non-null location requires reported_at. source, external_system, reporter_employee_id and captured_machine_uuid are prohibited for integration requests. Unlisted fields are outside this client contract; backend validation may ignore them rather than rejecting every unknown property.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_operation_uuid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "vending_machine_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "device_id": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 1
+                  },
+                  "external_reference": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "nullable": true,
+                    "pattern": "^[A-Za-z0-9._:/-]+$"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "CONNECTIVITY",
+                      "SCREEN",
+                      "POWER",
+                      "GPS",
+                      "CAMERA",
+                      "APPLICATION",
+                      "INVENTORY",
+                      "DAMAGE",
+                      "OTHER"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "LOW",
+                      "MEDIUM",
+                      "HIGH",
+                      "CRITICAL"
+                    ],
+                    "default": "MEDIUM"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "LOW",
+                      "NORMAL",
+                      "HIGH",
+                      "URGENT"
+                    ],
+                    "default": "NORMAL"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "reported_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Required when location is non-null; after 2000-01-01 and no later than server receipt time plus five minutes. Preserve original offline capture time on retries. If omitted without location, server UTC receipt time is used."
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/Location"
+                  }
+                },
+                "required": [
+                  "client_operation_uuid",
+                  "vending_machine_id",
+                  "category",
+                  "title",
+                  "description"
+                ],
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "reported_at"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "location": {
+                        "type": "object",
+                        "nullable": true,
+                        "enum": [
+                          null
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "$ref": "#/components/schemas/Ticket"
+                    }
+                  },
+                  "required": [
+                    "ticket"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Operation/reference conflict, closed ticket or invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120,
+          "write_per_minute_default": 30
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}": {
+      "get": {
+        "operationId": "getSupportTicket",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.tickets.read",
+        "description": "Exact scope: support.tickets.read. Machine-level authorization applies independently. Includes the latest 100 public timeline events in ascending sequence order. Evidence metadata is included only with support.evidence.read; otherwise evidence is empty and evidence-event metadata is redacted. allowedTransitions is filtered by current capability and workflow.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "$ref": "#/components/schemas/Ticket"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      },
+                      "maxItems": 100
+                    },
+                    "evidence": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Evidence"
+                      }
+                    },
+                    "allowedTransitions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "IN_PROGRESS",
+                          "WAITING",
+                          "RESOLVED",
+                          "CLOSED",
+                          "CANCELLED"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ticket",
+                    "events",
+                    "evidence",
+                    "allowedTransitions"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/comments": {
+      "post": {
+        "operationId": "commentsSupportTicket",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.comments.create",
+        "description": "Exact scope: support.comments.create. Machine-level authorization applies independently.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_operation_uuid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 5000
+                  }
+                },
+                "required": [
+                  "client_operation_uuid",
+                  "body"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "$ref": "#/components/schemas/Ticket"
+                    }
+                  },
+                  "required": [
+                    "ticket"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Operation/reference conflict, closed ticket or invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120,
+          "write_per_minute_default": 30
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/assign": {
+      "post": {
+        "operationId": "assignSupportTicket",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.tickets.assign",
+        "description": "Exact scope: support.tickets.assign. Machine-level authorization applies independently.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_operation_uuid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "assignee_id": {
+                    "type": "integer",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "client_operation_uuid",
+                  "assignee_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "$ref": "#/components/schemas/Ticket"
+                    }
+                  },
+                  "required": [
+                    "ticket"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Operation/reference conflict, closed ticket or invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120,
+          "write_per_minute_default": 30
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/transition": {
+      "post": {
+        "operationId": "transitionSupportTicket",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "description": "IN_PROGRESS/WAITING: support.tickets.transition. RESOLVED: support.tickets.resolve and resolution text required. CLOSED/CANCELLED: support.tickets.manage. Backend workflow always enforced. Exactly the capability for the requested target is checked; resolve/manage do not additionally require transition. OPEN -> IN_PROGRESS, WAITING, RESOLVED or CANCELLED; IN_PROGRESS -> WAITING, RESOLVED or CANCELLED; WAITING -> IN_PROGRESS, RESOLVED or CANCELLED; RESOLVED -> CLOSED. CLOSED/CANCELLED are terminal.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_operation_uuid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "IN_PROGRESS",
+                      "WAITING",
+                      "RESOLVED",
+                      "CLOSED",
+                      "CANCELLED"
+                    ]
+                  },
+                  "resolution": {
+                    "type": "string",
+                    "maxLength": 5000,
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "client_operation_uuid",
+                  "status"
+                ],
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "IN_PROGRESS",
+                          "WAITING",
+                          "CLOSED",
+                          "CANCELLED"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "required": [
+                      "resolution"
+                    ],
+                    "properties": {
+                      "resolution": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 5000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "$ref": "#/components/schemas/Ticket"
+                    }
+                  },
+                  "required": [
+                    "ticket"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Operation/reference conflict, closed ticket or invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120,
+          "write_per_minute_default": 30
+        },
+        "x-required-scope-by-status": {
+          "IN_PROGRESS": "support.tickets.transition",
+          "WAITING": "support.tickets.transition",
+          "RESOLVED": "support.tickets.resolve",
+          "CLOSED": "support.tickets.manage",
+          "CANCELLED": "support.tickets.manage"
+        }
+      }
+    },
+    "/api/v1/support/integration/changes": {
+      "get": {
+        "operationId": "pollSupportChanges",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.tickets.read",
+        "description": "Exact scope: support.tickets.read. Machine-level authorization applies independently. Public committed events only, ordered by ascending sequence after scope filtering. next_sequence remains the supplied cursor on an empty page. Persist the cursor after processing the full page; deduplicate UUIDs. Restart at zero after expanding machine scope. Event ticket is current at retrieval, not historical.",
+        "parameters": [
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    },
+                    "next_sequence": {
+                      "type": "integer"
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "events",
+                    "next_sequence",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/evidence/{evidence}": {
+      "get": {
+        "operationId": "getSupportEvidence",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.evidence.read",
+        "description": "Exact scope: support.evidence.read. Machine-level authorization applies independently.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "evidence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "evidence": {
+                      "$ref": "#/components/schemas/Evidence"
+                    }
+                  },
+                  "required": [
+                    "evidence"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/evidence/{evidence}/download": {
+      "get": {
+        "operationId": "downloadSupportEvidence",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.evidence.download",
+        "description": "Exact scope: support.evidence.download. Machine-level authorization applies independently. This exact download scope is sufficient; support.evidence.read and support.tickets.read are not additionally required. Only CONFIRMED evidence can be served.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "evidence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private sanitized raster. Hash checked before serving; Cache-Control: private, no-store and X-Content-Type-Options: nosniff.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store, max-age=0"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "nosniff"
+                  ]
+                }
+              },
+              "Content-Disposition": {
+                "description": "Attachment with server-generated safe filename.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Private storage unavailable or content hash/integrity validation failed; no unverified image is served.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      }
+    },
+    "/api/v1/support/integration/tickets/{ticket}/evidence/{evidence}/thumbnail": {
+      "get": {
+        "operationId": "thumbnailSupportEvidence",
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
+        "x-required-scope": "support.evidence.download",
+        "description": "Exact scope: support.evidence.download. Machine-level authorization applies independently. This exact download scope is sufficient; support.evidence.read and support.tickets.read are not additionally required. Only CONFIRMED evidence can be served.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "evidence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private sanitized raster. Hash checked before serving; Cache-Control: private, no-store and X-Content-Type-Options: nosniff.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store, max-age=0"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "nosniff"
+                  ]
+                }
+              },
+              "Content-Disposition": {
+                "description": "Inline thumbnail with server-generated safe filename.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired/revoked service identity; human tokens and cookies rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing exact capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absent or outside allowed machine scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit. Respect Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a rate-limit retry is allowed.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Private storage unavailable or content hash/integrity validation failed; no unverified image is served.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-rate-limits": {
+          "read_per_minute_default": 120
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Scoped expiring SupportIntegration token; no wildcard, human token or cookie."
+      }
+    },
+    "schemas": {
+      "Machine": {
+        "type": "object",
+        "description": "Machine identity from the canonical ticket relationship at retrieval. Compact event snapshots omit id.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "uuid",
+          "code",
+          "name"
+        ]
+      },
+      "EventTicket": {
+        "type": "object",
+        "description": "Current compact ticket snapshot at retrieval, NOT historical state at the event time.",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "folio": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "WAITING",
+              "RESOLVED",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "machine": {
+            "$ref": "#/components/schemas/Machine"
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "uuid",
+          "folio",
+          "title",
+          "description",
+          "status",
+          "category",
+          "machine",
+          "reported_at",
+          "updated_at"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "description": "JSON error response when the client requests application/json. Message wording is not a stable code; validation errors may include field arrays.",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "folio": {
+            "type": "string",
+            "example": "INC-2026-000001"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "WAITING",
+              "RESOLVED",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "MANUAL_MOBILE",
+              "MANUAL_WEB",
+              "INTEGRATION",
+              "AUTOMATED_ALERT",
+              "DEVICE_VERIFICATION",
+              "SYSTEM"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "NORMAL",
+              "HIGH",
+              "URGENT"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "machine": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Machine"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "device": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "uuid": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "uuid",
+              "name"
+            ]
+          },
+          "assignee": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "location_available": {
+            "type": "boolean"
+          },
+          "geofence_result": {
+            "type": "string",
+            "nullable": true
+          },
+          "external_system": {
+            "type": "string",
+            "nullable": true
+          },
+          "external_reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "response_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resolution_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resolution": {
+            "type": "string",
+            "nullable": true
+          },
+          "response_breached": {
+            "type": "boolean"
+          },
+          "resolution_breached": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "folio",
+          "status",
+          "source",
+          "category",
+          "severity",
+          "priority",
+          "title",
+          "description",
+          "machine",
+          "device",
+          "assignee",
+          "location_available",
+          "geofence_result",
+          "external_system",
+          "external_reference",
+          "reported_at",
+          "created_at",
+          "updated_at",
+          "resolved_at",
+          "closed_at",
+          "response_due_at",
+          "resolution_due_at",
+          "resolution",
+          "response_breached",
+          "resolution_breached"
+        ]
+      },
+      "Location": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "accuracy_m": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Within 120 seconds of reported_at; preserve original capture time for offline retries."
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracy_m",
+          "captured_at"
+        ],
+        "nullable": true,
+        "additionalProperties": false,
+        "description": "Non-null location requires reported_at in the enclosing create request. A latitude/longitude pair of exactly 0,0 is rejected. Coordinates are optional evidence, not a verified reporter identity."
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "ticket_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "folio": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Open event vocabulary includes support.ticket.created, support.ticket.assigned, support.ticket.status_changed, support.ticket.resolved, support.ticket.closed, support.comment.created, support.evidence.created, support.ticket.automation_linked, support.ticket.verification_linked, support.ticket.recovery, support.sla.warning and support.sla.breached. Consumers must tolerate additional kinds."
+          },
+          "body": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "description": "Safe event-specific metadata; may be an empty array, including redaction when evidence.read is absent.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "maxItems": 0,
+                "items": {}
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/EventTicket"
+          }
+        },
+        "required": [
+          "uuid",
+          "sequence",
+          "ticket_uuid",
+          "folio",
+          "kind",
+          "body",
+          "metadata",
+          "created_at",
+          "ticket"
+        ]
+      },
+      "Evidence": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "CONFIRMED"
+            ]
+          },
+          "mime": {
+            "type": "string",
+            "nullable": true
+          },
+          "size_bytes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "sha256": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "thumbnail": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "status",
+          "mime",
+          "size_bytes",
+          "sha256",
+          "captured_at",
+          "confirmed_at",
+          "thumbnail"
+        ]
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "last_page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "per_page": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "page",
+          "last_page",
+          "total",
+          "per_page"
+        ]
+      }
+    }
+  }
+}

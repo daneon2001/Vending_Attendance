@@ -3,6 +3,10 @@
 return [
     'super_admin_email' => env('ADMIN_EMAIL', 'admin@asistencias.test'),
     'modules' => [
+        'support' => [
+            'label' => 'Soporte',
+            'actions' => ['view', 'view_all', 'report', 'comment', 'assign', 'resolve', 'verify', 'configure', 'manage'],
+        ],
         'dashboard' => [
             'label' => 'Panel general',
             'actions' => ['view', 'export', 'manage'],

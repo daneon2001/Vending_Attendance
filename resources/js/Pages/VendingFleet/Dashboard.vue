@@ -1,11 +1,15 @@
 <script setup>
 import { computed } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import TechnicalDetails from '@/Components/TechnicalDetails.vue';
+import SupportSummary from '@/Components/SupportSummary.vue';
+import { canSupport } from '@/presentation/support';
 import { statusLabel, friendlyError, formatDateTime, formatDurationSeconds } from '@/presentation/labels';
 const props = defineProps({ generated_at: String, kpis: Object, app_versions: Array, alerts: Array, last_sybi_sync: Object, thresholds: Object });
+const page = usePage();
+const showSupport = computed(() => canSupport(page.props.auth?.permissions));
 const primary = [
  ['Máquinas operativas','machines_operational','Activas o en mantenimiento, según el criterio vigente'],
  ['Dispositivos conectados','devices_online','En línea y sin incidencias según el criterio operativo. Una incidencia reciente puede excluir un dispositivo cuya red reporta conexión.'],
@@ -51,6 +55,7 @@ const alertTitle = (type) => type === 'GEOFENCE_REVIEW' ? 'Revisar geocerca' : '
      <a href="#alertas" class="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-indigo-600">Revisar alertas</a>
     </article>
    </section>
+   <SupportSummary v-if="showSupport" />
    <nav class="flex flex-wrap gap-3" aria-label="Continuar operación"><Link class="rounded-xl border border-app px-4 py-2 text-sm font-semibold" :href="route('vending-machines.index')">Ver máquinas y asignaciones</Link><Link class="rounded-xl border border-app px-4 py-2 text-sm font-semibold" :href="route('vending-devices.index')">Revisar dispositivos</Link></nav>
    <section id="alertas" class="card scroll-mt-6 p-5">
     <h2 class="text-lg font-semibold text-app">Lo que necesita atención</h2>
