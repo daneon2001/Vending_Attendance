@@ -3,6 +3,7 @@ export interface RuntimeConfig {
   attendanceBatchSize: number
   clockDriftWarningSeconds: number
   httpTimeoutMs: number
+  gpsTimeoutMs: number
   deploymentMode: 'development' | 'pilot' | 'production'
 }
 
@@ -40,6 +41,14 @@ function httpTimeoutMs(): number {
   return Math.min(60_000, Math.max(5_000, timeout))
 }
 
+function gpsTimeoutMs(): number {
+  const timeout = Number(import.meta.env.VITE_GPS_TIMEOUT_MS ?? 45_000)
+  if (!Number.isInteger(timeout) || timeout < 15_000 || timeout > 90_000) {
+    throw new Error('VITE_GPS_TIMEOUT_MS must be an integer between 15000 and 90000')
+  }
+  return timeout
+}
+
 const mode = deploymentMode()
 
 export const runtimeConfig: RuntimeConfig = {
@@ -47,5 +56,6 @@ export const runtimeConfig: RuntimeConfig = {
   attendanceBatchSize: 50,
   clockDriftWarningSeconds: 300,
   httpTimeoutMs: httpTimeoutMs(),
+  gpsTimeoutMs: gpsTimeoutMs(),
   deploymentMode: mode,
 }

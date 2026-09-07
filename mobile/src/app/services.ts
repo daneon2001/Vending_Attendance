@@ -29,7 +29,7 @@ export const provisioningService = new ProvisioningService(
 export const geofenceValidationService = new GeofenceValidationService()
 export const attendanceCaptureService = new AttendanceCaptureService(
   edgeStore,
-  new CapacitorLocationService(),
+  new CapacitorLocationService(runtimeConfig.gpsTimeoutMs, runtimeConfig.deploymentMode === 'development'),
   geofenceValidationService,
 )
 export const edgeSyncService = new EdgeSyncService(

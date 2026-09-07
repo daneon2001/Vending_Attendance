@@ -7,6 +7,7 @@ import type {
   EmployeeManifestResponse,
   ManifestType,
   GeofenceSnapshot,
+  OutboxStatus,
 } from '@/domain/types'
 
 export interface EffectiveEmployee extends EmployeeManifestItem {
@@ -17,6 +18,11 @@ export interface PendingOutboxEvent {
   eventUuid: string
   payload: AttendancePayload
   retryCount: number
+}
+
+export interface AttendanceReceipt {
+  status: OutboxStatus
+  errorCode: string | null
 }
 
 export interface LocalSyncSummary {
@@ -47,6 +53,7 @@ export interface EdgeStore {
   getEffectiveEmployees(at: Date): Promise<EffectiveEmployee[]>
   getAttendanceContext(): Promise<AttendanceContext>
   enqueueAttendance(payload: AttendancePayload): Promise<void>
+  getAttendanceReceipt(eventUuid: string): Promise<AttendanceReceipt | null>
   getPendingOutbox(limit: number): Promise<PendingOutboxEvent[]>
   applyOutboxResults(results: AttendanceSyncResult[]): Promise<void>
   releaseOutbox(eventUuids: string[], errorCode: string): Promise<void>

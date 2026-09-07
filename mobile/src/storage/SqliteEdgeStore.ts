@@ -16,6 +16,7 @@ import { EdgeError } from '@/domain/errors'
 import type {
   EdgeStore,
   AttendanceContext,
+  AttendanceReceipt,
   EffectiveEmployee,
   LocalSyncSummary,
   PendingOutboxEvent,
@@ -311,6 +312,16 @@ export class SqliteEdgeStore implements EdgeStore {
         false,
       )
     })
+  }
+
+  async getAttendanceReceipt(eventUuid: string): Promise<AttendanceReceipt | null> {
+    const row = (await this.connection().query(
+      'SELECT status, last_error_code FROM sync_outbox WHERE event_uuid=? LIMIT 1',
+      [eventUuid],
+    )).values?.[0] as Row | undefined
+    const status = row?.status
+    if (status !== 'PENDING' && status !== 'SYNCING' && status !== 'SYNCED' && status !== 'REJECTED') return null
+    return { status, errorCode: row?.last_error_code == null ? null : String(row.last_error_code) }
   }
 
   async getPendingOutbox(limit: number): Promise<PendingOutboxEvent[]> {

@@ -1,8 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
-const apiBaseUrl = process.env.VITE_API_BASE_URL?.trim() ?? ''
-const allowLocalHttp = apiBaseUrl.startsWith('http://')
-
 const config: CapacitorConfig = {
   appId: 'com.medicalife.vendingattendance',
   appName: 'Vending Attendance',
@@ -11,8 +8,9 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   android: {
-    // Required only for an explicit local HTTP API build. HTTPS/release builds remain strict.
-    allowMixedContent: allowLocalHttp,
+    // Shared assets must stay release-safe. MainActivity enables local HTTP only
+    // for a debuggable Android APK, independently of Vite/Capacitor CLI env loading.
+    allowMixedContent: false,
   },
 }
 

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Carbon\Carbon;
 use App\Models\AttendanceLog;
 use App\Models\Clock;
 use App\Models\Company;
@@ -10,6 +9,7 @@ use App\Models\Employee;
 use App\Models\EmployeeStatusChange;
 use App\Models\Location;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -145,129 +145,129 @@ class DashboardExecutiveSummaryTest extends TestCase
 
             $response->assertOk()
                 ->assertJsonStructure([
-                'ok',
-                'empty',
-                'timezone' => ['name', 'label', 'offset'],
-                'meta' => ['range', 'from', 'to', 'company_id', 'unit_id', 'generated_at_iso'],
-                'summary' => [
-                    'employees_active',
-                    'attendance_registered',
-                    'attendance_pending',
-                    'attendance_coverage',
-                    'entries_total',
-                    'exits_total',
-                    'last_updated_at',
-                ],
-                'clocks' => [
-                    'total',
-                    'online',
-                    'offline',
-                    'heartbeat_recent',
-                    'heartbeat_stale',
-                    'never_connected',
-                    'status',
-                    'status_label',
-                ],
-                'executive_status' => [
-                    'level',
-                    'title',
-                    'message',
-                    'bullets',
-                ],
-                'alerts',
-                'locations',
-                'locations_meta' => ['total', 'shown', 'has_more', 'mode', 'message', 'limit'],
-                'recent_activity',
-                'enrollment',
-                'kpis',
-                'executive_summary' => [
-                    'attendance' => [
-                        'active_employees',
-                        'attended',
-                        'pending',
-                        'coverage_percent',
-                        'entries',
-                        'exits',
-                    ],
-                    'enrolment' => [
-                        'active_employees',
-                        'with_any_biometric',
-                        'with_fingerprint',
-                        'with_face',
-                        'without_any_biometric',
-                        'coverage_percent',
+                    'ok',
+                    'empty',
+                    'timezone' => ['name', 'label', 'offset'],
+                    'meta' => ['range', 'from', 'to', 'company_id', 'unit_id', 'generated_at_iso'],
+                    'summary' => [
+                        'employees_active',
+                        'attendance_registered',
+                        'attendance_pending',
+                        'attendance_coverage',
+                        'entries_total',
+                        'exits_total',
+                        'last_updated_at',
                     ],
                     'clocks' => [
                         'total',
                         'online',
                         'offline',
-                        'stale',
-                        'operational_status',
-                        'is_business_hours',
+                        'heartbeat_recent',
+                        'heartbeat_stale',
+                        'never_connected',
+                        'status',
+                        'status_label',
                     ],
-                    'compact_charts' => [
-                        'attendance_donut',
-                        'enrolment_bar',
-                        'hourly_activity',
-                        'clocks_status',
+                    'executive_status' => [
+                        'level',
+                        'title',
+                        'message',
+                        'bullets',
                     ],
                     'alerts',
-                ],
-                'charts' => [
-                    'attendance_donut' => ['present', 'pending', 'percentage'],
-                    'clocks_donut' => ['online', 'offline', 'stale'],
-                    'hourly_activity',
-                    'enrollment' => ['with_any_biometric', 'without_any_biometric', 'without_fingerprint', 'without_face', 'percentage'],
-                ],
-            ])
-            ->assertJsonPath('summary.employees_active', 2)
-            ->assertJsonPath('summary.attendance_registered', 1)
-            ->assertJsonPath('summary.attendance_pending', 1)
-            ->assertJsonPath('summary.attendance_coverage', 50)
-            ->assertJsonPath('summary.entries_total', 1)
-            ->assertJsonPath('summary.exits_total', 0)
-            ->assertJsonPath('clocks.total', 2)
-            ->assertJsonPath('clocks.online', 1)
-            ->assertJsonPath('clocks.offline', 1)
-            ->assertJsonPath('timezone.name', 'America/Mexico_City')
-            ->assertJsonPath('executive_status.level', 'critical')
-            ->assertJsonPath('charts.attendance_donut.present', 1)
-            ->assertJsonPath('charts.attendance_donut.pending', 1)
-            ->assertJsonPath('charts.attendance_donut.percentage', 50)
-            ->assertJsonPath('charts.clocks_donut.online', 1)
-            ->assertJsonPath('charts.clocks_donut.offline', 1)
-            ->assertJsonPath('charts.clocks_donut.stale', 0)
-            ->assertJsonPath('clocks.heartbeat_recent', 1)
-            ->assertJsonPath('clocks.heartbeat_stale', 1)
-            ->assertJsonCount(24, 'charts.hourly_activity')
-            ->assertJsonPath('charts.hourly_activity.0.hour', '00:00')
-            ->assertJsonPath('locations_meta.total', 1)
-            ->assertJsonPath('locations_meta.shown', 1)
-            ->assertJsonPath('locations_meta.has_more', false)
-            ->assertJsonPath('locations.0.name', 'Unidad Centro')
-            ->assertJsonPath('recent_activity.0.employee_name', 'Ana Lopez')
-            ->assertJsonPath('recent_activity.0.method', 'Huella')
-            ->assertJsonPath('recent_activity.0.source_label', 'API')
-            ->assertJsonPath('enrollment.employees_active', 2)
-            ->assertJsonPath('enrollment.without_fingerprint', 1)
-            ->assertJsonPath('enrollment.without_face', 1)
-            ->assertJsonPath('enrollment.without_any_biometric', 1)
-            ->assertJsonPath('enrollment.coverage_percentage', 50)
-            ->assertJsonPath('charts.enrollment.with_any_biometric', 1)
-            ->assertJsonPath('charts.enrollment.without_any_biometric', 1)
-            ->assertJsonPath('charts.enrollment.percentage', 50)
-            ->assertJsonPath('executive_summary.attendance.active_employees', 2)
-            ->assertJsonPath('executive_summary.attendance.attended', 1)
-            ->assertJsonPath('executive_summary.attendance.pending', 1)
-            ->assertJsonPath('executive_summary.attendance.coverage_percent', 50)
-            ->assertJsonPath('executive_summary.enrolment.with_fingerprint', 1)
-            ->assertJsonPath('executive_summary.enrolment.with_face', 1)
-            ->assertJsonPath('executive_summary.enrolment.without_any_biometric', 1)
-            ->assertJsonPath('executive_summary.enrolment.coverage_percent', 50)
-            ->assertJsonPath('executive_summary.clocks.total', 2)
-            ->assertJsonPath('executive_summary.clocks.online', 1)
-            ->assertJsonPath('executive_summary.clocks.offline', 1)
-            ->assertJsonPath('executive_summary.clocks.stale', 1)
+                    'locations',
+                    'locations_meta' => ['total', 'shown', 'has_more', 'mode', 'message', 'limit'],
+                    'recent_activity',
+                    'enrollment',
+                    'kpis',
+                    'executive_summary' => [
+                        'attendance' => [
+                            'active_employees',
+                            'attended',
+                            'pending',
+                            'coverage_percent',
+                            'entries',
+                            'exits',
+                        ],
+                        'enrolment' => [
+                            'active_employees',
+                            'with_any_biometric',
+                            'with_fingerprint',
+                            'with_face',
+                            'without_any_biometric',
+                            'coverage_percent',
+                        ],
+                        'clocks' => [
+                            'total',
+                            'online',
+                            'offline',
+                            'stale',
+                            'operational_status',
+                            'is_business_hours',
+                        ],
+                        'compact_charts' => [
+                            'attendance_donut',
+                            'enrolment_bar',
+                            'hourly_activity',
+                            'clocks_status',
+                        ],
+                        'alerts',
+                    ],
+                    'charts' => [
+                        'attendance_donut' => ['present', 'pending', 'percentage'],
+                        'clocks_donut' => ['online', 'offline', 'stale'],
+                        'hourly_activity',
+                        'enrollment' => ['with_any_biometric', 'without_any_biometric', 'without_fingerprint', 'without_face', 'percentage'],
+                    ],
+                ])
+                ->assertJsonPath('summary.employees_active', 2)
+                ->assertJsonPath('summary.attendance_registered', 1)
+                ->assertJsonPath('summary.attendance_pending', 1)
+                ->assertJsonPath('summary.attendance_coverage', 50)
+                ->assertJsonPath('summary.entries_total', 1)
+                ->assertJsonPath('summary.exits_total', 0)
+                ->assertJsonPath('clocks.total', 2)
+                ->assertJsonPath('clocks.online', 1)
+                ->assertJsonPath('clocks.offline', 1)
+                ->assertJsonPath('timezone.name', 'America/Mexico_City')
+                ->assertJsonPath('executive_status.level', 'critical')
+                ->assertJsonPath('charts.attendance_donut.present', 1)
+                ->assertJsonPath('charts.attendance_donut.pending', 1)
+                ->assertJsonPath('charts.attendance_donut.percentage', 50)
+                ->assertJsonPath('charts.clocks_donut.online', 1)
+                ->assertJsonPath('charts.clocks_donut.offline', 1)
+                ->assertJsonPath('charts.clocks_donut.stale', 0)
+                ->assertJsonPath('clocks.heartbeat_recent', 1)
+                ->assertJsonPath('clocks.heartbeat_stale', 1)
+                ->assertJsonCount(24, 'charts.hourly_activity')
+                ->assertJsonPath('charts.hourly_activity.0.hour', '00:00')
+                ->assertJsonPath('locations_meta.total', 1)
+                ->assertJsonPath('locations_meta.shown', 1)
+                ->assertJsonPath('locations_meta.has_more', false)
+                ->assertJsonPath('locations.0.name', 'Unidad Centro')
+                ->assertJsonPath('recent_activity.0.employee_name', 'Ana Lopez')
+                ->assertJsonPath('recent_activity.0.method', 'Huella')
+                ->assertJsonPath('recent_activity.0.source_label', 'API')
+                ->assertJsonPath('enrollment.employees_active', 2)
+                ->assertJsonPath('enrollment.without_fingerprint', 1)
+                ->assertJsonPath('enrollment.without_face', 1)
+                ->assertJsonPath('enrollment.without_any_biometric', 1)
+                ->assertJsonPath('enrollment.coverage_percentage', 50)
+                ->assertJsonPath('charts.enrollment.with_any_biometric', 1)
+                ->assertJsonPath('charts.enrollment.without_any_biometric', 1)
+                ->assertJsonPath('charts.enrollment.percentage', 50)
+                ->assertJsonPath('executive_summary.attendance.active_employees', 2)
+                ->assertJsonPath('executive_summary.attendance.attended', 1)
+                ->assertJsonPath('executive_summary.attendance.pending', 1)
+                ->assertJsonPath('executive_summary.attendance.coverage_percent', 50)
+                ->assertJsonPath('executive_summary.enrolment.with_fingerprint', 1)
+                ->assertJsonPath('executive_summary.enrolment.with_face', 1)
+                ->assertJsonPath('executive_summary.enrolment.without_any_biometric', 1)
+                ->assertJsonPath('executive_summary.enrolment.coverage_percent', 50)
+                ->assertJsonPath('executive_summary.clocks.total', 2)
+                ->assertJsonPath('executive_summary.clocks.online', 1)
+                ->assertJsonPath('executive_summary.clocks.offline', 1)
+                ->assertJsonPath('executive_summary.clocks.stale', 1)
                 ->assertJsonPath('executive_summary.clocks.is_business_hours', true)
                 ->assertJsonCount(3, 'executive_summary.alerts');
         } finally {
@@ -486,8 +486,27 @@ class DashboardExecutiveSummaryTest extends TestCase
         }
     }
 
-    public function test_dashboard_summary_can_refresh_only_clocks_tab(): void
+    public static function clockTabHours(): array
     {
+        return [
+            'before opening' => ['2026-09-07 06:59:59', false, 1],
+            'opening inclusive' => ['2026-09-07 07:00:00', true, 2],
+            'before closing' => ['2026-09-07 19:59:59', true, 2],
+            'closing exclusive' => ['2026-09-07 20:00:00', false, 1],
+            'before midnight' => ['2026-09-07 23:59:59', false, 1],
+            'midnight' => ['2026-09-08 00:00:00', false, 1],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('clockTabHours')]
+    public function test_dashboard_summary_can_refresh_only_clocks_tab(string $localTime, bool $businessHours, int $alertCount): void
+    {
+        config()->set('operations.timezone', 'America/Mexico_City');
+        config()->set('operations.storage_timezone', 'UTC');
+        // The alert count deliberately differs inside/outside operational hours.
+        // Laravel restores both Carbon clocks during teardown.
+        $this->travelTo(Carbon::parse($localTime, 'America/Mexico_City'));
+
         $company = Company::query()->create([
             'name' => 'Medical Life',
             'code' => 'ML',
@@ -538,7 +557,8 @@ class DashboardExecutiveSummaryTest extends TestCase
             ->assertJsonPath('clocks.offline', 1)
             ->assertJsonPath('charts.clocks_donut.online', 1)
             ->assertJsonPath('charts.clocks_donut.offline', 1)
-            ->assertJsonCount(2, 'connectivity_alerts')
+            ->assertJsonPath('clocks.is_business_hours', $businessHours)
+            ->assertJsonCount($alertCount, 'connectivity_alerts')
             ->assertJsonMissingPath('alerts')
             ->assertJsonMissingPath('locations')
             ->assertJsonMissingPath('recent_activity')
