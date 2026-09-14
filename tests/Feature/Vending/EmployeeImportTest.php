@@ -364,6 +364,40 @@ class EmployeeImportTest extends VendingDeviceApiTestCase
         $this->assertDatabaseHas('employee_import_runs', ['uuid' => $preview['uuid'], 'status' => 'PREVIEW']);
     }
 
+    public function test_file_import_creates_only_employees_without_accounts_assignments_attendance_or_activities(): void
+    {
+        $this->assertSame('sqlite', \Illuminate\Support\Facades\DB::connection()->getDriverName());
+        $this->assertSame(':memory:', \Illuminate\Support\Facades\DB::connection()->getDatabaseName());
+        $existing = $this->employee(['employee_number' => 'FILE-EXISTING', 'source' => EmployeeSource::MANUAL, 'full_name' => 'Synthetic before', 'status' => 'A']);
+        $machine = $this->machine();
+        $assignment = $this->assignment($machine, $existing, ['attendance_allowed' => false, 'maintenance_allowed' => true]);
+        $tables = ['users', 'employee_machine_assignments', 'attendance_logs', 'vending_attendance_events',
+            'support_tickets', 'vending_support_activities', 'vending_support_activity_events'];
+        $snapshot = static fn (): array => collect($tables)->mapWithKeys(fn ($table) => [
+            $table => hash('sha256', \Illuminate\Support\Facades\DB::table($table)->orderBy('id')->get()->toJson()),
+        ])->all();
+        $before = $snapshot();
+        $file = $this->xlsx('<row r="2"><c r="A2" t="inlineStr"><is><t>FILE-EXISTING</t></is></c><c r="B2" t="inlineStr"><is><t>Synthetic updated</t></is></c><c r="C2" t="inlineStr"><is><t>A</t></is></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>FILE-NEW</t></is></c><c r="B3" t="inlineStr"><is><t>Synthetic new</t></is></c><c r="C3" t="inlineStr"><is><t>A</t></is></c></row>');
+        $preview = $this->postJson('/vending/employees/imports', ['file' => $file])->assertCreated()->json();
+        $this->assertSame(1, $preview['summary']['valid_new']);
+        $this->assertSame(1, $preview['summary']['valid_update']);
+        $this->assertSame($before, $snapshot());
+        $apply = '/vending/employees/imports/'.$preview['uuid'].'/apply';
+        $payload = ['confirmed' => true, 'preview_hash' => $preview['preview_hash']];
+        $this->postJson($apply, $payload)->assertOk();
+        $this->postJson($apply, $payload)->assertOk();
+        $this->assertSame($before, $snapshot());
+        $this->assertDatabaseCount('employees', 2);
+        $this->assertSame('Synthetic updated', $existing->fresh()->full_name);
+        $new = Employee::where('employee_number', 'FILE-NEW')->firstOrFail();
+        $this->assertSame(EmployeeSource::MANUAL, $new->source);
+        $this->assertNull($new->source_external_id);
+        $this->assertNull($new->user);
+        $this->assertSame(0, EmployeeMachineAssignment::where('employee_id', $new->id)->count());
+        $this->assertFalse($assignment->fresh()->attendance_allowed);
+        $this->assertTrue($assignment->fresh()->maintenance_allowed);
+    }
+
     private function mysqlOrderedPreview(array $preview): array
     {
         // Reproduce the observed native MySQL JSON key order in SQLite test storage,

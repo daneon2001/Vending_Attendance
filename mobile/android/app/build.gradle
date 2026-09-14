@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+// Opt-in candidate only. Production/release version and signing remain separate.
+def internalBeta = providers.gradleProperty('internalBeta').orNull == 'true'
+def betaMetadata = new groovy.json.JsonSlurper().parse(file('../../internal-beta.json'))
+
 def releaseStoreFile = System.getenv('VENDING_ANDROID_KEYSTORE')
 def releaseStorePassword = System.getenv('VENDING_ANDROID_STORE_PASSWORD')
 def releaseKeyAlias = System.getenv('VENDING_ANDROID_KEY_ALIAS')
@@ -14,8 +18,8 @@ android {
         applicationId "com.medicalife.vendingattendance"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode internalBeta ? betaMetadata.build as Integer : 1
+        versionName internalBeta ? betaMetadata.version : "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -46,6 +50,9 @@ android {
 
 tasks.register('verifyPilotReleaseConfiguration') {
     doLast {
+        if (internalBeta) {
+            throw new GradleException('Internal beta metadata is DEBUG only. Do not build release with -PinternalBeta=true.')
+        }
         def deploymentMode = System.getenv('VITE_DEPLOYMENT_MODE') ?: ''
         def apiUrl = System.getenv('VITE_API_BASE_URL') ?: ''
         if (!(deploymentMode in ['pilot', 'production'])) {

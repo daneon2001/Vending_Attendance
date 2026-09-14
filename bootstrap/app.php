@@ -1,54 +1,51 @@
 <?php
 
-use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Configuration\Exceptions;
-use Illuminate\Foundation\Configuration\Middleware;
-
-// Middleware propios
-use App\Http\Middleware\EnsurePermission;
-use App\Http\Middleware\AuditBiometricAccess;
-use App\Http\Middleware\EnsureRole;
-use App\Http\Middleware\EnsureStrictPermission;
-use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\Authenticate;
-use App\Http\Middleware\RedirectIfAuthenticated;
-use App\Http\Middleware\AssignRequestId;
-use App\Http\Middleware\CheckTokenExpiration;
-use App\Http\Middleware\DevOnlyApi;
-use App\Http\Middleware\DeviceTokenMiddleware;
-use App\Http\Middleware\ExternalEmployeeTokenMiddleware;
-use App\Http\Middleware\VerifyDeviceHmac;
-
-// Middleware de Laravel
-use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
-use Illuminate\Routing\Middleware\SubstituteBindings;
-
-// (Solo lo usarías si tuvieras SPA con cookies, para tokens Bearer no es necesario)
-use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
-use App\Console\Commands\EnsureAdminPermissions;
-use App\Console\Commands\MakeAdminSuperCommand;
-use App\Console\Commands\FortiaMockAddEmployee;
-use App\Console\Commands\FortiaMockSyncEmployees;
-use App\Console\Commands\ReconcileDevicesFromClocks;
 use App\Console\Commands\AuditCleanupCommand;
+use App\Console\Commands\EnsureAdminPermissions;
+use App\Console\Commands\FortiaAuditCatalogAlignment;
+// Middleware propios
+use App\Console\Commands\FortiaAuditClocks;
 use App\Console\Commands\FortiaDiagnoseApis;
 use App\Console\Commands\FortiaDiagnoseBiometrics;
 use App\Console\Commands\FortiaDiagnoseDeviceToken;
 use App\Console\Commands\FortiaDiagnoseOnPrem;
-use App\Console\Commands\FortiaAuditCatalogAlignment;
-use App\Console\Commands\FortiaAuditClocks;
-use App\Console\Commands\FortiaSyncEmployees;
 use App\Console\Commands\FortiaImportClocks;
+use App\Console\Commands\FortiaMockAddEmployee;
+use App\Console\Commands\FortiaMockSyncEmployees;
+use App\Console\Commands\FortiaSyncEmployees;
 use App\Console\Commands\FortiaSyncOperationalCatalogs;
-use App\Console\Commands\SyncPermissionCatalogCommand;
-use App\Console\Commands\SybiSyncVendingCommand;
-use App\Console\Commands\VendingDemoCleanupCommand;
+use App\Console\Commands\MakeAdminSuperCommand;
 use App\Console\Commands\PruneDeviceNonces;
+use App\Console\Commands\ReconcileDevicesFromClocks;
+// Middleware de Laravel
+use App\Console\Commands\SybiSyncVendingCommand;
+use App\Console\Commands\SyncPermissionCatalogCommand;
+use App\Console\Commands\VendingDemoCleanupCommand;
+// (Solo lo usarías si tuvieras SPA con cookies, para tokens Bearer no es necesario)
 use App\Console\Commands\VerifyAttendanceIntegrity;
+use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\AuditBiometricAccess;
+use App\Http\Middleware\Authenticate;
+use App\Http\Middleware\CheckTokenExpiration;
+use App\Http\Middleware\DeviceTokenMiddleware;
+use App\Http\Middleware\DevOnlyApi;
+use App\Http\Middleware\EnsurePermission;
+use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureStrictPermission;
+use App\Http\Middleware\ExternalEmployeeTokenMiddleware;
+use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RedirectIfAuthenticated;
+use App\Http\Middleware\VerifyDeviceHmac;
+use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
-return Application::configure(basePath: dirname(__DIR__))
+$application = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
@@ -108,24 +105,43 @@ return Application::configure(basePath: dirname(__DIR__))
         // Aliases de middleware (los que usarás en las rutas)
         $middleware->alias([
             // auth por defecto, permite usar 'auth' y 'auth:sanctum' en las rutas
-            'auth'             => Authenticate::class,
-            'guest'            => RedirectIfAuthenticated::class,
-            'verified'         => EnsureEmailIsVerified::class,
+            'auth' => Authenticate::class,
+            'guest' => RedirectIfAuthenticated::class,
+            'verified' => EnsureEmailIsVerified::class,
 
             // Nuestro middleware de expiración de token
             'token.expiration' => CheckTokenExpiration::class,
-            'dev.only.api'     => DevOnlyApi::class,
-            'device.token'     => DeviceTokenMiddleware::class,
-            'device.hmac'      => VerifyDeviceHmac::class,
+            'dev.only.api' => DevOnlyApi::class,
+            'device.token' => DeviceTokenMiddleware::class,
+            'device.hmac' => VerifyDeviceHmac::class,
             'external.employee.token' => ExternalEmployeeTokenMiddleware::class,
-            'perm'             => EnsurePermission::class,
-            'perm.strict'      => EnsureStrictPermission::class,
-            'role'             => EnsureRole::class,
-            'audit.biometric'  => AuditBiometricAccess::class,
+            'perm' => EnsurePermission::class,
+            'perm.strict' => EnsureStrictPermission::class,
+            'role' => EnsureRole::class,
+            'audit.biometric' => AuditBiometricAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        // Native human credentials: no debug payload/trace even in a local demo.
+        $exceptions->render(function (\Throwable $exception, Request $request) {
+            if ($request->is('api/v1/field-mobile/*')) {
+                return \App\Http\Controllers\FieldIdentity\FieldMobileErrors::render($exception);
+            }
+        });
+        $exceptions->report(function (\Throwable $exception) {
+            if (request()->is('api/v1/field-mobile/*')) {
+                \Illuminate\Support\Facades\Log::warning('FIELD_MOBILE_REQUEST_FAILED', [
+                    'exception_class' => get_class($exception),
+                ]);
+
+                return false;
+            }
+        });
         $exceptions->shouldRenderJsonWhen(function (Request $request, \Throwable $exception): bool {
             return $request->is('api/*') || $request->expectsJson();
         });
     })->create();
+
+\App\Support\Testing\TestDatabaseGuard::install($application);
+
+return $application;

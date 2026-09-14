@@ -1,0 +1,6 @@
+{
+  "version": "1.0.1-beta.1",
+  "build": 5,
+  "label": "Beta interna",
+  "channel": "DEV"
+}

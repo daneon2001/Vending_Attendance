@@ -24,30 +24,27 @@ import '@ionic/vue/css/display.css';
 
 /* Theme variables */
 import './theme/variables.css';
-import { credentialStore, edgeStore, edgeSyncService } from './app/services'
+import { connectivityService, credentialStore, edgeStore, edgeSyncService } from './app/services'
+import { startApplication } from './app/startup'
 
 const app = createApp(App)
   .use(IonicVue)
   .use(router);
 
-router.isReady().then(() => {
-  app.mount('#app');
-  void initializeEdgeClient()
-});
+let mounted = false
+router.isReady().then(() => { void initializeEdgeClient() });
 
 async function initializeEdgeClient(): Promise<void> {
-  try {
-    await edgeStore.initialize()
-    const identity = await credentialStore.get()
-    if (identity) {
-      await router.replace('/home')
-      await edgeSyncService.start()
-      // Support owns its startup failures; attendance is already operational.
-      void import('./support/services').then(({ initializeSupport }) => initializeSupport()).catch(() => undefined)
-    } else {
-      await router.replace('/provision')
-    }
-  } catch {
-    await router.replace('/startup-error')
-  }
+  await startApplication({
+    initializeStorage: () => edgeStore.initialize(),
+    hasTerminal: async () => !!await credentialStore.get(),
+    navigate: async path => {
+      await router.replace(path)
+      // Storage is ready before Home mounts; network retries never hold the UI blank.
+      if (!mounted) { app.mount('#app'); mounted = true }
+    },
+    startTerminal: () => edgeSyncService.start(),
+    startPersonalNetwork: () => connectivityService.start(),
+    startSupport: () => import('./support/services').then(({ initializeSupport }) => initializeSupport()),
+  })
 }

@@ -10,59 +10,42 @@ use App\Services\Vending\MachineAssignmentService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use PDO;
-use RuntimeException;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class VendingAttendanceMysqlConcurrencyTest extends TestCase
 {
-    private PDO $admin;
+    private ?\Tests\Support\DisposableMysql $lease = null;
 
     private string $database;
 
     private array $mysql;
 
-    private bool $migrated = false;
-
     protected function setUp(): void
     {
         parent::setUp();
-        $this->mysql = array_merge(
-            config('database.connections.mysql'),
-            array_intersect_key(config('database.connections.fortia_mock'), array_flip([
-                'host', 'port', 'username', 'password', 'unix_socket',
-            ])),
-        );
-        $host = (string) ($this->mysql['host'] ?? '');
-        $this->assertContains($host, ['127.0.0.1', 'localhost'], 'Concurrency DB must be loopback-only.');
-        $this->database = 'vending_attendance_testing';
-        $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $host, $this->mysql['port'], $this->database);
-        $this->admin = new PDO($dsn, $this->mysql['username'], $this->mysql['password'], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        ]);
-        $tables = (int) $this->admin->query(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'vending_attendance_testing'",
-        )->fetchColumn();
-        if ($tables !== 0) {
-            throw new RuntimeException('The dedicated MySQL concurrency database must be empty before the test.');
+        $this->lease = new \Tests\Support\DisposableMysql(config('database.connections.mysql'));
+        $this->mysql = $this->lease->config;
+        $this->database = $this->lease->name;
+        try {
+            config(['database.connections.phase4_mysql' => $this->mysql]);
+            DB::setDefaultConnection('phase4_mysql');
+            Artisan::call('migrate', ['--database' => 'phase4_mysql', '--force' => true]);
+        } catch (\Throwable $e) {
+            DB::disconnect('phase4_mysql');
+            $this->lease->close();
+            throw $e;
         }
-
-        config(['database.connections.phase4_mysql' => array_merge($this->mysql, ['database' => $this->database])]);
-        DB::purge('phase4_mysql');
-        DB::setDefaultConnection('phase4_mysql');
-        $this->migrated = true;
-        Artisan::call('migrate', ['--database' => 'phase4_mysql', '--force' => true]);
     }
 
     protected function tearDown(): void
     {
-        if ($this->migrated && $this->database === 'vending_attendance_testing') {
-            Artisan::call('db:wipe', ['--database' => 'phase4_mysql', '--force' => true]);
+        try {
+            DB::disconnect('phase4_mysql');
+            $this->lease?->close();
+        } finally {
+            parent::tearDown();
         }
-        DB::disconnect('phase4_mysql');
-
-        parent::tearDown();
     }
 
     public function test_real_mysql_serializes_duplicate_single_and_batch_ingestion(): void

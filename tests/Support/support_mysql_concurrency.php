@@ -1,5 +1,10 @@
 <?php
 
+// Legacy local-DB harness retired after the config-cache incident.
+fwrite(STDERR, "TEST_DATABASE_SAFETY_BLOCKED environment=UNKNOWN driver=UNKNOWN database=UNKNOWN reason=legacy harness disabled; use tests/Support/disposable_mysql.php\n");
+exit(1);
+
+
 // Opt-in, local-only MySQL concurrency harness. It creates and destroys ONLY its
 // newly allocated support_phase13_test_<hex> database; never uses the operational DB.
 use App\Models\Device;

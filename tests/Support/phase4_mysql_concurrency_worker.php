@@ -5,7 +5,7 @@ use App\Services\Vending\VendingAttendanceBatchReceiverService;
 use App\Services\Vending\VendingAttendanceReceiverService;
 use Illuminate\Contracts\Console\Kernel;
 
-require dirname(__DIR__, 2).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();

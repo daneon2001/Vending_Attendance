@@ -4,6 +4,8 @@ const config: CapacitorConfig = {
   appId: 'com.medicalife.vendingattendance',
   appName: 'Vending Attendance',
   webDir: 'dist',
+  // Bridge debug logs include plugin arguments: never log passwords/OTP/tokens.
+  loggingBehavior: 'none',
   server: {
     androidScheme: 'https',
   },

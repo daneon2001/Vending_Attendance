@@ -34,6 +34,11 @@ class SupportTicket extends Model
         return $this->belongsTo(VendingMachine::class);
     }
 
+    public function activities(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(VendingSupportActivity::class);
+    }
+
     public function device()
     {
         return $this->belongsTo(Device::class);

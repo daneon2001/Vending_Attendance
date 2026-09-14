@@ -58,6 +58,7 @@ export interface SupportChanges {
 }
 
 export type OperationKind = 'CREATE_TICKET' | 'COMMENT' | 'RESERVE_EVIDENCE' | 'UPLOAD_EVIDENCE' | 'VERIFICATION'
+  | 'SUPPORT_NOTE_CREATE' | 'SUPPORT_EVIDENCE_UPLOAD' | 'SUPPORT_ACTIVITY_COMPLETE'
 export type DeliveryStatus = 'PENDING' | 'SENDING' | 'ACKNOWLEDGED' | 'REJECTED' | 'BLOCKED'
 
 export interface SupportOperation {

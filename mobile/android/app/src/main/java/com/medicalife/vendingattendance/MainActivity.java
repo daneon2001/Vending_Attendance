@@ -8,6 +8,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(FieldDeviceKeyPlugin.class);
         super.onCreate(savedInstanceState);
         if (getBridge() != null) {
             // Capacitor initializes its WebView during super.onCreate. Apply the

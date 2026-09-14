@@ -2,6 +2,7 @@
 import StatusBadge from '@/Components/StatusBadge.vue';
 import TechnicalDetails from '@/Components/TechnicalDetails.vue';
 import GeofenceEditor from '@/Components/GeofenceEditor.vue';
+import SupportActivitySummary from '@/Components/SupportActivitySummary.vue';
 import { statusLabel, friendlyError, formatDateTime } from '@/presentation/labels';
 import { auditEventLabel } from '@/presentation/audit';
 import { canUse } from '@/presentation/navigation';
@@ -63,6 +64,8 @@ const provisioningState = (token) => token.used_at ? 'USED' : token.revoked_at ?
             </section>
 
             <GeofenceEditor :key="machine.uuid" :machine="machine" :editor="geofenceEditor" :can-edit="can('geofence')" />
+
+            <SupportActivitySummary :key="machine.uuid" :machine-id="machine.id" />
 
             <section class="card p-5">
                 <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-semibold text-app">Dispositivos</h2><p class="text-sm text-soft">Consulta la conexión de los dispositivos asociados a esta máquina.</p></div><button v-if="can('manage')" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" :disabled="provisioningLoading" @click="generateProvisioningToken">Generar código de activación</button></div>

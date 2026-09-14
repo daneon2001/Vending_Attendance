@@ -140,6 +140,10 @@ export class SqliteSupportStore implements SupportStore {
       catch (error) { await db.rollbackTransaction(); throw error }
     })
   }
+  /** Additive Field Support tables share this connection and transaction mutex, not attendance. */
+  withDatabase<T>(work: (db: SupportDatabase) => Promise<T>, write = false): Promise<T> {
+    return this.use(work, write)
+  }
   private async row(db: SupportDatabase, sql: string, values: unknown[] = []): Promise<Row | undefined> {
     return (await db.query(sql, values)).values?.[0]
   }

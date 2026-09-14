@@ -35,6 +35,8 @@ use App\Http\Controllers\Employees\EmployeeImportController;
 use Illuminate\Support\Facades\Route;
 
 require __DIR__.'/support-api.php';
+require __DIR__.'/field-identity-api.php';
+require __DIR__.'/field-mobile-api.php';
 
 Route::prefix('v1/device')->group(function (): void {
     Route::post('provision', DeviceProvisioningController::class)

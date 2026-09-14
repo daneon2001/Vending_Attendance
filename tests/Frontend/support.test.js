@@ -40,7 +40,7 @@ test('support navigation requires explicit support permission, including setting
     }
     for (const permissions of Object.values(roles)) {
         const group = visibleNavigation(permissions).find((entry) => entry.key === 'soporte');
-        assert.deepEqual(group.items.map((entry) => entry.label), ['Tickets', 'Verificaciones']);
+        assert.deepEqual(group.items.map((entry) => entry.label), ['Tickets', 'Verificaciones', 'Actividades']);
         assert.ok(group.items.every((entry) => entry.strict));
     }
     assert.equal(canSupport(roles.operator, 'assign'), false);
@@ -268,6 +268,18 @@ test('notification feed uses authorized server count and idempotent POST then re
     assert.equal(state.unreadCount, 8);
     assert.equal(state.notifications[0].read_at, ticket.reported_at);
     assert.match(state.feedback, /marcado como leído/);
+});
+
+test('standalone activity notification opens activity instead of inventing a ticket', async () => {
+    const html = await renderVue('resources/js/Components/SupportNotificationFeed.vue', {}, roles.viewer, { modules: {
+        vue: { reactive: value => reactive({ ...value, loading: false, loaded: true, unreadCount: 1, notifications: [{
+            id: 'fixture-notice', activity_uuid: 'fixture-activity', ticket_uuid: null, folio: 'ACT-000002',
+            kind: 'support_activity.completed', created_at: ticket.reported_at, read_at: null,
+        }] }) },
+    } });
+    assert.match(html, /ACT-000002|Actividad completada|1 sin leer/);
+    assert.match(html, /support.activities.show/);
+    assert.doesNotMatch(html, /support.tickets.show|INC-2026/);
 });
 
 test('notification feed does not request without permission or present unloaded data as empty', async () => {

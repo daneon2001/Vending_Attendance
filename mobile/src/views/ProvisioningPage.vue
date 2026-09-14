@@ -1,6 +1,6 @@
 <template>
   <ion-page>
-    <ion-header><ion-toolbar color="primary"><ion-title>Activar dispositivo</ion-title></ion-toolbar></ion-header>
+    <ion-header><ion-toolbar color="primary"><ion-buttons slot="start"><ion-back-button default-href="/home" text="Volver" /></ion-buttons><ion-title>Terminal de máquina</ion-title></ion-toolbar></ion-header>
     <ion-content>
       <main class="page-shell">
         <h1>Vincular esta instalación</h1>
@@ -23,8 +23,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { IonButton, IonContent, IonHeader, IonInput, IonItem, IonList, IonNote, IonPage, IonText, IonTitle, IonToolbar } from '@ionic/vue'
-import { edgeStore, edgeSyncService, provisioningService } from '@/app/services'
+import { IonBackButton, IonButtons, IonButton, IonContent, IonHeader, IonInput, IonItem, IonList, IonNote, IonPage, IonText, IonTitle, IonToolbar } from '@ionic/vue'
+import { connectivityService, edgeStore, edgeSyncService, provisioningService } from '@/app/services'
 import { safeErrorMessage } from '@/domain/errors'
 
 const router = useRouter()
@@ -42,6 +42,8 @@ async function provision(): Promise<void> {
     await provisioningService.provision(token.value, serial.value || undefined)
     token.value = ''
     await router.replace('/home')
+    // A personal-only installation already observes connectivity; terminal startup takes over.
+    await connectivityService.stop()
     await edgeSyncService.start()
   } catch (error) {
     failed.value = true

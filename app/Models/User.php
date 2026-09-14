@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Actions\SyncPermissionCatalog;
+use App\Enums\Employees\EmployeeSource;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -33,6 +35,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'employee_id',
+        'employee',
     ];
 
     /**
@@ -52,6 +56,36 @@ class User extends Authenticatable
     public function roles()
     {
         return $this->belongsToMany(Role::class)->withTimestamps();
+    }
+
+    /** Optional labor identity; assignment is not exposed through mass assignment. */
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
+    }
+
+    /**
+     * Read-only identity resolution, not authorization to perform an activity.
+     * Never infer a link from email or trust cached/in-memory status or relations.
+     */
+    public static function authenticatedEmployee(): ?Employee
+    {
+        $authenticated = auth()->user();
+        if (! $authenticated instanceof self || ! $authenticated->exists) {
+            return null;
+        }
+
+        $account = self::query()->whereKey($authenticated->getAuthIdentifier())
+            ->where('estatus', true)->first();
+        if ($account === null || $account->employee_id === null) {
+            return null;
+        }
+
+        $employee = $account->employee()->activeForVending()
+            ->where('source', EmployeeSource::FORTIA->value)->first();
+
+        return $employee !== null && trim((string) $employee->source_external_id) !== ''
+            ? $employee : null;
     }
 
     public function allPermissions()

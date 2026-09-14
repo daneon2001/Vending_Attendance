@@ -6,10 +6,12 @@
 /storage/*.key
 /storage/pail
 /storage/framework/local-mysql/
+/storage/framework/local-https/
 /vendor
 .env
 .env.*
 !.env.example
+!.env.testing.example
 .env.backup
 .env.production
 .phpactor.json

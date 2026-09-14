@@ -7,7 +7,7 @@ export const navigationGroups = [
  { key:'operacion', title:'OPERACIÓN', items:[
  item('Resumen','vending-fleet.dashboard','vending_machines','Estado de la operación'),
  item('Máquinas','vending-machines.index','vending_machines','Asignaciones y geocercas','machines'),
- item('Dispositivos','vending-devices.index','vending_machines','Conexión y estado','clocks'),
+ item('Dispositivos','vending-devices.index','vending_machines','Terminales de máquinas','clocks'),
  item('Empleados','vending-employees.index','employees','Catálogo e importación','users',{strict:true}),
  item('Alertas','vending-fleet.dashboard','vending_machines','Incidencias','audit',{hash:'alertas'}),
  item('Asistencias','admin.asistencias.index','asistencias','Consultar registros','attendance'),
@@ -16,9 +16,15 @@ export const navigationGroups = [
  {key:'soporte',title:'SOPORTE',items:[
  item('Tickets','support.tickets.index','support','Reportes y seguimiento','audit',{strict:true}),
  item('Verificaciones','support.verifications.index','support','Revisión de equipos','clocks',{strict:true}),
+ item('Actividades','support.activities.index','support','Trabajo en campo','audit',{strict:true}),
  ]},
  {key:'integraciones',title:'INTEGRACIONES',items:[
  item('Catálogo SYBI','vending-machines.index','vending_machines','Información de origen','machines',{params:{catalog_view:'sybi'}}),
+ ]},
+ {key:'identidad',title:'IDENTIDAD Y BIOMETRÍA',items:[
+ item('Resumen de identidad','field-identity.admin.index','employee_device','Estado de dispositivos personales','users',{strict:true,params:{tab:'summary'}}),
+ item('Dispositivos personales','field-identity.admin.index','employee_device','Identidad del teléfono de trabajo','clocks',{strict:true,params:{tab:'devices'}}),
+ item('Enrolamientos','field-identity.admin.index','employee_device','Biometría no habilitada','users',{strict:true,params:{tab:'enrollments'}}),
  ]},
  {key:'administracion',title:'ADMINISTRACIÓN',items:[
  item('Versiones de aplicación','vending-releases.index','vending_machines','Versiones y distribución','settings'),

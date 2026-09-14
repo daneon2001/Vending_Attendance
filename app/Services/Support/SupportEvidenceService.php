@@ -173,6 +173,13 @@ class SupportEvidenceService
     {
         $this->access->authorize($actor, 'evidence.download', $ticket);
         $evidence = $this->find($ticket, $evidenceUuid);
+
+        return $this->streamAuthorizedEvidence($evidence, $thumbnail);
+    }
+
+    /** Internal storage primitive: caller MUST authorize the owning aggregate first. */
+    public function streamAuthorizedEvidence(SupportEvidence $evidence, bool $thumbnail = false): StreamedResponse
+    {
         abort_unless($evidence->status === 'CONFIRMED', 404);
         $key = $thumbnail ? $evidence->thumbnail_key : $evidence->storage_key;
         $hash = $thumbnail ? $evidence->thumbnail_sha256 : $evidence->sha256;

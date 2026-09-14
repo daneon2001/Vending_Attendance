@@ -5,6 +5,7 @@ import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TechnicalDetails from '@/Components/TechnicalDetails.vue';
 import InputError from '@/Components/InputError.vue';
+import SupportActivitySummary from '@/Components/SupportActivitySummary.vue';
 import { formatDateTime } from '@/presentation/labels';
 import { canSupport, supportBadgeClass, supportError, supportEventLabel, supportFileSize, supportLabel, supportOperationUuid } from '@/presentation/support';
 
@@ -131,6 +132,8 @@ const upload = async () => {
                             <button class="min-h-11 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="busy || !selectedFile || invalidFile || countReached">{{ sendingEvidence ? 'Enviando…' : 'Guardar fotografía' }}</button>
                         </form>
                     </section>
+
+                    <SupportActivitySummary :key="ticket.uuid" :ticket-uuid="ticket.uuid" />
 
                     <section class="card p-5" aria-labelledby="timeline-heading">
                         <h2 id="timeline-heading" class="font-semibold text-app">Historial</h2>

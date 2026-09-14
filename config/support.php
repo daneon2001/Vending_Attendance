@@ -15,6 +15,8 @@ return [
         'max_pixels' => 12000000, 'max_dimension' => 6000, 'thumbnail_max_dimension' => 320,
         'reservation_ttl_minutes' => 60, 'allowed_mimes' => ['image/jpeg', 'image/png', 'image/webp'],
     ],
+    // Same 4,000-character bound as activity descriptions; bounded offline/detail payloads.
+    'activity_notes' => ['max_length' => 4000, 'max_count' => 100],
     'automation' => ['enabled' => false, 'batch_size' => 100, 'max_batch_size' => 250, 'max_duration_seconds' => 15],
     'sla' => ['batch_size' => 100, 'max_batch_size' => 250, 'max_duration_seconds' => 15],
     'notifications' => ['max_event_batch' => 250, 'max_recipient_batch' => 500, 'max_duration_seconds' => 15],

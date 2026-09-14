@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Schema;
 
 class Employee extends Model
@@ -88,6 +89,12 @@ class Employee extends Model
     public function attendanceLogs()
     {
         return $this->hasMany(AttendanceLog::class);
+    }
+
+    /** A labor identity does not require an authenticatable account. */
+    public function user(): HasOne
+    {
+        return $this->hasOne(User::class);
     }
 
     public function detail()

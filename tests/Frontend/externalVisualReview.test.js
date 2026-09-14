@@ -152,7 +152,7 @@ test('external sidebar review uses short complete descriptions without changing 
    assert.ok(!item.description.includes('...') && !item.description.includes('…'));
    assert.ok(html.includes(item.description), item.description);
   }
-  assert.equal(nav.find(item => item.label === 'Dispositivos').description, 'Conexión y estado');
+  assert.equal(nav.find(item => item.label === 'Dispositivos').description, 'Terminales de máquinas');
   assert.equal(nav.find(item => item.label === 'Alertas').description, 'Incidencias');
  }
 });

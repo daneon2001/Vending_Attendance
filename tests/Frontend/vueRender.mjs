@@ -39,7 +39,9 @@ export async function renderVue(file, props = {}, permissions = {}, { modules = 
    else {
     let target = spec.startsWith('@/') ? resolve('resources/js',spec.slice(2)) : resolve(dirname(absolute),spec);
     if(!extname(target)) target += '.js';
-    module = target.endsWith('.vue') ? {default:await load(target)} : await import(pathToFileURL(target).href);
+    module = target.endsWith('.vue') ? {default:await load(target)}
+     : target.endsWith('.json') ? {default:JSON.parse(await readFile(target,'utf8'))}
+     : await import(pathToFileURL(target).href);
    }
    // Explicit test-only fixtures can initialize a workflow at an existing step.
    if (Object.prototype.hasOwnProperty.call(modules, spec)) module = { ...module, ...modules[spec] };

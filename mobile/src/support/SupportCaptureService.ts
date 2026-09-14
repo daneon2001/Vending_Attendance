@@ -8,6 +8,9 @@ import type { SupportStore } from './SupportStore'
 import type { EvidenceFiles } from './PrivateEvidenceFiles'
 import { SupportError, SupportMutex, type LocalEvidence } from './types'
 
+export const SUPPORT_CAMERA_OPTIONS = { resultType: CameraResultType.Uri, source: CameraSource.Camera,
+  saveToGallery: false, allowEditing: false, quality: 80, width: 1600, height: 1600, correctOrientation: true } as const
+
 export class SupportCaptureService {
   private handle: PluginListenerHandle | null = null
   private readonly mutex = new SupportMutex()
@@ -47,8 +50,7 @@ export class SupportCaptureService {
       const pending = await this.store.reserveCapture(ticketLocalUuid, deviceUuid)
       let photo: Photo
       try {
-        photo = await this.camera.getPhoto({ resultType: CameraResultType.Uri, source: CameraSource.Camera,
-          saveToGallery: false, allowEditing: false, quality: 80, width: 1600, height: 1600, correctOrientation: true })
+        photo = await this.camera.getPhoto(SUPPORT_CAMERA_OPTIONS)
       } catch {
         await this.store.cancelCapture(pending.localUuid, deviceUuid)
         throw new SupportError('CAMERA_CANCELLED', 'No se agregó una fotografía. Puedes intentarlo nuevamente.')

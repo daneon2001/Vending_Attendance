@@ -106,6 +106,7 @@ const isActive = (item) => {
     if (item.hash) return url.hash === '#' + item.hash;
     if (item.routeName === 'vending-fleet.dashboard') return url.hash !== '#alertas';
     if (item.routeName === 'vending-machines.index') return (url.searchParams.get('catalog_view') || 'operational') === (item.params?.catalog_view || 'operational');
+    if (item.routeName === 'field-identity.admin.index') return (url.searchParams.get('tab') || 'summary') === (item.params?.tab || 'summary');
     return true;
 };
 
@@ -350,7 +351,7 @@ watch(
 
             <div class="flex min-w-0 flex-1 flex-col">
                 <header class="sticky top-0 z-20 border-b border-app bg-white/90 backdrop-blur  dark:bg-slate-900/80">
-                    <div class="flex h-16 min-w-0 items-center justify-between gap-2 px-3 sm:px-6 lg:px-10">
+                    <div class="flex min-h-16 min-w-0 items-center justify-between gap-2 px-3 py-2 sm:px-6 lg:px-10">
                         <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
                             <button
                                 type="button"

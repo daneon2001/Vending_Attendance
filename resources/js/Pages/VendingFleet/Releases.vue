@@ -5,6 +5,7 @@ import { statusLabel, friendlyError, formatDateTime } from '@/presentation/label
 import { computed, reactive } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import betaCandidate from '../../../../mobile/internal-beta.json';
 
 const props = defineProps({ releases: Array, policies: Array, platforms: Array, channels: Array, statuses: Array, targetTypes: Array, rolloutPercentages: Array, canManage: Boolean });
 const release = useForm({ platform: 'ANDROID', channel: 'DEV', target_type: 'CHANNEL', target_value: '', version: '', build_number: '', status: 'DRAFT', minimum_os: '', artifact_url: '', artifact_sha256: '', mandatory: false, rollout_percentage: 0, released_at: '', notes: '' });
@@ -25,6 +26,11 @@ const blockRelease = (item) => {
     <AuthenticatedLayout>
         <template #header><div><Link :href="route('vending-fleet.dashboard')" class="text-sm text-indigo-600">← Operación vending</Link><h1 class="text-xl font-semibold text-app">Versiones de aplicación</h1><p class="text-sm text-soft">Administra versiones y criterios de distribución. Esta pantalla no instala ni distribuye archivos de la aplicación.</p></div></template>
         <div class="space-y-6">
+            <section class="card space-y-2 p-5" aria-label="Candidata de beta interna">
+                <h2 class="font-semibold text-app">{{ betaCandidate.label }} · candidata de revisión</h2>
+                <p class="text-sm text-app">Android {{ betaCandidate.version }} · compilación {{ betaCandidate.build }} · DEBUG / DEMO local</p>
+                <p class="text-sm text-soft">Metadata preparada, no publicada. Requiere pruebas y revisión visual antes de distribuir. No cambia las políticas vigentes ni confirma la versión instalada de cada teléfono.</p>
+            </section>
             <details v-if="canManage" class="card p-4"><summary class="min-h-11 cursor-pointer py-2 font-semibold text-app">Registrar versión</summary><form class="card grid gap-3 p-5 md:grid-cols-4" @submit.prevent="submitRelease">
                 <h2 class="font-semibold text-app md:col-span-4">Registrar versión de aplicación</h2>
                 <label class="text-sm">Plataforma<select v-model="release.platform" class="mt-1 w-full rounded-xl border-app"><option v-for="value in platforms" :key="value" :value="value">{{ statusLabel(value) }}</option></select></label>

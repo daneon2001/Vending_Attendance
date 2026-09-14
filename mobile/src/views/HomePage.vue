@@ -7,8 +7,18 @@
     </ion-header>
     <ion-content>
       <main class="page-shell">
-        <TerminalStatus :connectivity="connectivity" :state="state" @sync="sync" />
-        <h1>Selecciona tu nombre</h1>
+        <div class="product-heading"><img src="/medical-life-mark.png" alt="Medical Life" width="64" height="64" /><div><h1>Vending Attendance</h1><p class="muted">Medical Life</p></div></div>
+        <nav aria-label="Acciones disponibles" class="home-actions">
+          <ion-button v-if="terminalActive && employees.length" expand="block" :aria-expanded="showAttendance" aria-controls="attendance-employees" @click="showAttendance = !showAttendance">Registrar asistencia</ion-button>
+          <ion-button v-if="canUseActivities" expand="block" fill="outline" router-link="/my-activities">Mis actividades</ion-button>
+          <ion-button v-if="terminalActive" expand="block" fill="outline" router-link="/support/report">Reportar incidencia</ion-button>
+          <ion-button expand="block" fill="outline" router-link="/my-device">Mi dispositivo</ion-button>
+          <ion-button v-if="terminalActive" expand="block" fill="clear" router-link="/support" class="support-entry">Soporte</ion-button>
+        </nav>
+        <p v-if="!hasTerminal" class="muted">Para trabajar con tu identidad personal, entra en Mi dispositivo. No necesitas activar una terminal de máquina.</p>
+        <p v-else-if="terminalActive && !employees.length" class="muted">No hay empleados disponibles para asistencia. Sincroniza o solicita apoyo al responsable.</p>
+        <section v-if="terminalActive && showAttendance" id="attendance-employees" aria-label="Registrar asistencia">
+        <h2>Selecciona tu nombre</h2>
         <p class="muted">Después elige registrar entrada o salida.</p>
         <div class="employee-search">
           <input v-model="search" type="search" placeholder="Nombre o número" aria-label="Buscar empleado por nombre o número" autocomplete="off" />
@@ -21,8 +31,12 @@
           </ion-item>
           <ion-item v-if="filteredEmployees.length === 0"><ion-label class="ion-text-wrap muted">{{ search.trim() ? 'No encontramos ese nombre o número. Revisa la búsqueda.' : 'No hay empleados disponibles. Sincroniza o solicita apoyo al responsable.' }}</ion-label></ion-item>
         </ion-list>
-        <ion-button expand="block" fill="outline" router-link="/support" class="support-entry">Soporte</ion-button>
-        <details class="terminal-details">
+        </section>
+        <TerminalStatus v-if="hasTerminal" :connectivity="connectivity" :state="state" @sync="sync" />
+        <p v-else class="muted" role="status">{{ connectivity === 'ONLINE' ? 'Red disponible' : connectivity === 'OFFLINE' ? 'Sin conexión' : 'Consultando conexión' }}</p>
+        <ion-button expand="block" fill="clear" router-link="/diagnostics">Diagnóstico e información</ion-button>
+        <details v-if="!hasTerminal" class="terminal-details"><summary>Configuración de terminal</summary><p class="muted">Sólo para el responsable de una máquina. No registra tu identidad personal.</p><ion-button expand="block" fill="outline" router-link="/provision">Configurar terminal de máquina</ion-button></details>
+        <details v-if="hasTerminal" class="terminal-details">
           <summary>Información de la terminal</summary>
           <dl>
             <div><dt>Máquina</dt><dd>{{ state.summary?.machineCode ?? 'Sin configurar' }}</dd></div>
@@ -44,13 +58,26 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   IonButton, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar,
 } from '@ionic/vue'
-import { connectivityService, edgeStore, edgeSyncService } from '@/app/services'
+import { connectivityService, credentialStore, edgeStore, edgeSyncService } from '@/app/services'
 import type { EffectiveEmployee } from '@/storage/EdgeStore'
 import type { ConnectivityState } from '@/domain/types'
 import type { SyncViewState } from '@/services/EdgeSyncService'
 import { deviceStatusLabel, syncPhaseLabel } from '@/presentation/operationLabels'
 import TerminalStatus from '@/components/TerminalStatus.vue'
 import TerminalGeofence from '@/components/TerminalGeofence.vue'
+import { onIonViewWillEnter } from '@ionic/vue'
+import { fieldActivitiesAvailable } from '@/fieldSupport/services'
+
+const canUseActivities = ref(false)
+const hasTerminal = ref(false)
+const showAttendance = ref(false)
+const terminalActive = computed(() => hasTerminal.value && state.value.summary?.deviceStatus === 'ACTIVE')
+onIonViewWillEnter(async () => {
+  canUseActivities.value = false
+  hasTerminal.value = !!await credentialStore.get().catch(() => null)
+  await loadEmployees()
+  canUseActivities.value = await fieldActivitiesAvailable()
+})
 
 const employees = ref<EffectiveEmployee[]>([])
 const search = ref('')
@@ -79,6 +106,7 @@ async function sync(): Promise<void> {
 }
 
 onMounted(async () => {
+  hasTerminal.value = !!await credentialStore.get().catch(() => null)
   unsubscribeSync = edgeSyncService.subscribe((next) => {
     const previousEmployeeVersion = state.value.summary?.employeeManifestVersion ?? null
     state.value = next
@@ -112,4 +140,9 @@ onBeforeUnmount(() => { unsubscribeSync?.(); unsubscribeNetwork?.() })
 .terminal-details dl > div { padding: 8px 0; }
 .terminal-details dt { color: var(--ion-color-medium); }
 .terminal-details dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.product-heading { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.product-heading img { flex-shrink: 0; object-fit: contain; }
+.product-heading h1 { font-size: 1.5rem; margin: 0; overflow-wrap: anywhere; }
+.product-heading p { margin: 4px 0 0; }
+.home-actions { display: grid; gap: 8px; margin-bottom: 20px; }
 </style>
