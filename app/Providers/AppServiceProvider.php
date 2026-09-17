@@ -37,6 +37,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Validate effective (including cached) config before HTTP middleware, not CLI recovery.
+        $this->callAfterResolving(\Illuminate\Contracts\Http\Kernel::class, function ($kernel): void {
+            $kernel->prependMiddleware(\App\Http\Middleware\ValidateStatefulDomains::class);
+        });
+
         Vite::prefetch(concurrency: 3);
 
         RateLimiter::for('biometrics-fingerprints', function (Request $request) {
