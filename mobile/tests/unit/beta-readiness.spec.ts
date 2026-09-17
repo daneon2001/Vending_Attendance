@@ -1,3 +1,4 @@
+import beta from '../../internal-beta.json'
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { startApplication } from '@/app/startup'
@@ -28,7 +29,7 @@ describe('independent personal startup', () => {
 })
 describe('safe diagnostic presentation', () => {
   it('uses installed metadata, not a hardcoded claim of beta', () => {
-    expect(applicationLabels({ version: '1.0.1-beta.1', build: '5' }).environment).toContain('Beta interna')
+    expect(applicationLabels({ version: beta.version, build: String(beta.build) }).environment).toContain('Beta interna')
     expect(applicationLabels({ version: '1.0', build: '1' }).environment).toContain('no identificada')
     expect(applicationLabels({ version: 'secret error', build: 'token value' })).toEqual({ version: 'No disponible', build: 'No disponible', environment: 'Compilación no identificada como beta interna' })
   })
