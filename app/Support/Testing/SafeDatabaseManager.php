@@ -16,6 +16,7 @@ final class SafeDatabaseManager extends DatabaseManager
 
     public function connection($name = null)
     {
+        $name = \Illuminate\Support\enum_value($name) ?: $this->getDefaultConnection();
         [$connection] = $this->parseConnectionName($name);
         TestDatabasePolicy::assertSafe($this->bootEnvironment, $this->configuration($connection));
 
