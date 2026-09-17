@@ -230,7 +230,7 @@ watch(
             >
                 <div class="flex w-full items-center gap-3" :class="isCollapsed ? 'flex-col gap-4' : 'justify-between'">
                     <div class="flex items-center gap-3" :class="isCollapsed ? 'justify-center' : ''">
-                        <ApplicationLogo :variant="isCollapsed ? 'short' : 'full'" class="h-12 w-auto drop-shadow-sm" />
+                        <ApplicationLogo :variant="isCollapsed ? 'short' : 'full'" :class="isCollapsed ? 'h-12 w-12' : 'h-32 w-32'" class="drop-shadow-sm" />
                     </div>
 
                     <button
@@ -479,7 +479,7 @@ watch(
                 <div class="sidebar-mobile-sheet">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <ApplicationLogo class="h-8 w-8 text-indigo-600" />
+                            <ApplicationLogo variant="short" class="h-8 w-8" />
                             <p class="text-base font-semibold text-app">Vending Attendance</p>
                         </div>
                         <button class="rounded-full border border-app p-2" aria-label="Cerrar menu lateral" @click="mobileSidebarOpen = false">

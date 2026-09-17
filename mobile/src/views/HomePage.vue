@@ -7,7 +7,8 @@
     </ion-header>
     <ion-content>
       <main class="page-shell">
-        <div class="product-heading"><img src="/medical-life-mark.png" alt="Medical Life" width="64" height="64" /><div><h1>Vending Attendance</h1><p class="muted">Medical Life</p></div></div>
+        <BrandIdentity />
+        <div class="home-intro"><p class="eyebrow">PERSONAS · MÁQUINAS · RESULTADOS</p><h1>Tu operación, a la mano</h1><p class="muted">Accede a las herramientas de tu jornada.</p></div>
         <nav aria-label="Acciones disponibles" class="home-actions">
           <ion-button v-if="terminalActive && employees.length" expand="block" :aria-expanded="showAttendance" aria-controls="attendance-employees" @click="showAttendance = !showAttendance">Registrar asistencia</ion-button>
           <ion-button v-if="canUseActivities" expand="block" fill="outline" router-link="/my-activities">Mis actividades</ion-button>
@@ -15,6 +16,10 @@
           <ion-button expand="block" fill="outline" router-link="/my-device">Mi dispositivo</ion-button>
           <ion-button v-if="terminalActive" expand="block" fill="clear" router-link="/support" class="support-entry">Soporte</ion-button>
         </nav>
+        <aside class="dispenser-banner brand-wave" aria-label="Dispensadora de medicamentos Medical Life">
+          <div><p class="eyebrow">MEDICAL LIFE ONE</p><h2>Tecnología<br />en Movimiento</h2><p>Soporte en campo</p></div>
+          <img src="/brand/dispenser-banner.webp" alt="Panel y compartimentos de la dispensadora de medicamentos Medical Life" width="720" height="400" />
+        </aside>
         <p v-if="!hasTerminal" class="muted">Para trabajar con tu identidad personal, entra en Mi dispositivo. No necesitas activar una terminal de máquina.</p>
         <p v-else-if="terminalActive && !employees.length" class="muted">No hay empleados disponibles para asistencia. Sincroniza o solicita apoyo al responsable.</p>
         <section v-if="terminalActive && showAttendance" id="attendance-employees" aria-label="Registrar asistencia">
@@ -65,6 +70,7 @@ import type { SyncViewState } from '@/services/EdgeSyncService'
 import { deviceStatusLabel, syncPhaseLabel } from '@/presentation/operationLabels'
 import TerminalStatus from '@/components/TerminalStatus.vue'
 import TerminalGeofence from '@/components/TerminalGeofence.vue'
+import BrandIdentity from '@/components/BrandIdentity.vue'
 import { onIonViewWillEnter } from '@ionic/vue'
 import { fieldActivitiesAvailable } from '@/fieldSupport/services'
 
@@ -145,4 +151,17 @@ onBeforeUnmount(() => { unsubscribeSync?.(); unsubscribeNetwork?.() })
 .product-heading h1 { font-size: 1.5rem; margin: 0; overflow-wrap: anywhere; }
 .product-heading p { margin: 4px 0 0; }
 .home-actions { display: grid; gap: 8px; margin-bottom: 20px; }
+.home-intro { margin-bottom: 24px; }
+.home-intro h1 { margin-top: 8px; }
+.eyebrow { font-size: .68rem; font-weight: 800; letter-spacing: .08em; color: #287947; }
+.home-actions { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.home-actions ion-button { min-height: 84px; margin: 0; --background: #fff; --border-color: #d1e2f3; --border-width: 1px; --border-style: solid; --color: #164b84; --border-radius: 16px; }
+.home-actions ion-button:first-child { --background: #0058d4; --color: #fff; }
+.home-actions .support-entry { grid-column: 1 / -1; min-height: 48px; }
+.dispenser-banner { display: grid; grid-template-columns: 1fr 1fr; min-height: 170px; background: #fff; border: 1px solid #dce7f1; margin: 24px 0; }
+.dispenser-banner > div { align-self: center; padding: 20px 0 28px 20px; z-index: 1; }
+.dispenser-banner h2 { font-size: 1.15rem; margin: 6px 0; line-height: 1.3; }
+.dispenser-banner p { font-size: .75rem; }
+.dispenser-banner img { width: 100%; height: 100%; object-fit: cover; object-position: 48% center; }
+@media(max-width: 340px) { .home-actions { grid-template-columns: 1fr; } .dispenser-banner h2 { font-size: 1rem; } }
 </style>

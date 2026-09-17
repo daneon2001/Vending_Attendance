@@ -103,8 +103,32 @@ test('device page renders seven columns with original select values and human st
 });
 test('login branding excludes unsupported legacy claims and English headings',async()=>{
  const html=await renderVue('resources/js/Pages/Auth/Login.vue',{canResetPassword:true});
- assert.match(html,/Vending Attendance/);assert.match(html,/Medical Life/);
+ assert.match(html,/Vending Attendance/);assert.match(html,/MEDICAL LIFE ONE/);
  assert.doesNotMatch(html,/120\+|clínicas|Sanctum|biométricos/);
+});
+
+test('dashboard branding resolves the banner at root and below the application base', async () => {
+ // Use the real URL utility with an empty Vite environment and synthetic DOM metadata.
+ const source = (await readFile('resources/js/utils/url.js', 'utf8')).replaceAll('import.meta.env', '({})');
+ const { assetUrl } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+ const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+ const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+ try {
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'https://example.test' } } });
+  for (const base of ['/', '/vending']) {
+   Object.defineProperty(globalThis, 'document', { configurable: true, value: {
+    querySelector: selector => selector === 'meta[name="app-base-path"]' ? { getAttribute: () => base } : null,
+   } });
+   const html = await renderVue('resources/js/Pages/Dashboard.vue', {}, roles.Viewer, {
+    modules: { '@/utils/url': { assetUrl } },
+   });
+   const expected = `https://example.test${base === '/' ? '' : base}/images/medical-life-dispenser-banner.webp`;
+   assert.ok(html.includes(`src="${expected}"`), `Banner must respect base ${base}`);
+  }
+ } finally {
+  if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument); else delete globalThis.document;
+  if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow); else delete globalThis.window;
+ }
 });
 test('all Vue pages compile, including screens outside the main demo',async()=>{
  const {parse,compileScript,compileTemplate}=await import('@vue/compiler-sfc');

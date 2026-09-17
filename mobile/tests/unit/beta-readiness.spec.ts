@@ -55,7 +55,7 @@ describe('safe diagnostic presentation', () => {
   it('uses official product metadata, Spanish document language and does not disable zoom', () => {
     const html = readFileSync('index.html', 'utf8')
     expect(html).toContain('lang="es-MX"')
-    expect(html).toContain('Vending Attendance · Medical Life')
+    expect(html).toContain('Vending Attendance · MEDICAL LIFE ONE')
     expect(html).toContain('/medical-life-mark.png')
     expect(html).not.toMatch(/Ionic App|user-scalable=no|maximum-scale=1/)
   })

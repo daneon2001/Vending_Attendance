@@ -1,0 +1,22 @@
+/* Shared presentation only: no authorization, storage or transport behavior. */
+ion-content { --background: #f5f7fa; }
+ion-toolbar { --background: linear-gradient(110deg, #064cbd, #007da5); --color: #fff; }
+ion-button { font-weight: 650; letter-spacing: 0; }
+ion-button:not([fill="outline"]):not([fill="clear"]) { --background: linear-gradient(110deg, #0058d4, #007fa9); }
+ion-button[color="danger"], ion-button[color="success"] { --background: var(--ion-color-base); }
+.page-shell { position: relative; }
+.page-shell h1, .page-shell h2 { color: #10366c; letter-spacing: -.025em; }
+.page-shell h1 { font-size: 1.65rem; }
+.page-shell input, .page-shell select, .page-shell textarea { background: #fff; }
+.page-shell ion-list { background: transparent; }
+.page-shell ion-item { --background: #fff; --border-color: #dce7f1; --padding-start: 16px; --inner-padding-end: 16px; border: 1px solid #dce7f1; border-radius: 14px; margin: 12px 0; }
+.page-shell details { border-top: 1px solid #dce7f1; padding-top: 12px; }
+.page-shell summary { color: #174b83; min-height: 48px; padding: 12px 0; }
+.page-shell .notice { border-radius: 12px; border-left-color: #bb861a; background: #fff8e8; color: #513b11; }
+.page-shell .state { display: inline-block; padding: 8px 14px; border-radius: 24px; color: #164d86; background: #e6f2fc; }
+.brand-wave { position: relative; isolation: isolate; overflow: hidden; border-radius: 20px; }
+.brand-wave::after { content: ''; position: absolute; z-index: -1; pointer-events: none; width: 150%; height: 110px; left: -15%; bottom: -85px; border-radius: 50%; background: linear-gradient(90deg, #7ccb49, #43bda8, #05a9d9, #0058d4); transform: rotate(-5deg); }
+.machine-thumbnail { width: 56px; height: 60px; object-fit: contain; border-radius: 10px; margin: 12px 14px 12px 0; background: white; flex-shrink: 0; }
+.machine-context { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid #dce7f1; padding: 14px; border-radius: 14px; margin: 20px 0; }
+.machine-context .machine-thumbnail { margin: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }

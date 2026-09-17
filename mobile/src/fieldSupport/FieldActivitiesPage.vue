@@ -2,6 +2,7 @@
   <ion-page>
     <ion-header><ion-toolbar><ion-buttons slot="start"><ion-back-button :default-href="uuid ? '/my-activities' : '/home'" text="Volver" /></ion-buttons><ion-title>Mis actividades</ion-title></ion-toolbar></ion-header>
     <ion-content><main class="page-shell activities-page">
+      <BrandIdentity />
       <h1>{{ uuid ? 'Detalle de actividad' : 'Mis actividades' }}</h1>
       <p class="muted">Trabajo de campo con tu identidad personal. No registra asistencia.</p>
       <p v-if="unavailable || flow?.error" class="notice" role="alert">{{ unavailable || flow?.error }}</p>
@@ -27,6 +28,7 @@
             </ion-item></ion-list>
           </details>
           <ion-list><ion-item v-for="row in flow.rows" :key="row.uuid" button :router-link="'/my-activities/' + row.uuid">
+            <img v-if="row.machine === 'VM-DEMO-001'" src="/brand/dispenser-thumb.webp" alt="" width="56" height="60" class="machine-thumbnail" />
             <ion-label class="ion-text-wrap"><h2>{{ row.title }}</h2><p>{{ row.machine }} · {{ row.type_label }}</p><p>{{ activityStatus(row.status) }}</p></ion-label>
           </ion-item></ion-list>
           <nav v-if="flow.page > 1 || flow.hasMore" aria-label="Páginas de actividades">
@@ -36,6 +38,7 @@
           </nav>
         </template>
         <section v-else-if="flow.activity" aria-label="Actividad asignada">
+          <div v-if="flow.activity.machine === 'VM-DEMO-001'" class="machine-context"><img src="/brand/dispenser-thumb.webp" alt="Dispensadora Medical Life" width="56" height="60" class="machine-thumbnail" /><div><strong>{{ flow.activity.machine }}</strong><p class="muted">Dispensadora de medicamentos</p></div></div>
           <h2>{{ flow.activity.title }}</h2>
           <p>{{ flow.activity.description }}</p>
           <dl><div><dt>Máquina</dt><dd>{{ flow.activity.machine }}</dd></div><div><dt>Empleado</dt><dd>{{ flow.activity.employee }}</dd></div><div><dt>Tipo</dt><dd>{{ flow.activity.type_label }}</dd></div></dl>
@@ -96,6 +99,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, onUnmounted } from 'vue'
+import BrandIdentity from '@/components/BrandIdentity.vue'
 import { useRoute } from 'vue-router'
 import { IonPage, IonHeader, IonToolbar, IonButtons, IonBackButton, IonTitle, IonContent, IonButton, IonList, IonItem, IonLabel, onIonViewWillEnter, onIonViewDidLeave } from '@ionic/vue'
 import { fieldActivityFlow } from './services'

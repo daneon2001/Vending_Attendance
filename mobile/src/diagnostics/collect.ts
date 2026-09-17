@@ -71,7 +71,7 @@ export async function collectDiagnostics(): Promise<DiagnosticRow[]> {
     return supportStore.withDatabase(async db => Number((await db.query("SELECT COUNT(*) AS total FROM support_operations WHERE device_uuid=? AND status!='ACKNOWLEDGED'", [terminal.deviceUuid])).values?.[0]?.total ?? 0))
   }) : null
   return [
-    { label: 'Producto', value: 'Vending Attendance · Medical Life' },
+    { label: 'Producto', value: 'Vending Attendance · MEDICAL LIFE ONE' },
     { label: 'Versión instalada', value: app.version }, { label: 'Compilación', value: app.build },
     { label: 'Entorno', value: app.environment },
     { label: 'Red del teléfono', value: network ? network.connected ? 'Disponible (no garantiza acceso al servidor)' : 'Sin conexión' : unavailable },

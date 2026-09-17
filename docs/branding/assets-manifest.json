@@ -1,0 +1,122 @@
+[
+  {
+    "file": "dispenser-portrait.png",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      624,
+      64,
+      882,
+      945
+    ],
+    "width": 588,
+    "height": 630,
+    "bytes": 672196,
+    "sha256": "48d73378f6ecd449b743ebefdc874565c7b0b976d10f30077847b09fa698e541",
+    "usage": "Home and startup portrait"
+  },
+  {
+    "file": "dispenser-banner.png",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      630,
+      150,
+      864,
+      480
+    ],
+    "width": 720,
+    "height": 400,
+    "bytes": 600902,
+    "sha256": "a4edaba8eaa1bc2f423483c5d30114340c7caf8da33c435d95d65118061cc123",
+    "usage": "Home banner, front panel and compartments"
+  },
+  {
+    "file": "dispenser-thumb.png",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      624,
+      64,
+      882,
+      945
+    ],
+    "width": 168,
+    "height": 180,
+    "bytes": 61784,
+    "sha256": "2ff88f7c2b488e8c6181668cdfbe2f491abc24ac279000eee4761a661a0ee23a",
+    "usage": "VM-DEMO-001 only; contextual image"
+  },
+  {
+    "file": "one-symbol.png",
+    "source": "medical-life-one-full.png",
+    "crop": [
+      740,
+      250,
+      350,
+      490
+    ],
+    "width": 512,
+    "height": 512,
+    "bytes": 154849,
+    "sha256": "4d26a1569e3f40e7aa54781798fa983d137eb35218a51634560bbd6eb5e478c9",
+    "usage": "Launcher and compact identity"
+  },
+  {
+    "file": "one-logo.png",
+    "source": "medical-life-one-full.png",
+    "crop": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "width": 320,
+    "height": 320,
+    "bytes": 130982,
+    "sha256": "7ce3b7ed0924ff6fc6e30bbb975bb98e785d21edd37366faafced077b027f1d7",
+    "usage": "Login and full corporate identity"
+  },
+  {
+    "file": "dispenser-portrait.webp",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      624,
+      64,
+      882,
+      945
+    ],
+    "width": 588,
+    "height": 630,
+    "bytes": 67180,
+    "sha256": "7222a1571f29f0998bc3935d0df7b78bdd249eadad02d0586f328cae460be5b0",
+    "usage": "Home and startup portrait"
+  },
+  {
+    "file": "dispenser-banner.webp",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      630,
+      150,
+      864,
+      480
+    ],
+    "width": 720,
+    "height": 400,
+    "bytes": 52904,
+    "sha256": "85b577c47e7c3557c5ee27f5d90e4fbb9b2e3f8f886d53710223b9aaf4f8c7e4",
+    "usage": "Home banner, front panel and compartments"
+  },
+  {
+    "file": "dispenser-thumb.webp",
+    "source": "medical-life-dispenser-original.png",
+    "crop": [
+      624,
+      64,
+      882,
+      945
+    ],
+    "width": 168,
+    "height": 180,
+    "bytes": 9552,
+    "sha256": "d0067293c487a6f70f5d3da1fe3fbd0df78f0fd6cc651cdd045552ee237fc744",
+    "usage": "VM-DEMO-001 only; contextual image"
+  }
+]

@@ -10,7 +10,7 @@ import static org.junit.Assert.*;
 public class BetaBrandResourcesTest {
     @Test
     public void originalMedicalLifeAssetIsReusedWithoutModification() throws Exception {
-        byte[] original = Files.readAllBytes(Paths.get("../../../public/images/medical-life-logo_short.png"));
+        byte[] original = Files.readAllBytes(Paths.get("../../../public/images/medical-life-one-mark.png"));
         assertArrayEquals(original, Files.readAllBytes(Paths.get("src/main/res/drawable-nodpi/medical_life_mark.png")));
         assertArrayEquals(original, Files.readAllBytes(Paths.get("../../public/medical-life-mark.png")));
     }

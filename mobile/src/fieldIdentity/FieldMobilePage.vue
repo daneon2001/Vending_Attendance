@@ -3,6 +3,7 @@
     <ion-header><ion-toolbar><ion-buttons slot="start"><ion-back-button default-href="/home" text="Volver" /></ion-buttons><ion-title>Mi dispositivo</ion-title></ion-toolbar></ion-header>
     <ion-content>
       <main class="page-shell identity-page">
+        <BrandIdentity :full="flow?.step === 'login'" />
         <h1>{{ flow?.step === 'active' ? 'Dispositivo autorizado' : flow?.step === 'login' ? 'Inicia sesión para consultar tu dispositivo.' : flow?.step === 'ready' ? 'Registrar dispositivo' : 'Consultar dispositivo' }}</h1>
         <p class="muted">Tu identidad personal de trabajo es independiente de la terminal vending.</p>
         <p v-if="unavailable" role="alert" class="notice">{{ unavailable }}</p>
@@ -63,6 +64,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import BrandIdentity from '@/components/BrandIdentity.vue'
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent, IonButton, onIonViewWillEnter, onIonViewDidLeave } from '@ionic/vue'
 import { Device } from '@capacitor/device'
 import { App } from '@capacitor/app'

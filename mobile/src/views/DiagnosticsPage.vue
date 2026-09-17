@@ -2,6 +2,7 @@
   <ion-page>
     <ion-header><ion-toolbar><ion-buttons slot="start"><ion-back-button default-href="/home" text="Volver" /></ion-buttons><ion-title>Diagnóstico</ion-title></ion-toolbar></ion-header>
     <ion-content><main class="page-shell">
+      <BrandIdentity />
       <h1>Información de la aplicación</h1>
       <p class="muted">Consulta el estado sin crear registros ni reenviar pendientes. No se solicitan nuevos permisos.</p>
       <ion-button expand="block" fill="outline" :disabled="busy" @click="refresh">{{ busy ? 'Consultando…' : 'Actualizar diagnóstico' }}</ion-button>
@@ -13,6 +14,7 @@
 </template>
 <script setup lang="ts">
 import { ref } from 'vue'
+import BrandIdentity from '@/components/BrandIdentity.vue'
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, onIonViewWillEnter } from '@ionic/vue'
 import { collectDiagnostics, type DiagnosticRow } from '@/diagnostics/collect'
 const rows = ref<DiagnosticRow[]>([])

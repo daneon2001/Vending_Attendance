@@ -2,6 +2,7 @@
   <ion-page>
     <ion-header><ion-toolbar><ion-title>Recuperación requerida</ion-title></ion-toolbar></ion-header>
     <ion-content class="ion-padding">
+      <BrandIdentity full />
       <ion-card>
         <ion-card-header><ion-card-title>No fue posible iniciar la terminal</ion-card-title></ion-card-header>
         <ion-card-content>
@@ -15,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandIdentity from '@/components/BrandIdentity.vue'
 import {
   IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
   IonContent, IonHeader, IonPage, IonTitle, IonToolbar,
