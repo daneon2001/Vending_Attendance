@@ -15,6 +15,8 @@ class OnPremDiagnosticsCommandTest extends TestCase
     private bool $createdLocationsTable = false;
     private bool $createdEmployeesTable = false;
     private bool $createdAttendancesRawTable = false;
+    private bool $createdClocksTable = false;
+    private int $expectedClockId;
 
     protected function setUp(): void
     {
@@ -22,6 +24,17 @@ class OnPremDiagnosticsCommandTest extends TestCase
 
         $this->ensureSchema();
         $this->cleanData();
+        $this->assertTrue(
+            Schema::hasColumns('clocks', ['id', 'clock_name', 'serial_number', 'last_heartbeat_at', 'monitoring_status']),
+            'OnPrem diagnostic fixture requires the clocks lookup and heartbeat schema.'
+        );
+        // The diagnostic selects an existing clock inside its rollback-only transaction.
+        $this->expectedClockId = DB::table('clocks')->insertGetId([
+            'clock_name' => 'Synthetic diagnostic clock',
+            'serial_number' => 'FIXTURE-ONPREM-CLOCK',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $this->deleteReportFile();
     }
 
@@ -44,6 +57,9 @@ class OnPremDiagnosticsCommandTest extends TestCase
         if ($this->createdDevicesTable && Schema::hasTable('devices')) {
             Schema::drop('devices');
         }
+        if ($this->createdClocksTable && Schema::hasTable('clocks')) {
+            Schema::drop('clocks');
+        }
 
         parent::tearDown();
     }
@@ -61,6 +77,16 @@ class OnPremDiagnosticsCommandTest extends TestCase
         $this->assertSame(0, (int) ($report['summary']['failed'] ?? -1));
 
         $checks = collect($report['checks'] ?? [])->keyBy('name');
+        $this->assertSame(
+            $this->expectedClockId,
+            data_get($checks->get('e2e.heartbeat.200'), 'extra.json.device.clock_id'),
+            'The signed diagnostic heartbeat must resolve the synthetic fixture clock.'
+        );
+        $this->assertDatabaseHas('clocks', [
+            'id' => $this->expectedClockId,
+            'monitoring_status' => 'offline',
+            'last_heartbeat_at' => null,
+        ]); // Diagnostic updates must have rolled back.
         foreach ([
             'route.exists.ping',
             'route.exists.heartbeat',
@@ -81,6 +107,21 @@ class OnPremDiagnosticsCommandTest extends TestCase
 
     private function ensureSchema(): void
     {
+        if (! Schema::hasTable('clocks')) {
+            // Minimal subset of create_clocks + monitoring/program-status migrations.
+            // No company/location columns: this diagnostic fixture does not model those FKs.
+            Schema::create('clocks', function (Blueprint $table): void {
+                $table->id();
+                $table->string('clock_name');
+                $table->string('serial_number')->nullable();
+                $table->timestamp('last_heartbeat_at')->nullable()->index();
+                $table->string('last_status_message')->nullable();
+                $table->string('monitoring_status', 20)->default('offline');
+                $table->string('program_status', 30)->default('offline');
+                $table->timestamps();
+            });
+            $this->createdClocksTable = true;
+        }
         if (! Schema::hasTable('devices')) {
             Schema::create('devices', function (Blueprint $table): void {
                 $table->id();
@@ -165,7 +206,7 @@ class OnPremDiagnosticsCommandTest extends TestCase
 
     private function cleanData(): void
     {
-        foreach (['attendances_raw', 'employees', 'locations', 'device_nonces', 'devices'] as $table) {
+        foreach (['attendances_raw', 'employees', 'locations', 'device_nonces', 'devices', 'clocks'] as $table) {
             if (Schema::hasTable($table)) {
                 DB::table($table)->delete();
             }
@@ -180,4 +221,3 @@ class OnPremDiagnosticsCommandTest extends TestCase
         }
     }
 }
-
