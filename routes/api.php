@@ -84,7 +84,12 @@ Route::middleware('device.token')->match(['GET', 'POST'], '/device/ping', functi
     ]);
 });
 
-Route::middleware(['auth:sanctum', 'token.expiration'])->post('/faceid/templates/sync', [FaceIdTemplateSyncController::class, 'sync']);
+Route::middleware([
+    'auth:sanctum',
+    'token.expiration',
+    'role:administrador,admin,superadmin',
+    'perm.strict:biometrics,face.manage',
+])->post('/faceid/templates/sync', [FaceIdTemplateSyncController::class, 'sync']);
 
 Route::prefix('onprem')
     ->middleware('device.hmac')
