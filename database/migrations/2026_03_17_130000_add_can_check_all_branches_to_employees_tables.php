@@ -15,7 +15,8 @@ return new class extends Migration
         }
 
         if (
-            Schema::connection('fortia_mock')->hasTable('fortia_employees')
+            \App\Support\LocalIntegrationMigrations::fortiaMock()
+            && Schema::connection('fortia_mock')->hasTable('fortia_employees')
             && ! Schema::connection('fortia_mock')->hasColumn('fortia_employees', 'can_check_all_branches')
         ) {
             Schema::connection('fortia_mock')->table('fortia_employees', function (Blueprint $table): void {
@@ -33,7 +34,8 @@ return new class extends Migration
         }
 
         if (
-            Schema::connection('fortia_mock')->hasTable('fortia_employees')
+            \App\Support\LocalIntegrationMigrations::fortiaMock()
+            && Schema::connection('fortia_mock')->hasTable('fortia_employees')
             && Schema::connection('fortia_mock')->hasColumn('fortia_employees', 'can_check_all_branches')
         ) {
             Schema::connection('fortia_mock')->table('fortia_employees', function (Blueprint $table): void {

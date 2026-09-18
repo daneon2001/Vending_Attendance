@@ -37,6 +37,7 @@
         <env name="FORTIA_DB_PASSWORD" value=""/>
         <env name="FORTIA_BASE_URL" value="http://127.0.0.1:9"/>
         <env name="FORTIA_SYNC_DRIVER" value="mock"/>
+        <env name="FORTIA_MOCK_MIGRATIONS_ENABLED" value="true" force="true"/>
         <env name="FORTIA_SYNC_CONNECTION" value="fortia_mock"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

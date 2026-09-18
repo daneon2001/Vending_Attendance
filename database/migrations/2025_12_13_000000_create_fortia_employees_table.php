@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        if (! \App\Support\LocalIntegrationMigrations::fortiaMock()) {
+            return;
+        }
         if (Schema::connection('fortia_mock')->hasTable('fortia_employees')) {
             return;
         }
@@ -38,6 +41,9 @@ return new class extends Migration {
 
     public function down(): void
     {
+        if (! \App\Support\LocalIntegrationMigrations::fortiaMock()) {
+            return;
+        }
         Schema::connection('fortia_mock')->dropIfExists('fortia_employees');
     }
 };
