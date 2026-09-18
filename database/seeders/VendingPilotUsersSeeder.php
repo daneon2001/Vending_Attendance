@@ -14,7 +14,7 @@ class VendingPilotUsersSeeder extends Seeder
     public const ROLE_PREFIX = 'Vending Pilot ';
 
     public const PERMISSIONS = [
-        'admin' => ['employees' => ['view', 'sync', 'import', 'manage'], 'vending_machines' => ['view', 'create', 'update', 'assign', 'geofence', 'manage']],
+        'admin' => ['employees' => ['view', 'sync', 'import', 'manage'], 'vending_machines' => ['view', 'create', 'update', 'assign', 'geofence', 'manage'], 'asistencias' => ['view']],
         'operator' => ['employees' => ['view', 'sync', 'import'], 'vending_machines' => ['view', 'assign']],
         'support' => ['employees' => ['view'], 'vending_machines' => ['view']],
         'viewer' => ['employees' => ['view'], 'vending_machines' => ['view']],
