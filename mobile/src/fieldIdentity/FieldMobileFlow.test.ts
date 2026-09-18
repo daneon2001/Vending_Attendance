@@ -42,11 +42,24 @@ function setup(deviceUuid = 'fixture-device') {
   let i = 0
   const make = () => new FieldMobileFlow(api as unknown as FieldMobileTransport, store, keys,
     async () => ({ platform: 'android', platformVersion: 'test', appVersion: 'test', hardwareModel: 'Fixture' }),
-    () => ++i % 2 ? 'fixture-operation-' + deviceUuid : deviceUuid)
+    () => ++i % 2 ? deviceUuid : 'fixture-operation-' + deviceUuid)
   return { flow: make(), make, api, keys, store, profile, receipt }
 }
 
 describe('human mobile identity flow', () => {
+  it('binds send, verification and registration to the same installation UUID before creating a key', async () => {
+    const { flow, api, keys } = setup('installation-context')
+    await flow.open(); await flow.sendOtp()
+    expect(keys.createKey).not.toHaveBeenCalled()
+    expect(api.post).toHaveBeenCalledWith('otp-send', { device_uuid: 'installation-context' })
+    await flow.verify('123456')
+    expect(api.post).toHaveBeenCalledWith('otp-verify', {
+      otp_uuid: 'fixture-otp', code: '123456', device_uuid: 'installation-context',
+    })
+    expect(api.post).toHaveBeenCalledWith('register', expect.objectContaining({ device_uuid: 'installation-context' }))
+    expect(flow.step).toBe('active')
+  })
+
   it('independent phones retain independent IDs, drafts and public keys without copying a binding', async () => {
     const first = setup('phone-one'); const second = setup('phone-two')
     for (const phone of [first, second]) {

@@ -21,7 +21,8 @@ final class EnrollmentIdentity
             return $employee;
         }
 
-        return $employee && $this->isLocalDemo($user, $employee) ? $employee : null;
+        return $employee && ($this->isLocalDemo($user, $employee)
+            || app(BetaTesterPolicy::class)->allows($user, $employee)) ? $employee : null;
     }
 
     public function isLocalDemo(User $user, Employee $employee): bool

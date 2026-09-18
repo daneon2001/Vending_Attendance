@@ -19,7 +19,7 @@ class DeviceAdminController extends Controller
 {
     private function administrator(Request $request, string $action): User
     {
-        abort_unless(app()->environment(['local', 'testing']), 503);
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503);
         $user = User::find($request->user()?->getAuthIdentifier());
         abort_unless($user && $user->estatus && $user->hasPermission('employee_device', $action), 403);
 

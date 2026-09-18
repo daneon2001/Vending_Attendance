@@ -75,6 +75,7 @@ $application = Application::configure(basePath: dirname(__DIR__))
         PruneDeviceNonces::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->append(\App\Http\Middleware\BetaHttpBoundary::class);
         // Grupo WEB (Inertia, etc.)
         $middleware->web(prepend: [
             AssignRequestId::class,

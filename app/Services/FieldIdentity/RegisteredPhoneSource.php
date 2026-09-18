@@ -18,6 +18,7 @@ class RegisteredPhoneSource
             return app(LocalDemoPhone::class)->value();
         }
 
-        return null;
+        return $user instanceof \App\Models\User
+            ? (app(BetaTesterPolicy::class)->entry($user, $employee)['phone_e164'] ?? null) : null;
     }
 }

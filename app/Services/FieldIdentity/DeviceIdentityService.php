@@ -23,7 +23,7 @@ final class DeviceIdentityService
     /** Read-only own profile; never infer activation from a local cached state. */
     public function profile(): array
     {
-        abort_unless(app()->environment(['local', 'testing']), 503);
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503);
         $user = auth()->user();
         $employee = $user instanceof User ? app(EnrollmentIdentity::class)->resolve($user) : null;
         abort_unless($employee, 403, 'Identidad no disponible.');
@@ -34,7 +34,7 @@ final class DeviceIdentityService
         $otp = DB::table('field_device_otps')->where('user_id', $user->id)
             ->where('employee_id', $employee->id)->whereNotNull('verified_at')
             ->whereNull('consumed_at')->where('expires_at', '>', CarbonImmutable::now('UTC'))->first();
-        $verifiedOtp = $otp && $phone !== null && $phone === Crypt::decryptString($otp->phone)
+        $verifiedOtp = $otp && $phone !== null && $phone === $this->otpContext($otp)['phone']
             ? $otp->uuid : null;
 
         return [
@@ -47,11 +47,15 @@ final class DeviceIdentityService
     }
 
     /** Local simulated delivery only; trusted phone never comes from input. */
-    public function sendOtp(): array
+    public function sendOtp(?string $deviceUuid = null): array
     {
-        abort_unless(app()->environment(['local', 'testing']), 503, 'Verificación no disponible.');
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503, 'Verificación no disponible.');
 
-        return $this->run(function (User $user, Employee $employee): array {
+        return $this->run(function (User $user, Employee $employee) use ($deviceUuid): array {
+            if (($deviceUuid !== null && ! Str::isUuid($deviceUuid))
+                || ($employee->source === \App\Enums\Employees\EmployeeSource::MANUAL && $deviceUuid === null)) {
+                return ['error' => 422];
+            }
             $phone = $this->phone($employee);
             if ($phone === null) {
                 return ['error' => 409];
@@ -68,7 +72,10 @@ final class DeviceIdentityService
             $code = (string) random_int(100000, 999999);
             $uuid = (string) Str::uuid();
             DB::table('field_device_otps')->updateOrInsert(['user_id' => $user->id], [
-                'employee_id' => $employee->id, 'uuid' => $uuid, 'phone' => Crypt::encryptString($phone),
+                'employee_id' => $employee->id, 'uuid' => $uuid, 'phone' => Crypt::encryptString($deviceUuid === null ? $phone : json_encode([
+                    'version' => 1, 'phone' => $phone, 'device_uuid' => strtolower($deviceUuid),
+                    'attempt_uuid' => $uuid,
+                ], JSON_THROW_ON_ERROR)),
                 'code_hash' => Hash::make($code), 'attempts' => $attempts,
                 'sends' => $windowOpen ? $old->sends + 1 : 1,
                 'send_window_at' => $windowOpen ? $old->send_window_at : $now,
@@ -82,11 +89,11 @@ final class DeviceIdentityService
         });
     }
 
-    public function verifyOtp(string $uuid, #[\SensitiveParameter] string $code): array
+    public function verifyOtp(string $uuid, #[\SensitiveParameter] string $code, ?string $deviceUuid = null): array
     {
-        abort_unless(app()->environment(['local', 'testing']), 503, 'Verificación no disponible.');
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503, 'Verificación no disponible.');
 
-        return $this->run(function (User $user, Employee $employee) use ($uuid, $code): array {
+        return $this->run(function (User $user, Employee $employee) use ($uuid, $code, $deviceUuid): array {
             $otp = DB::table('field_device_otps')->where('user_id', $user->id)->first();
             $now = CarbonImmutable::now('UTC');
             if ($otp && $otp->locked_until && $now->lt($otp->locked_until)) {
@@ -94,7 +101,8 @@ final class DeviceIdentityService
             }
             $valid = $otp && hash_equals($otp->uuid, $uuid) && (int) $otp->employee_id === $employee->id
                 && ! $otp->consumed_at && ! $otp->verified_at && $now->lt($otp->expires_at)
-                && $this->phone($employee) === Crypt::decryptString($otp->phone)
+                && $this->phone($employee) === $this->otpContext($otp)['phone']
+                && $this->otpDeviceMatches($otp, $deviceUuid)
                 && preg_match('/^[0-9]{6}$/D', $code) && Hash::check($code, $otp->code_hash);
             if (! $valid) {
                 if ($otp) {
@@ -169,7 +177,8 @@ final class DeviceIdentityService
             if (! $otp || ! hash_equals($otp->uuid, $data['otp_uuid']) || $otp->employee_id !== $employee->id
                 || ! $otp->verified_at || $otp->consumed_at || ! $now->lt($otp->expires_at)
                 || ($otp->locked_until && $now->lt($otp->locked_until))
-                || $this->phone($employee) !== Crypt::decryptString($otp->phone)) {
+                || $this->phone($employee) !== $this->otpContext($otp)['phone']
+                || ! $this->otpDeviceMatches($otp, $data['device_uuid'])) {
                 return ['error' => 422];
             }
             $active = EmployeeDevice::where('active_employee_id', $employee->id)->first();
@@ -183,7 +192,7 @@ final class DeviceIdentityService
                 'public_key' => $data['public_key'], 'key_fingerprint' => hash('sha256', $data['public_key']),
                 'platform' => $data['platform'], 'platform_version' => $data['platform_version'],
                 'app_version' => $data['app_version'], 'hardware_model' => $data['hardware_model'],
-                'key_version' => 1, 'status' => 'PENDING', 'verified_phone' => Crypt::decryptString($otp->phone),
+                'key_version' => 1, 'status' => 'PENDING', 'verified_phone' => $this->otpContext($otp)['phone'],
                 'phone_verified_at' => $otp->verified_at, 'replaces_id' => $active?->id,
                 'request_hash' => $requestHash,
             ])->save();
@@ -287,6 +296,35 @@ final class DeviceIdentityService
         });
     }
 
+    /** Legacy A receipts remain readable; new OTPs bind an installation UUID and attempt. */
+    private function otpContext(object $otp): array
+    {
+        try {
+            $plain = Crypt::decryptString($otp->phone);
+            if (preg_match('/^\+52[0-9]{10}$/D', $plain)) {
+                return ['phone' => $plain, 'device_uuid' => null];
+            }
+            $value = json_decode($plain, true, 8, JSON_THROW_ON_ERROR);
+            if (($value['version'] ?? null) === 1 && ($value['attempt_uuid'] ?? null) === $otp->uuid
+                && is_string($value['phone'] ?? null) && preg_match('/^\+52[0-9]{10}$/D', $value['phone'])
+                && is_string($value['device_uuid'] ?? null) && Str::isUuid($value['device_uuid'])) {
+                return $value;
+            }
+        } catch (\Throwable) {
+            // Do not expose encrypted payloads or plaintext phones in diagnostics.
+        }
+
+        return ['phone' => null, 'device_uuid' => false];
+    }
+
+    private function otpDeviceMatches(object $otp, ?string $uuid): bool
+    {
+        $context = $this->otpContext($otp);
+
+        return $context['phone'] !== null && ($context['device_uuid'] === null
+            || (is_string($uuid) && $context['device_uuid'] === strtolower($uuid)));
+    }
+
     private function phone(Employee $employee): ?string
     {
         $value = $this->phones->forEmployee($employee);
@@ -327,7 +365,7 @@ final class DeviceIdentityService
     private function run(callable $action): array
     {
         // V1 is a local simulation; no production phone verification provider exists.
-        abort_unless(app()->environment(['local', 'testing']), 503, 'Verificación no disponible.');
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503, 'Verificación no disponible.');
         $principal = auth()->user();
         abort_unless($principal instanceof User && $principal->exists, 403, 'Identidad no disponible.');
         $result = DB::transaction(function () use ($principal, $action): array {

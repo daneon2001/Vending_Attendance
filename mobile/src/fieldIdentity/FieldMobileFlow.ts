@@ -19,6 +19,7 @@ export class FieldMobileFlow {
   receipt: EnrollmentReceipt | null = null
   demoCode = ''
   otpUuid = ''
+  private otpDeviceUuid = ''
   signatureConfirmed = false
   backing: 'HARDWARE' | 'SOFTWARE' | 'UNKNOWN' = 'UNKNOWN'
   strongBoxAvailable = false
@@ -106,7 +107,10 @@ export class FieldMobileFlow {
   async sendOtp(): Promise<void> {
     await this.perform(async () => {
       if (!this.profile?.phone || this.receipt || this.step === 'blocked') throw new FieldMobileError(409)
-      const result = await this.enrollment.sendOtp()
+      // Choose the installation context before OTP; no key exists until verification.
+      const existing = await this.store.draft()
+      this.otpDeviceUuid = existing?.origin === this.api.origin ? existing.input.deviceUuid : this.uuid()
+      const result = await this.enrollment.sendOtp(this.otpDeviceUuid)
       if (!result.simulation || !/^[0-9]{6}$/.test(result.local_code ?? '')) throw new FieldMobileError(503)
       this.otpUuid = result.otp_uuid
       this.demoCode = result.local_code!
@@ -128,10 +132,10 @@ export class FieldMobileFlow {
       const draft: EnrollmentDraft = {
         origin: this.api.origin, employeeNumber: this.profile.employee.number,
         input: { ...await this.metadata(), operationUuid: this.uuid(),
-          deviceUuid: existing?.input.deviceUuid ?? this.uuid(), otpUuid: this.otpUuid },
+          deviceUuid: this.otpDeviceUuid || existing?.input.deviceUuid || this.uuid(), otpUuid: this.otpUuid },
       }
       await this.store.saveDraft(draft)
-      if ((await this.enrollment.verifyOtp(this.otpUuid, code)).verified !== true) throw new FieldMobileError(422)
+      if ((await this.enrollment.verifyOtp(this.otpUuid, code, draft.input.deviceUuid)).verified !== true) throw new FieldMobileError(422)
       this.step = 'resume'
       await this.enroll(draft)
     })

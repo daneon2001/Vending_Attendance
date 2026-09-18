@@ -29,7 +29,7 @@ final class FieldMobileTransport
 
     private function handleSecure(Request $request, Closure $next): Response
     {
-        abort_unless(app()->environment(['local', 'testing']), 503, 'La demostración de identidad no está habilitada.');
+        abort_unless(\App\Support\InternalBeta::simulationAllowed(), 503, 'La demostración de identidad no está habilitada.');
         abort_unless($request->secure(), 403, 'Mi dispositivo requiere una conexión HTTPS segura.');
         // Native-only credential flow; no cookie, web-session or CSRF bypass.
         abort_if($request->headers->has('Origin') || $request->headers->has('Cookie'), 403, 'Usa Mi dispositivo desde la aplicación Android.');

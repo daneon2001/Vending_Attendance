@@ -23,8 +23,8 @@ final class DeviceIdentityController extends Controller
         $action = $request->route('identity_action');
         $result = match ($action) {
             'profile' => $service->profile(),
-            'otp-send' => $service->sendOtp(),
-            'otp-verify' => $service->verifyOtp($data['otp_uuid'] ?? '', $data['code'] ?? ''),
+            'otp-send' => $service->sendOtp($data['device_uuid'] ?? null),
+            'otp-verify' => $service->verifyOtp($data['otp_uuid'] ?? '', $data['code'] ?? '', $data['device_uuid'] ?? null),
             'register' => $service->register($request->only(['operation_uuid', 'device_uuid', 'otp_uuid',
                 'public_key', 'platform', 'platform_version', 'app_version', 'hardware_model', 'replaces_uuid'])),
             'challenge' => $service->challenge($data['device_uuid'] ?? '', $data['purpose'] ?? 'ENROLLMENT'),

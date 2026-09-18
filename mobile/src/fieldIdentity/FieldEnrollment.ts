@@ -28,12 +28,12 @@ export interface EnrollmentInput {
 export class FieldEnrollment {
   constructor(private readonly transport: HumanIdentityTransport, private readonly keys: FieldDeviceKey) {}
 
-  sendOtp() {
-    return this.transport.post<{ otp_uuid: string; phone: string; simulation: boolean; local_code?: string }>('otp-send', {})
+  sendOtp(deviceUuid?: string) {
+    return this.transport.post<{ otp_uuid: string; phone: string; simulation: boolean; local_code?: string }>('otp-send', deviceUuid ? { device_uuid: deviceUuid } : {})
   }
 
-  verifyOtp(otpUuid: string, code: string) {
-    return this.transport.post<{ verified: boolean }>('otp-verify', { otp_uuid: otpUuid, code })
+  verifyOtp(otpUuid: string, code: string, deviceUuid?: string) {
+    return this.transport.post<{ verified: boolean }>('otp-verify', { otp_uuid: otpUuid, code, ...(deviceUuid ? { device_uuid: deviceUuid } : {}) })
   }
 
   async register(input: EnrollmentInput): Promise<EnrollmentReceipt> {

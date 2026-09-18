@@ -19,7 +19,8 @@ class FieldSupportActivityAccess extends SupportActivityAccess
         abort_unless($user && $user->estatus && $user->employee_id, 403);
         $employee = Employee::query()->whereKey($user->employee_id)->activeForVending()->lockForUpdate()->first();
         abort_unless($employee && (User::authenticatedEmployee()?->id === $employee->id
-            || $this->demoEmployee($user, $employee)), 403);
+            || $this->demoEmployee($user, $employee)
+            || app(\App\Services\FieldIdentity\BetaTesterPolicy::class)->allows($user, $employee)), 403);
         $this->device($user, $employee);
 
         return [$user, $employee];
@@ -37,6 +38,10 @@ class FieldSupportActivityAccess extends SupportActivityAccess
 
     private function demoEmployee(User $user, Employee $employee): bool
     {
+        if (\App\Support\InternalBeta::enabled()) {
+            return $employee->source === EmployeeSource::DEMO
+                && app(\App\Services\FieldIdentity\BetaTesterPolicy::class)->allows($user, $employee);
+        }
         return app()->environment(['local', 'testing']) && (int) $user->id === 4
             && $user->email === 'pilot.support@example.test' && (int) $employee->id === 5
             && $employee->employee_number === '990001005' && $employee->source === EmployeeSource::DEMO;
@@ -47,6 +52,11 @@ class FieldSupportActivityAccess extends SupportActivityAccess
         [$user, $own] = $this->identity();
         if ((int) $own->id !== (int) $employee->id) {
             return false;
+        }
+        if ($employee->source === EmployeeSource::MANUAL) {
+            return app(\App\Services\FieldIdentity\BetaTesterPolicy::class)->allows($user, $employee)
+                && $machine->machine_code === 'VM-DEMO-001' && $machine->getRawOriginal('source') === 'DEMO'
+                && ($type === null || in_array($type->value, ['MAINTENANCE', 'REPAIR', 'COMPONENT_REPLACEMENT'], true));
         }
         if ($employee->source !== EmployeeSource::DEMO) {
             return parent::eligibleEmployee($employee, $machine, $type);
@@ -60,7 +70,11 @@ class FieldSupportActivityAccess extends SupportActivityAccess
     public function visible(User $user, Employee $employee): Builder
     {
         $query = parent::visible($user, $employee)->where('employee_id', $employee->id);
-        if ($employee->source === EmployeeSource::DEMO) {
+        if ($employee->source === EmployeeSource::MANUAL
+            && ! app(\App\Services\FieldIdentity\BetaTesterPolicy::class)->allows($user, $employee)) {
+            return $query->whereRaw('1 = 0');
+        }
+        if (in_array($employee->source, [EmployeeSource::DEMO, EmployeeSource::MANUAL], true)) {
             $query->whereHas('vendingMachine', fn ($q) => $q->where('machine_code', 'VM-DEMO-001')->where('source', 'DEMO'))
                 ->whereIn('activity_type', ['MAINTENANCE', 'REPAIR', 'COMPONENT_REPLACEMENT']);
         }
@@ -75,7 +89,8 @@ class FieldSupportActivityAccess extends SupportActivityAccess
         $employee = $user->employee()->activeForVending()->first();
         if (! $user->estatus || ! $user->hasPermission('support', 'view') || ! $employee
             || ! (($employee->source === EmployeeSource::FORTIA && trim((string) $employee->source_external_id) !== '')
-                || $this->demoEmployee($user, $employee))) {
+                || $this->demoEmployee($user, $employee)
+                || app(\App\Services\FieldIdentity\BetaTesterPolicy::class)->allows($user, $employee))) {
             return $empty;
         }
         if (! EmployeeDevice::query()->where('user_id', $user->id)->where('employee_id', $employee->id)
