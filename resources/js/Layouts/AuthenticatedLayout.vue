@@ -230,7 +230,7 @@ watch(
             >
                 <div class="flex w-full items-center gap-3" :class="isCollapsed ? 'flex-col gap-4' : 'justify-between'">
                     <div class="flex items-center gap-3" :class="isCollapsed ? 'justify-center' : ''">
-                        <ApplicationLogo :variant="isCollapsed ? 'short' : 'full'" :class="isCollapsed ? 'h-12 w-12' : 'h-32 w-32'" class="drop-shadow-sm" />
+                        <div class="text-center"><ApplicationLogo :variant="isCollapsed ? 'short' : 'full'" :class="isCollapsed ? 'h-12 w-12' : 'h-20 w-20 mx-auto'" class="drop-shadow-sm" /><template v-if="!isCollapsed"><p class="mt-2 text-base font-semibold text-app">Asistencia MDM</p><p class="text-xs text-soft">Medical Life</p></template></div>
                     </div>
 
                     <button
@@ -465,7 +465,7 @@ watch(
 
                 <footer class="border-t border-app bg-white/80 px-3 py-4 text-xs text-soft  dark:bg-slate-900/80 sm:px-6 lg:px-10">
                     <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <p>&copy; {{ currentYear }} Medical Life · Vending Attendance.</p>
+                        <p>&copy; {{ currentYear }} Medical Life · Asistencia MDM.</p>
                         <p class="text-[11px] uppercase tracking-[0.3em] text-soft dark:text-soft">
                             Datos protegidos
                         </p>
@@ -480,7 +480,7 @@ watch(
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <ApplicationLogo variant="short" class="h-8 w-8" />
-                            <p class="text-base font-semibold text-app">Vending Attendance</p>
+                            <p class="text-base font-semibold text-app">Asistencia MDM</p>
                         </div>
                         <button class="rounded-full border border-app p-2" aria-label="Cerrar menu lateral" @click="mobileSidebarOpen = false">
                             <span class="sr-only">Cerrar menu</span>

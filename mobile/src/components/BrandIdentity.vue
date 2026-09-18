@@ -1,7 +1,7 @@
 <template>
   <div class="brand-identity" :class="{ 'brand-identity--full': full }">
-    <img :src="full ? '/brand/one-logo.png' : '/brand/one-symbol.png'" alt="" :width="full ? 120 : 40" :height="full ? 120 : 40" />
-    <div><span class="brand-name">MEDICAL LIFE ONE</span><span class="brand-descriptor">{{ full ? 'Tecnología en Movimiento' : 'Vending Attendance' }}</span></div>
+    <img :src="'/brand/one-symbol.png'" alt="" :width="full ? 120 : 40" :height="full ? 120 : 40" />
+    <div><span class="brand-name">ASISTENCIA MDM</span><span class="brand-descriptor">Medical Life</span></div>
   </div>
 </template>
 <script setup lang="ts">

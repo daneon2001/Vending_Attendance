@@ -10,7 +10,7 @@ const props = defineProps({
 });
 
 const logoMap = {
-    full: 'images/medical-life-one-full.png',
+    full: 'images/medical-life-one-mark.png',
     short: 'images/medical-life-one-mark.png',
 };
 
@@ -23,5 +23,5 @@ const logoSrc = computed(() => {
 </script>
 
 <template>
-    <img :src="logoSrc" alt="Medical Life One" class="h-auto w-full rounded-xl object-contain" />
+    <img :src="logoSrc" alt="Medical Life" class="h-auto w-full rounded-xl object-contain" />
 </template>

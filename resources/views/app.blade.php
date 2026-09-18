@@ -7,7 +7,7 @@
         <meta name="app-base-path" content="{{ config('app.base_path') }}">
         <meta name="app-api-base-url" content="{{ config('app.api_base_url') }}">
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        <title inertia>Asistencia MDM</title>
         <link rel="icon" type="image/png" href="{{ asset('images/medical-life-one-mark.png') }}">
         <link rel="apple-touch-icon" href="{{ asset('images/medical-life-one-mark.png') }}">
 

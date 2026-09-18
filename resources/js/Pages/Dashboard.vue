@@ -14,10 +14,10 @@ const LegacyDashboard = defineAsyncComponent(() => import('./Dashboard/LegacyDas
 <template>
  <LegacyDashboard v-if="showLegacy" :companies="companies" :locations="locations" />
  <AuthenticatedLayout v-else>
-  <Head title="Inicio · Vending Attendance" />
-  <template #header><h1 class="text-xl font-semibold text-app">Vending Attendance</h1></template>
-  <section class="card max-w-3xl space-y-5 p-6 sm:p-8"><p class="text-sm font-semibold text-soft">MEDICAL LIFE ONE · Operación vending</p><h2 class="text-2xl font-semibold text-app">¿Qué necesita atención hoy?</h2><p class="text-soft">Consulta máquinas, dispositivos y registros pendientes en el resumen de operación.</p><Link v-if="canVending" :href="route('vending-fleet.dashboard')" class="inline-flex min-h-11 items-center rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white">Abrir resumen de operación</Link><p v-else class="text-soft">Utiliza las opciones autorizadas del menú. Si necesitas otro acceso, solicítalo al administrador.</p><Link v-if="canLegacy" :href="route('dashboard', { view: 'legacy' })" class="block py-2 text-sm text-indigo-600">Consultar panel general del sistema anterior</Link></section>
-  <aside class="dispenser-brand-banner" aria-label="Dispensadora Medical Life"><div><span>MEDICAL LIFE ONE</span><h2>Tecnología en Movimiento</h2><p>Personas · Máquinas · Resultados</p></div><img :src="assetUrl('images/medical-life-dispenser-banner.webp')" alt="Panel y compartimentos de la dispensadora de medicamentos Medical Life" width="720" height="400" loading="lazy" /></aside>
+  <Head title="Inicio · Asistencia MDM" />
+  <template #header><h1 class="text-xl font-semibold text-app">Asistencia MDM</h1></template>
+  <section class="card max-w-3xl space-y-5 p-6 sm:p-8"><p class="text-sm font-semibold text-soft">Medical Life · Operación vending</p><h2 class="text-2xl font-semibold text-app">¿Qué necesita atención hoy?</h2><p class="text-soft">Consulta máquinas, dispositivos y registros pendientes en el resumen de operación.</p><Link v-if="canVending" :href="route('vending-fleet.dashboard')" class="inline-flex min-h-11 items-center rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white">Abrir resumen de operación</Link><p v-else class="text-soft">Utiliza las opciones autorizadas del menú. Si necesitas otro acceso, solicítalo al administrador.</p><Link v-if="canLegacy" :href="route('dashboard', { view: 'legacy' })" class="block py-2 text-sm text-indigo-600">Consultar panel general del sistema anterior</Link></section>
+  <aside class="dispenser-brand-banner" aria-label="Dispensadora Medical Life"><div><span>Medical Life</span><h2>Tecnología en Movimiento</h2><p>Personas · Máquinas · Resultados</p></div><img :src="assetUrl('images/medical-life-dispenser-banner.webp')" alt="Panel y compartimentos de la dispensadora de medicamentos Medical Life" width="720" height="400" loading="lazy" /></aside>
  </AuthenticatedLayout>
 </template>
 <style scoped>

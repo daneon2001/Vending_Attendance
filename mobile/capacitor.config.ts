@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.medicalife.vendingattendance',
-  appName: 'Vending Attendance',
+  appName: 'Asistencia MDM',
   webDir: 'dist',
   // Bridge debug logs include plugin arguments: never log passwords/OTP/tokens.
   loggingBehavior: 'none',

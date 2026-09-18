@@ -103,7 +103,8 @@ test('device page renders seven columns with original select values and human st
 });
 test('login branding excludes unsupported legacy claims and English headings',async()=>{
  const html=await renderVue('resources/js/Pages/Auth/Login.vue',{canResetPassword:true});
- assert.match(html,/Vending Attendance/);assert.match(html,/MEDICAL LIFE ONE/);
+ assert.match(html,/Asistencia MDM/);assert.match(html,/Medical Life/);
+ assert.doesNotMatch(html,/Vending Attendance|MEDICAL LIFE ONE/);
  assert.doesNotMatch(html,/120\+|clínicas|Sanctum|biométricos/);
 });
 

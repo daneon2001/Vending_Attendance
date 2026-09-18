@@ -2,7 +2,7 @@
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-title>Vending Attendance</ion-title>
+        <ion-title>Asistencia MDM</ion-title>
       </ion-toolbar>
     </ion-header>
     <ion-content>
@@ -17,7 +17,7 @@
           <ion-button v-if="terminalActive" expand="block" fill="clear" router-link="/support" class="support-entry">Soporte</ion-button>
         </nav>
         <aside class="dispenser-banner brand-wave" aria-label="Dispensadora de medicamentos Medical Life">
-          <div><p class="eyebrow">MEDICAL LIFE ONE</p><h2>Tecnología<br />en Movimiento</h2><p>Soporte en campo</p></div>
+          <div><p class="eyebrow">Medical Life</p><h2>Tecnología<br />en Movimiento</h2><p>Soporte en campo</p></div>
           <img src="/brand/dispenser-banner.webp" alt="Panel y compartimentos de la dispensadora de medicamentos Medical Life" width="720" height="400" />
         </aside>
         <p v-if="!hasTerminal" class="muted">Para trabajar con tu identidad personal, entra en Mi dispositivo. No necesitas activar una terminal de máquina.</p>

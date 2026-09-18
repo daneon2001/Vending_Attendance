@@ -8,7 +8,7 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initTheme } from './composables/useTheme';
 import { resolveZiggyConfig } from './utils/url';
 
-const appName = 'Vending Attendance';
+const appName = 'Asistencia MDM';
 
 initTheme();
 bootSearchableSelects();
