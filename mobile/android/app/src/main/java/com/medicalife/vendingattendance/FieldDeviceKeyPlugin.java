@@ -58,7 +58,7 @@ public class FieldDeviceKeyPlugin extends Plugin {
             boolean available = keyStore.containsAlias(keyAlias);
             result.put("available", available);
             result.put("originRecoveryAllowed", FieldOriginRecoveryPolicy.allows(
-                (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+                BuildConfig.FIELD_RECOVERY_TARGET, BuildConfig.FIELD_RECOVERY_PREVIOUS_SHA256,
                 call.getString("previousOrigin"), call.getString("currentOrigin")));
             result.put("backing", "UNKNOWN");
             result.put("strongBoxAvailable", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P

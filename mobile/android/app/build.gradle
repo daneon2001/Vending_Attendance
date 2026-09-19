@@ -2,6 +2,24 @@ apply plugin: 'com.android.application'
 
 // Opt-in candidate only. Production/release version and signing remain separate.
 def internalBeta = providers.gradleProperty('internalBeta').orNull == 'true'
+// One validator implementation for Vite, runtime and native builds.
+def originGate = file('../../build/verify-deployment.mjs')
+def runOriginGate = { List args ->
+    def output = new ByteArrayOutputStream()
+    exec {
+        commandLine(['node', originGate.absolutePath] + args)
+        standardOutput = output
+    }
+    output.toString('UTF-8').trim()
+}
+def betaIdentity = System.getenv('BETA_FIELD_IDENTITY_BASE_URL') ? runOriginGate(['beta-identity']) : ''
+def verifyDeployment = { variant ->
+    runOriginGate([variant, file('src/main/assets/public/deployment.json').absolutePath])
+}
+def priorOrigins = System.getenv('FIELD_RECOVERY_PREVIOUS_ORIGIN_SHA256') ?: ''
+def debugRecoveryTarget = System.getenv('LOCAL_FIELD_IDENTITY_BASE_URL') ?: ''
+def javaString = { value -> groovy.json.JsonOutput.toJson(value) }
+
 def betaMetadata = new groovy.json.JsonSlurper().parse(file('../../internal-beta.json'))
 
 def releaseStoreFile = System.getenv('VENDING_ANDROID_KEYSTORE')
@@ -14,12 +32,15 @@ def releaseSigningConfigured = [releaseStoreFile, releaseStorePassword, releaseK
 android {
     namespace "com.medicalife.vendingattendance"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures { buildConfig true }
     defaultConfig {
         applicationId "com.medicalife.vendingattendance"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode internalBeta ? betaMetadata.build as Integer : 1
         versionName internalBeta ? betaMetadata.version : "1.0"
+        buildConfigField 'String', 'FIELD_RECOVERY_TARGET', '""'
+        buildConfigField 'String', 'FIELD_RECOVERY_PREVIOUS_SHA256', '""'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -38,6 +59,10 @@ android {
         }
     }
     buildTypes {
+        debug {
+            buildConfigField 'String', 'FIELD_RECOVERY_TARGET', javaString(debugRecoveryTarget)
+            buildConfigField 'String', 'FIELD_RECOVERY_PREVIOUS_SHA256', javaString(priorOrigins)
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
@@ -45,6 +70,36 @@ android {
                 signingConfig signingConfigs.release
             }
         }
+        beta {
+            initWith release
+            matchingFallbacks = ['release']
+            debuggable false
+            buildConfigField 'String', 'FIELD_RECOVERY_TARGET', javaString(betaIdentity)
+            buildConfigField 'String', 'FIELD_RECOVERY_PREVIOUS_SHA256', javaString(priorOrigins)
+        }
+    }
+    sourceSets.debug.res.srcDir layout.buildDirectory.dir('generated/localNetworkRes')
+}
+
+tasks.register('generateLocalNetworkPolicy') {
+    def output = layout.buildDirectory.file('generated/localNetworkRes/xml/field_demo_network_security.xml')
+    outputs.file(output)
+    inputs.property('host', System.getenv('LOCAL_DEBUG_CA_HOST') ?: '')
+    doLast {
+        def host = System.getenv('LOCAL_DEBUG_CA_HOST') ?: ''
+        if (host && !(host ==~ /[a-zA-Z0-9][a-zA-Z0-9.-]*/)) throw new GradleException('Invalid LOCAL_DEBUG_CA_HOST')
+        def domain = host ? '<domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">'+host+'</domain><trust-anchors><certificates src="system"/><certificates src="user"/></trust-anchors></domain-config>' : ''
+        def f = output.get().asFile
+        f.parentFile.mkdirs()
+        f.text = '<network-security-config><base-config cleartextTrafficPermitted="true"><trust-anchors><certificates src="system"/></trust-anchors></base-config>'+domain+'</network-security-config>'
+    }
+}
+tasks.register('verifyBetaConfiguration') {
+    doLast {
+        verifyDeployment('beta')
+        if ((betaMetadata.build as Integer) <= 10 || !internalBeta) throw new GradleException('Beta requires new metadata above historical build 10 and -PinternalBeta=true')
+        if (!releaseSigningConfigured) throw new GradleException('Explicit existing beta signing decision required')
+        if (priorOrigins && !(priorOrigins ==~ /[a-f0-9]{64}(,[a-f0-9]{64})*/)) throw new GradleException('Recovery allowlist must contain SHA256 origin digests')
     }
 }
 
@@ -53,14 +108,7 @@ tasks.register('verifyPilotReleaseConfiguration') {
         if (internalBeta) {
             throw new GradleException('Internal beta metadata is DEBUG only. Do not build release with -PinternalBeta=true.')
         }
-        def deploymentMode = System.getenv('VITE_DEPLOYMENT_MODE') ?: ''
-        def apiUrl = System.getenv('VITE_API_BASE_URL') ?: ''
-        if (!(deploymentMode in ['pilot', 'production'])) {
-            throw new GradleException('Release requires VITE_DEPLOYMENT_MODE=pilot or production.')
-        }
-        if (!apiUrl.toLowerCase().startsWith('https://')) {
-            throw new GradleException('Release requires an HTTPS VITE_API_BASE_URL.')
-        }
+        verifyDeployment('release')
         if (!releaseSigningConfigured || !file(releaseStoreFile).exists()) {
             throw new GradleException('Release signing must be supplied through VENDING_ANDROID_* environment variables.')
         }
@@ -68,6 +116,8 @@ tasks.register('verifyPilotReleaseConfiguration') {
 }
 
 tasks.configureEach {
+    if (name == 'preDebugBuild') dependsOn tasks.named('generateLocalNetworkPolicy')
+    if (name == 'preBetaBuild') dependsOn tasks.named('verifyBetaConfiguration')
     if (name == 'preReleaseBuild') {
         dependsOn tasks.named('verifyPilotReleaseConfiguration')
     }

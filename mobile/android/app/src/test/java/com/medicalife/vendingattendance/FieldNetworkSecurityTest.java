@@ -12,13 +12,18 @@ public class FieldNetworkSecurityTest {
     public void userCaTrustIsExplicitAndLimitedToDemoHostInDebug() throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        Element root = factory.newDocumentBuilder().parse(Paths.get("src/debug/res/xml/field_demo_network_security.xml").toFile()).getDocumentElement();
+        Element root = factory.newDocumentBuilder().parse(Paths.get("build/generated/localNetworkRes/xml/field_demo_network_security.xml").toFile()).getDocumentElement();
         Element base = (Element) root.getElementsByTagName("base-config").item(0);
         assertEquals(1, base.getElementsByTagName("certificates").getLength());
         assertEquals("system", ((Element) base.getElementsByTagName("certificates").item(0)).getAttribute("src"));
+        String host = System.getenv("LOCAL_DEBUG_CA_HOST");
+        if (host == null || host.isEmpty()) {
+            assertEquals(0, root.getElementsByTagName("domain-config").getLength());
+            return;
+        }
         assertEquals(1, root.getElementsByTagName("domain-config").getLength());
         Element domain = (Element) root.getElementsByTagName("domain").item(0);
-        assertEquals("192.168.1.82", domain.getTextContent());
+        assertEquals(host, domain.getTextContent());
         assertEquals("false", domain.getAttribute("includeSubdomains"));
         Element scoped = (Element) root.getElementsByTagName("domain-config").item(0);
         assertEquals("user", ((Element) scoped.getElementsByTagName("certificates").item(1)).getAttribute("src"));
@@ -30,7 +35,11 @@ public class FieldNetworkSecurityTest {
         String main = new String(Files.readAllBytes(Paths.get("src/main/AndroidManifest.xml")), java.nio.charset.StandardCharsets.UTF_8);
         String debug = new String(Files.readAllBytes(Paths.get("src/debug/AndroidManifest.xml")), java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(main.contains("android:usesCleartextTraffic=" + (char) 34 + "false" + (char) 34));
-        assertFalse(main.contains("networkSecurityConfig"));
+        assertTrue(main.contains("@xml/secure_network_policy"));
+        String secure = new String(Files.readAllBytes(Paths.get("src/main/res/xml/secure_network_policy.xml")), java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(secure.contains("src=\"user\""));
+        assertFalse(secure.contains("cleartextTrafficPermitted=\"true\""));
+        assertTrue(secure.contains("src=\"system\""));
         assertFalse(Files.exists(Paths.get("src/main/res/xml/field_demo_network_security.xml")));
         assertTrue(debug.contains("@xml/field_demo_network_security"));
     }

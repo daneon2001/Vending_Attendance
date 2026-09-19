@@ -8,7 +8,7 @@ export const fieldStatusLabel = (value: unknown): string => mappedLabel({ ACTIVE
 export function applicationLabels(info: { version?: unknown; build?: unknown }) {
   const version = typeof info.version === 'string' && /^\d+\.\d+(?:\.\d+)?(?:-[a-z0-9.-]+)?$/i.test(info.version) ? info.version : unavailable
   const build = typeof info.build === 'string' && /^\d{1,9}$/.test(info.build) ? info.build : unavailable
-  return { version, build, environment: version === beta.version && build === String(beta.build) ? beta.label + ' · DEMO local' : 'Compilación no identificada como beta interna' }
+  return { version, build, environment: version === beta.version && build === String(beta.build) ? beta.label + (import.meta.env.VITE_DEPLOYMENT_MODE === 'beta' ? ' · Servidor beta' : ' · DEMO local') : 'Compilación no identificada como beta interna' }
 }
 export function lastConfirmation(values: (string | null | undefined)[]): string {
   const timestamps = values.map(value => value ? Date.parse(value) : NaN).filter(Number.isFinite)

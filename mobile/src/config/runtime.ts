@@ -1,35 +1,12 @@
+import { deploymentOrigins } from './deployment-origins.mjs'
+
 export interface RuntimeConfig {
   apiBaseUrl: string
   attendanceBatchSize: number
   clockDriftWarningSeconds: number
   httpTimeoutMs: number
   gpsTimeoutMs: number
-  deploymentMode: 'development' | 'pilot' | 'production'
-}
-
-function deploymentMode(): RuntimeConfig['deploymentMode'] {
-  const mode = (import.meta.env.VITE_DEPLOYMENT_MODE ?? 'development').trim().toLowerCase()
-  if (!['development', 'pilot', 'production'].includes(mode)) {
-    throw new Error('VITE_DEPLOYMENT_MODE must be development, pilot, or production')
-  }
-
-  return mode as RuntimeConfig['deploymentMode']
-}
-
-function apiBaseUrl(mode: RuntimeConfig['deploymentMode']): string {
-  const configured = import.meta.env.VITE_API_BASE_URL?.trim()
-
-  if (!configured) return ''
-
-  const url = new URL(configured)
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new Error('VITE_API_BASE_URL must use HTTP or HTTPS')
-  }
-  if (mode !== 'development' && url.protocol !== 'https:') {
-    throw new Error('Pilot and production builds require an HTTPS API URL')
-  }
-
-  return url.toString().replace(/\/$/, '')
+  deploymentMode: 'development' | 'beta' | 'pilot' | 'production'
 }
 
 function httpTimeoutMs(): number {
@@ -49,13 +26,13 @@ function gpsTimeoutMs(): number {
   return timeout
 }
 
-const mode = deploymentMode()
+const deployment = deploymentOrigins(import.meta.env)
 
 export const runtimeConfig: RuntimeConfig = {
-  apiBaseUrl: apiBaseUrl(mode),
+  apiBaseUrl: deployment.api,
   attendanceBatchSize: 50,
   clockDriftWarningSeconds: 300,
   httpTimeoutMs: httpTimeoutMs(),
   gpsTimeoutMs: gpsTimeoutMs(),
-  deploymentMode: mode,
+  deploymentMode: deployment.mode,
 }

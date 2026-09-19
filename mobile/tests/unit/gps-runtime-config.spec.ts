@@ -40,6 +40,6 @@ describe('independent GPS runtime timeout', () => {
   it.each(['pilot', 'production'])('still requires HTTPS in %s', async (mode) => {
     vi.stubEnv('VITE_DEPLOYMENT_MODE', mode)
     vi.stubEnv('VITE_API_BASE_URL', 'http://192.0.2.10')
-    await expect(import('@/config/runtime')).rejects.toThrow('require an HTTPS API URL')
+    await expect(import('@/config/runtime')).rejects.toThrow('DNS HTTPS')
   })
 })

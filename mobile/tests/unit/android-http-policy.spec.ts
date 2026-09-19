@@ -21,20 +21,23 @@ describe('Android local HTTP policy', () => {
     },
   )
 
-  it('allows cleartext only in the debug overlay, without network security overrides', () => {
+  it('allows cleartext only in the debug overlay, with a system-only secure base', () => {
     const main = read('android/app/src/main/AndroidManifest.xml')
     const debug = read('android/app/src/debug/AndroidManifest.xml')
     expect(main).toContain('android:usesCleartextTraffic="false"')
     expect(main).not.toContain('android:debuggable="true"')
-    expect(main).not.toContain('networkSecurityConfig')
+    expect(main).toContain('@xml/secure_network_policy')
     expect(debug).toContain('android:usesCleartextTraffic="true"')
-    expect(debug).toContain('tools:replace="android:usesCleartextTraffic"')
+    expect(debug).toContain('tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig"')
+    const secure = read('android/app/src/main/res/xml/secure_network_policy.xml')
+    expect(secure).toContain('cleartextTrafficPermitted="false"')
+    expect(secure).not.toContain('src="user"')
   })
 
   it('retains the independent release HTTPS, deployment mode and signing gates', () => {
     const gradle = read('android/app/build.gradle')
-    expect(gradle).toContain("deploymentMode in ['pilot', 'production']")
-    expect(gradle).toContain("apiUrl.toLowerCase().startsWith('https://')")
+    expect(gradle).toContain("verifyDeployment('release')")
+    expect(gradle).toContain("file('../../build/verify-deployment.mjs')")
     expect(gradle).toContain('!releaseSigningConfigured')
     expect(gradle).toContain("dependsOn tasks.named('verifyPilotReleaseConfiguration')")
   })

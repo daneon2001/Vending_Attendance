@@ -4,5 +4,5 @@
     <application
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/field_demo_network_security"
-        tools:replace="android:usesCleartextTraffic" />
+        tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig" />
 </manifest>
