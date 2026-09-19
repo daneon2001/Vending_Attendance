@@ -10,7 +10,7 @@
         <BrandIdentity />
         <div class="home-intro"><p class="eyebrow">PERSONAS · MÁQUINAS · RESULTADOS</p><h1>Tu operación, a la mano</h1><p class="muted">Accede a las herramientas de tu jornada.</p></div>
         <nav aria-label="Acciones disponibles" class="home-actions">
-          <ion-button v-if="terminalActive && employees.length" expand="block" :aria-expanded="showAttendance" aria-controls="attendance-employees" @click="showAttendance = !showAttendance">Registrar asistencia</ion-button>
+          <ion-button v-if="terminalActive && employees.length" expand="block" :aria-expanded="showAttendance" aria-controls="attendance-employees" @click="toggleAttendance">Registrar asistencia</ion-button>
           <ion-button v-if="canUseActivities" expand="block" fill="outline" router-link="/my-activities">Mis actividades</ion-button>
           <ion-button v-if="terminalActive" expand="block" fill="outline" router-link="/support/report">Reportar incidencia</ion-button>
           <ion-button expand="block" fill="outline" router-link="/my-device">Mi dispositivo</ion-button>
@@ -22,8 +22,8 @@
         </aside>
         <p v-if="!hasTerminal" class="muted">Para trabajar con tu identidad personal, entra en Mi dispositivo. No necesitas activar una terminal de máquina.</p>
         <p v-else-if="terminalActive && !employees.length" class="muted">No hay empleados disponibles para asistencia. Sincroniza o solicita apoyo al responsable.</p>
-        <section v-if="terminalActive && showAttendance" id="attendance-employees" aria-label="Registrar asistencia">
-        <h2>Selecciona tu nombre</h2>
+        <section v-if="terminalActive && showAttendance" id="attendance-employees" aria-labelledby="attendance-heading">
+        <h2 id="attendance-heading" ref="attendanceHeading" tabindex="-1">Selecciona tu nombre</h2>
         <p class="muted">Después elige registrar entrada o salida.</p>
         <div class="employee-search">
           <input v-model="search" type="search" placeholder="Nombre o número" aria-label="Buscar empleado por nombre o número" autocomplete="off" />
@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   IonButton, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar,
 } from '@ionic/vue'
@@ -77,6 +77,17 @@ import { fieldActivitiesAvailable } from '@/fieldSupport/services'
 const canUseActivities = ref(false)
 const hasTerminal = ref(false)
 const showAttendance = ref(false)
+const attendanceHeading = ref<HTMLElement | null>(null)
+async function toggleAttendance(): Promise<void> {
+  showAttendance.value = !showAttendance.value
+  if (!showAttendance.value) return
+  await nextTick()
+  const heading = attendanceHeading.value
+  if (!showAttendance.value || !heading) return
+  heading.focus({ preventScroll: true })
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  heading.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start', inline: 'nearest' })
+}
 const terminalActive = computed(() => hasTerminal.value && state.value.summary?.deviceStatus === 'ACTIVE')
 onIonViewWillEnter(async () => {
   canUseActivities.value = false
@@ -140,6 +151,8 @@ onBeforeUnmount(() => { unsubscribeSync?.(); unsubscribeNetwork?.() })
 .employee-list ion-item { --min-height: 80px; --padding-start: 0; --inner-padding-end: 4px; }
 .employee-list h2 { font-size: 1.125rem; font-weight: 650; line-height: 1.4; }
 .employee-list p { color: var(--ion-color-medium); margin-top: 4px; }
+#attendance-heading { scroll-margin-top: 16px; }
+#attendance-heading:focus-visible { outline: 3px solid var(--ion-color-primary); outline-offset: 4px; }
 .terminal-details { margin-top: 24px; font-size: .875rem; }
 .terminal-details summary { min-height: 48px; padding: 14px 0; cursor: pointer; color: var(--ion-color-medium); }
 .terminal-details dl { margin: 0; }
@@ -162,6 +175,6 @@ onBeforeUnmount(() => { unsubscribeSync?.(); unsubscribeNetwork?.() })
 .dispenser-banner > div { align-self: center; padding: 20px 0 28px 20px; z-index: 1; }
 .dispenser-banner h2 { font-size: 1.15rem; margin: 6px 0; line-height: 1.3; }
 .dispenser-banner p { font-size: .75rem; }
-.dispenser-banner img { width: 100%; height: 100%; object-fit: cover; object-position: 48% center; }
+.dispenser-banner img { contain: size; width: 100%; height: 100%; object-fit: cover; object-position: 48% center; }
 @media(max-width: 340px) { .home-actions { grid-template-columns: 1fr; } .dispenser-banner h2 { font-size: 1rem; } }
 </style>
