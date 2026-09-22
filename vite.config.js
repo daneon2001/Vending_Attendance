@@ -14,9 +14,11 @@ const resolveBuildBase = (value = '') => {
 
 export default defineConfig(({ command, mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
-    const appBasePath = env.VITE_APP_BASE_PATH || env.APP_BASE_PATH || '';
+    const appBasePath = mode === 'beta' ? '' : env.VITE_APP_BASE_PATH || env.APP_BASE_PATH || '';
 
     return {
+        // Public beta web calls its own origin. Never bake a local .env URL.
+        define: mode === 'beta' ? { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify('') } : {},
         base: command === 'build' ? resolveBuildBase(appBasePath) : '/',
         plugins: [
             laravel({

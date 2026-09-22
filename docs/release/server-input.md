@@ -1,5 +1,7 @@
 # Asistencia MDM — Server input
 
+> Actualización vigente: RELEASE-0-STAGING-PREP, 2026-09-22, al final de este documento. La captura RELEASE-0-INPUT siguiente se conserva como evidencia histórica; los nuevos datos no acreditan infraestructura instalada.
+
 ## RELEASE-0-INPUT: captura de STAGING
 
 Fecha: 2026-09-21. HEAD auditado: `38e1d95a47a0617e1ce45bb63e7529934f180da7`.
@@ -245,3 +247,150 @@ Misma evidencia que baseline: ningún gate nuevo cerrado. Estados normalizados a
 
 Resultado: **4 PASS + 5 PARTIAL + 10 BLOCKED + 1 NOT RUN = 20; 20%.**
 production-readiness.md conserva el baseline histórico sin modificación: los estados reales no cambiaron. Esta fase sólo actualiza este formulario. Próximo paso: aportar los ocho bloques mínimos, sin secretos; RELEASE-0-STAGING-PREP bloqueado por esos inputs. No deploy, staging Git, commit ni inicio automático de otras fases.
+
+## RELEASE-0-STAGING-PREP — 2026-09-22
+
+HEAD: `0dff0c2a150b90cbf7c454c9dc8ef2489b36fb9f`. Resultado actual: **PARTIAL; STAGING-INSTALL BLOCKED**. Esta sección prevalece para los inputs actualizados. Fuentes: confirmación del usuario, consultas DNS de esta fecha, contrato CP-C06 y lectura de código/configuración actual. Sin acceso SSH, cambios remotos, lectura de claves o .env, instalación ni deployment.
+
+### Dominio y certificado: evidencia nueva
+
+| Campo | Estado | Evidencia |
+|---|---|---|
+| STAGING_DOMAIN | CONFIRMED como hostname suministrado | mdf.antlia.mx; confirmación de exactitud/DNS pendiente tras NXDOMAIN |
+| STAGING_WEB_URL | Derivación HTTPS, no servicio acreditado | https://mdf.antlia.mx; puerto 443 y raíz como candidato, ruta real no suministrada |
+| STAGING_API_ORIGIN | PENDING | https://mdf.antlia.mx sólo candidato si se confirma mismo origen |
+| DNS IPv4 / IPv6 | BLOCKED | Consultas A y AAAA: NXDOMAIN tanto resolver local como consulta explícita a 1.1.1.1 |
+| TARGET / PUBLIC IP | PENDING | Ninguna dirección obtenida; no se puede comprobar host objetivo ni descartar destino LAN |
+| TLS_CERTIFICATE | AVAILABLE según usuario | Material público no suministrado; no validado |
+| TLS_PRIVATE_KEY | EXTERNAL SECRET | NO LEER / NO VERSIONAR; no solicitada |
+| TLS CERT | INCOMPLETE | Conexión TLS a hostname:443 detenida en resolución DNS, sin handshake |
+| Subject / SAN / issuer / inicio / expiry | PENDING | No certificado público inspeccionable |
+| CHAIN / HOST MATCH | NOT RUN | No afirmar FAIL criptográfico ni PASS sin certificado |
+| DNS CONTROL / CHANGE AUTHORIZATION | PENDING | No se modificó DNS |
+
+La disponibilidad declarada del certificado no prueba cadena, vigencia, SAN ni confianza Android. No se imprimió PEM ni se buscaron claves. Para continuar: confirmar hostname exacto/DNS y aportar sólo ubicación del certificado público y cadena, o servirlo en el endpoint correcto. La clave privada permanece fuera del alcance.
+
+### Servidor, deployment, runtime y DB
+
+Provider, IP pública/privada, OS/versión/arquitectura, CPU/RAM/disco, SSH user/port y autorización/acceso concreto: **PENDING**. No se infieren del equipo local ni de otros sistemas. Sin SSH no se ejecutaron uname/os-release/nproc/free/df ni comandos de versiones en host remoto.
+
+DEPLOY_PATH: PENDING; existencia, owner, group, filesystem y espacio: NOT RUN. No se inventa /var/www ni se copia el proyecto.
+WEB_SERVER: PENDING. Diseño requerido: document root del release activo limitado a public; si DEPLOY_PATH es raíz de releases, sería DEPLOY_PATH/current/public, mientras que si designa el release activo sería DEPLOY_PATH/public. Resolver ese contrato antes de crear vhost. Laravel front controller public/index.php, assets estáticos y FPM/FastCGI con HTTPS correcto; no PHP arbitrario subido ni archivos privados publicados.
+
+| Runtime / extensión | Requisito del proyecto | Estado remoto |
+|---|---|---|
+| PHP | ^8.4, CLI/FPM coherentes | PENDING, no versión instalada verificada |
+| pdo_mysql, mbstring, openssl, fileinfo, zip | REQUIRED | NOT RUN, no afirmar MISSING |
+| xml, dom, libxml, simplexml, xmlreader, xmlwriter | REQUIRED por framework/importación | NOT RUN |
+| gd con JPEG/PNG/WebP | REQUIRED por PhpSpreadsheet y SupportImageSanitizer | NOT RUN |
+| curl (PHP) | NOT REQUIRED universalmente; recomendado según transporte | NOT RUN; binario curl sí requerido por healthcheck |
+| intl | NOT REQUIRED en baseline; polyfills, revisar funciones opcionales | NOT RUN |
+| bcmath | NOT REQUIRED como dependencia obligatoria observada | NOT RUN |
+| Composer | REQUIRED en pipeline de instalación; versión exacta pendiente | NOT RUN |
+| Node/npm | Builder, no runtime web obligatorio | Target PENDING; no ejecutar builds |
+
+Clasificar INSTALLED/MISSING requiere inventario remoto; no sustituirlo por extensiones de la laptop.
+MYSQL_HOST/PORT/VERSION: PENDING; 3306 es sólo default propuesto. DB, application user y migration user: PENDING, no evidencia para CREATED/NOT CREATED. Sin consulta DB, root, creación ni migración. Mantener separación runtime CRUD/migración/backup del modelo anterior; grants finales sujetos a versión/schema.
+
+### App config matrix (objetivo, no .env listo)
+
+Valores candidatos no aplicados; hostname aún sin DNS. SECRET=NO significa que el valor documentado no es secreto, no que toda configuración esté completa.
+
+| VARIABLE | EXPECTED STAGING VALUE | SOURCE | SECRET |
+|---|---|---|---|
+| APP_ENV | staging | Contrato canónico | NO |
+| APP_DEBUG | false | Contrato canónico | NO |
+| APP_NAME | Asistencia MDM | Producto | NO |
+| APP_URL | https://mdf.antlia.mx candidato; confirmar raíz/puerto | Host suministrado + config/app.php | NO |
+| APP_BASE_PATH / VITE_APP_BASE_PATH | Vacío si raíz confirmada | Baseline; subpath requiere revisión | NO |
+| API_BASE_URL / VITE_API_BASE_URL (web) | Vacío para API relativa si mismo origen | config/app.php / baseline | NO |
+| SESSION_DOMAIN | null, cookie host-only | config/session.php / baseline | NO |
+| SESSION_SECURE_COOKIE / SESSION_HTTP_ONLY | true / true | config/session.php | NO |
+| SESSION_ENCRYPT / SESSION_SAME_SITE | true / lax | Baseline | NO |
+| SESSION_DRIVER / CACHE_STORE | database / database propuesto | Baseline | NO |
+| SESSION_COOKIE / CACHE_PREFIX | Exclusivos STAGING, nombres PENDING | Aislamiento requerido | NO |
+| SANCTUM_STATEFUL_DOMAINS | mdf.antlia.mx candidato; puerto si no estándar, sin scheme/path | config/sanctum.php | NO |
+| VENDING_CORS_ALLOWED_ORIGINS | https://localhost sólo para cliente Android correspondiente; lista exacta por validar | config/cors.php; NO es URL backend | NO |
+| BETA_ALLOWED_ORIGIN / BETA_APP_URL | No definidos para staging; no gobiernan APP_ENV=staging | config/cors.php, config/app.php | NO |
+| INTERNAL_BETA_ENABLED / INTERNAL_BETA_TESTERS_ENABLED | false / false | Contrato staging | NO |
+| BETA_TRUSTED_PROXIES | No usar como configuración de proxy STAGING; mecanismo/rangos pendientes | BetaHttpBoundary sólo actúa en beta | NO |
+| BETA_CLEANUP_ENABLED | false; NO desactiva limpieza en staging | routes/console.php | NO |
+| QUEUE_CONNECTION | sync propuesto, decisión pendiente | Sin jobs de aplicación encontrados | NO |
+| DB_CONNECTION / DB_PORT | mysql / 3306 propuesto, endpoint real PENDING | config/database.php | NO |
+| DB_HOST / DB_DATABASE / DB_USERNAME | PENDING; acceso real por canal restringido | Inputs ausentes | NO, metadata restringida |
+| FORTIA_MOCK_MIGRATIONS_ENABLED | false | Guard consolidado | NO |
+| SYBI_VENDING_SYNC_ENABLED | false hasta contrato | Scheduler | NO |
+| APP_KEY / DB_PASSWORD / MAIL_PASSWORD | EXTERNAL SECRET, sin valores | Custodia por entorno | YES |
+
+APP CONFIG: PARTIAL, no desplegable. No copiar variables locales ni cache. No ampliar CORS/CSRF: el CORS observado sólo cubre api/v1/device/* y FIELD_MOBILE usa transporte nativo. No habilitar simulación para hacer funcionar staging; OTP real sigue bloqueado.
+
+### Mobile origin y TLS termination
+
+BETA_API_BASE_URL / BETA_FIELD_IDENTITY_BASE_URL: **BLOCKED para asignación final**. Candidato de ambas: https://mdf.antlia.mx, sólo si API e identidad comparten origen confirmado. CP-C06 exige HTTPS, DNS concreto, sin IP/localhost/wildcard/userinfo/query/fragment ni subpath. El nombre pasa forma sintáctica por inspección, no validación DNS/TLS.
+
+El modo mobile no es APP_ENV: deployment-origins.mjs acepta development/beta/pilot/production, no staging. Build beta usa las dos variables BETA explícitas; otros modos usan VITE_DEPLOYMENT_MODE, VITE_API_BASE_URL y VITE_FIELD_IDENTITY_BASE_URL. Selección del modo y signing siguen pendientes; no configurar development como atajo. No se modificó mobile/.env, no cap sync/APK ni origin migration. Release confía en CA del sistema; certificado disponible no implica confianza válida.
+
+TLS_TERMINATION / REVERSE_PROXY / LOAD_BALANCER / TRUSTED_PROXIES: PENDING. Si termina TLS en web server, FPM debe recibir HTTPS real. Si hay proxy/LB: fijar rangos exactos, restringir acceso directo, controlar X-Forwarded-Proto y Client IP sin confiar en headers de Internet; preservar/validar Host del dominio aprobado. No trusted proxies=* ni asumir que BETA_TRUSTED_PROXIES protege staging. HSTS no habilitado por esta fase; estado remoto desconocido.
+
+### Storage, scheduler, queue, readiness y backup
+
+Storage requerido: storage/app/private, storage/app/support-private y storage/logs persistentes; bootstrap/cache escribible por proceso autorizado. Código sólo lectura para FPM salvo rutas necesarias; owner/grupo reales pendientes. Referencia 0750/0640 con grupo/umask revisados, nunca chmod777. No exponer privados; public/storage sólo puede apuntar a storage/app/public. Permisos/disco: NOT RUN.
+
+| COMMAND | CURRENT BEHAVIOR | STAGING DECISION | PRODUCTION DECISION |
+|---|---|---|---|
+| device-nonces:prune | Cada minuto, batch expirados, withoutOverlapping | DECISION-REQUIRED; candidato tras validar reloj/locks | DECISION-REQUIRED |
+| employees:prune-imports | Horario fuera beta; beta exige cleanup_enabled=true | DECISION-REQUIRED sobre TTL y borrado | DECISION-REQUIRED |
+| audit:cleanup --optimize | Diario default03:00 fuera beta, settings pueden prevalecer | DISABLE propuesto hasta política/backup/ventana | DISABLE propuesto, no aplicado |
+| sybi:sync-vending | Fuera beta y flag true; evaluación minuto/intervalo default60 | DISABLE hasta contrato | DISABLE hasta contrato |
+
+CRON: **NOT INSTALLED por esta fase**; estado remoto NOT RUN. No instalarlo hasta aprobar las cuatro tareas y materializar controles de las propuestas DISABLE. BETA_CLEANUP_ENABLED=false no controla limpiezas en staging/production.
+
+QUEUE WORKER: NOT REQUIRED CURRENTLY para jobs de aplicación observados: app/Jobs ausente y búsqueda de ShouldQueue/dispatch/onQueue sin jobs de aplicación. sync es propuesta suficiente para ese inventario, no driver remoto confirmado. Mail síncrono afecta latencia; revalidar si se añaden jobs. No Redis ni worker instalado.
+
+- /up: ruta health en HEAD, acredita arranque Laravel, no DB ni esquema; puede responder durante maintenance. NOT RUN en STAGING.
+- /ready: route/controller/probe aún pendientes fuera de HEAD. Necesita artefacto consolidado, configuración DB para SELECT1 y directorios local/support_private con creación/lectura/borrado de archivo temporal. No es comprobación puramente read-only del filesystem, no se invocó. No acredita migrations/cache/mail/cron.
+- Antes de declaración READY: despliegue autorizado del artefacto exacto, runtime/config/permisos, DB y discos; luego comprobar HTTP200/payload sin secretos, validación funcional separada de schema/cache/session.
+- DB backup mechanism y decisión de backup de privados: PENDING; restore no ensayado. **MIGRATION DEPLOYMENT: BLOCKED**. No backup ejecutado.
+- DEPLOY METHOD: PENDING runner/manual. Manual controlado es alternativa permitida para decidir, no seleccionada automáticamente ni ejecutada.
+
+### STAGING PREP GATES (operativos)
+
+Esta lista G01–G20 solicitada mide preparación operativa, distinta de los 20 gates de código/diseño del baseline. No se sustituye una métrica por otra: baseline cloud permanece **4/20 = 20%**; gates operativos STAGING abajo **0/20 PASS = 0%**. Un hostname o certificado declarado disponible no cierra un gate operacional.
+
+| Gate | Estado | Evidencia / bloqueo |
+|---|---|---|
+| G01 SERVER | BLOCKED | Target/acceso pendientes |
+| G02 OS | BLOCKED | Inventario remoto ausente |
+| G03 RUNTIME | NOT RUN | Sin host; requisitos identificados |
+| G04 DATABASE | BLOCKED | Host/versión/cuentas/esquema pendientes |
+| G05 DOMAIN | PARTIAL | Host suministrado; servicio/raíz y exactitud tras NXDOMAIN pendientes |
+| G06 DNS | BLOCKED | NXDOMAIN A/AAAA en consultas realizadas |
+| G07 TLS | BLOCKED | Disponible según usuario, material público no validado |
+| G08 WEB SERVER | BLOCKED | Selección y configuración real pendientes |
+| G09 APP CONFIG | PARTIAL | Matriz candidata, dependencias pendientes |
+| G10 STORAGE | NOT RUN | Diseño sin owner/disco/permisos remotos |
+| G11 MIGRATIONS | BLOCKED | Artefacto/ensayo target/backup pendientes |
+| G12 BACKUP | BLOCKED | Mecanismo y restore no disponibles como evidencia |
+| G13 READINESS | NOT RUN | Sin despliegue, /ready aún pendiente de consolidar |
+| G14 SCHEDULER | PARTIAL | Inventario completo, aprobación/controles pendientes |
+| G15 EMAIL | BLOCKED | Sin entrega real |
+| G16 MONITORING | BLOCKED | Sin configuración/responsable confirmado |
+| G17 RBAC | PARTIAL | Catálogo, no matriz ni provisión remota aprobada |
+| G18 MOBILE DOMAIN | PARTIAL | Código listo, dominio sin DNS/TLS verificados |
+| G19 DEPLOYMENT | BLOCKED | Método/artefacto/accesos pendientes |
+| G20 ROLLBACK | BLOCKED | Sin ensayo ni backup/restore |
+
+Conteo operativo: 0 PASS, 5 PARTIAL, 12 BLOCKED, 3 NOT RUN, 0 NOT APPLICABLE. No aumento de readiness por certificado.
+
+### Bloqueantes mínimos antes de STAGING-INSTALL
+
+1. Confirmar hostname exacto y DNS A/AAAA/CNAME hacia target aprobado; responsable DNS. Sin cambios DNS en esta fase.
+2. Inspeccionar certificado público/cadena: Subject/SAN/issuer/fechas, hostname y confianza; elegir terminación TLS.
+3. Servidor oficial, OS/arquitectura/recursos, target y acceso administrativo autorizado por canal restringido.
+4. Deploy path, web server/FPM y ownership/storage aprobados con capacidad suficiente.
+5. MySQL endpoint/versión/schema, estado de DB/cuentas y mecanismo seguro de provisión/grants, sin root runtime.
+6. Runner o manual/controlado, artefacto consolidado incluyendo readiness/config requeridos y configuración STAGING final.
+7. Mecanismo DB backup, decisión de privados y plan restore/rollback antes de habilitar migración.
+8. Alcance inicial aprobado: cron apagado hasta decisión, integraciones apagadas; RBAC explícito. Identidad real, mail y monitoring conservan sus gates para los flujos correspondientes.
+
+RELEASE-0-STAGING-INSTALL: BLOCKED. No se modifica production-readiness.md porque ningún gate del baseline se cerró. HONOR, Motorola y Build12: UNTOUCHED. Cambios funcionales propios: 0; sin staging Git/commit/deploy/push/tag.

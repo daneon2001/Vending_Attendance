@@ -12,6 +12,7 @@
 .env.*
 !.env.example
 !.env.testing.example
+!.env.beta.example
 .env.backup
 .env.production
 .phpactor.json

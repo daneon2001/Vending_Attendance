@@ -76,6 +76,10 @@ android {
             debuggable false
             buildConfigField 'String', 'FIELD_RECOVERY_TARGET', javaString(betaIdentity)
             buildConfigField 'String', 'FIELD_RECOVERY_PREVIOUS_SHA256', javaString(priorOrigins)
+            // Explicit transitional opt-in; never creates or rotates a key.
+            if (providers.gradleProperty('betaUseExistingDebugSigning').orNull == 'true') {
+                signingConfig signingConfigs.debug
+            }
         }
     }
     sourceSets.debug.res.srcDir layout.buildDirectory.dir('generated/localNetworkRes')
@@ -98,7 +102,8 @@ tasks.register('verifyBetaConfiguration') {
     doLast {
         verifyDeployment('beta')
         if ((betaMetadata.build as Integer) <= 10 || !internalBeta) throw new GradleException('Beta requires new metadata above historical build 10 and -PinternalBeta=true')
-        if (!releaseSigningConfigured) throw new GradleException('Explicit existing beta signing decision required')
+        if (!releaseSigningConfigured && providers.gradleProperty('betaUseExistingDebugSigning').orNull != 'true') throw new GradleException('Explicit existing beta signing decision required')
+        if (providers.gradleProperty('betaUseExistingDebugSigning').orNull == 'true' && !android.signingConfigs.debug.storeFile.isFile()) throw new GradleException('Existing debug signing keystore missing; generating a replacement is forbidden')
         if (priorOrigins && !(priorOrigins ==~ /[a-f0-9]{64}(,[a-f0-9]{64})*/)) throw new GradleException('Recovery allowlist must contain SHA256 origin digests')
     }
 }

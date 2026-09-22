@@ -1,28 +1,69 @@
-stages:
-  - deploy
-
-deploy_qa:
-  stage: deploy
-  tags:
-    - qa-windows
-  only:
-    - qa
+# Vending-only template. Configure protected variables/runner in Phase 13.10.
+stages: [validate, test, build, package, deploy_beta, healthcheck]
+default:
+  tags: [vending-linux-beta]
+variables:
+  APP_ENV: testing
+  DB_CONNECTION: sqlite
+  DB_DATABASE: ":memory:"
+  DB_URL: ""
+validate:
+  stage: validate
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts/deploy_qa.ps1
-  environment:
-    name: qa
-    url: https://desarrollo.sybiml3.com/biometrico
-
-deploy_production:
-  stage: deploy
-  tags:
-    - windows
-    - prod
-    - biometrico
-  only:
-    - main
+    - composer validate --no-check-publish
+    - bash -n scripts/deployment/deploy-beta.sh scripts/deployment/ci-deploy-beta.sh
+    - composer install --no-interaction --prefer-dist --no-scripts
+    - composer audit
+  artifacts:
+    paths: [vendor/]
+    expire_in: 1 day
+test:
+  stage: test
+  dependencies: [validate]
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts/deploy_production.ps1
+    - php vendor/bin/phpunit
+    - cd mobile
+    - npm ci
+    - npm audit --audit-level=high
+    - npm test
+build:
+  stage: build
+  script:
+    - npm ci
+    - npm audit --audit-level=high
+    - npm run build -- --mode beta
+  artifacts:
+    paths: [public/build/]
+    expire_in: 1 day
+package:
+  stage: package
+  dependencies: [build]
+  script:
+    - mkdir -p dist
+    - tar --exclude='*.sqlite' --exclude='*.sqlite-*' --exclude='*.sql' --exclude='bootstrap/cache/*.php' --exclude=public/storage --exclude=public/hot -czf dist/vending-beta.tar.gz app bootstrap config database public resources routes scripts/deployment artisan composer.json composer.lock
+    - sha256sum dist/vending-beta.tar.gz > dist/vending-beta.tar.gz.sha256
+  artifacts:
+    paths: [dist/]
+    expire_in: 1 day
+deploy_beta:
+  stage: deploy_beta
+  dependencies: [package]
+  resource_group: vending-beta
   environment:
-    name: production
-    url: https://biometrico.sybiml.com
+    name: beta
+    url: $BETA_APP_URL
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^vending-beta-[0-9]+[.][0-9]+[.][0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: manual
+      allow_failure: false
+    - when: never
+  script:
+    - bash scripts/deployment/ci-deploy-beta.sh
+healthcheck:
+  stage: healthcheck
+  needs: [deploy_beta]
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^vending-beta-[0-9]+[.][0-9]+[.][0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+    - when: never
+  script:
+    - bash scripts/deployment/healthcheck.sh "$BETA_APP_URL"

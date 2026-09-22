@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'http://localhost'),
+    'url' => env('APP_ENV') === 'beta' ? env('BETA_APP_URL', env('APP_URL', '')) : env('APP_URL', 'http://localhost'),
 
     'asset_url' => env('ASSET_URL'),
 
@@ -60,7 +60,7 @@ return [
         ? '/'.$basePath
         : '',
 
-    'api_base_url' => env('API_BASE_URL', env('VITE_API_BASE_URL', '')),
+    'api_base_url' => env('APP_ENV') === 'beta' ? '' : env('API_BASE_URL', env('VITE_API_BASE_URL', '')),
 
     /*
     |--------------------------------------------------------------------------

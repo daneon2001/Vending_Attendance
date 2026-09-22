@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('employees:prune-imports')->hourly()->withoutOverlapping();
+if (! app()->environment('beta') || config('internal_beta.cleanup_enabled') === true) {
+    Schedule::command('employees:prune-imports')->hourly()->withoutOverlapping();
+}
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -99,15 +101,17 @@ Artisan::command(
     }
 )->purpose('Lista tombstones DEV de templates');
 
-Schedule::command('audit:cleanup --optimize')
-    ->dailyAt((string) config('audit.cleanup.schedule_time', '03:00'))
-    ->withoutOverlapping();
+if (! app()->environment('beta') || config('internal_beta.cleanup_enabled') === true) {
+    Schedule::command('audit:cleanup --optimize')
+        ->dailyAt((string) config('audit.cleanup.schedule_time', '03:00'))
+        ->withoutOverlapping();
+}
 
 Schedule::command('device-nonces:prune')
     ->everyMinute()
     ->withoutOverlapping();
 
-if (config('sybi.vending.sync_enabled', false)) {
+if (! app()->environment('beta') && config('sybi.vending.sync_enabled', false)) {
     $sybiIntervalMinutes = max(1, (int) config('sybi.vending.sync_interval_minutes', 60));
 
     Schedule::command('sybi:sync-vending')

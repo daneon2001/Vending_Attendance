@@ -15,12 +15,12 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
+    'stateful' => array_values(array_filter(explode(',', env('SANCTUM_STATEFUL_DOMAINS', env('APP_ENV') === 'beta' ? '' : sprintf(
         '%s%s',
         'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
         Sanctum::currentApplicationUrlWithPort(),
         // Sanctum::currentRequestHost(),
-    ))),
+    ))))),
 
     /*
     |--------------------------------------------------------------------------

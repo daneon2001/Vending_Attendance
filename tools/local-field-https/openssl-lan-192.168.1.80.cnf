@@ -1,0 +1,17 @@
+# Local demo only. Never a production certificate authority.
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = Vending Local Demo CA
+[ca_extensions]
+basicConstraints = critical,CA:TRUE,pathlen:0
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+[server_extensions]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = IP:192.168.1.80
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer

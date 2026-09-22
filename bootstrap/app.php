@@ -51,6 +51,10 @@ $application = Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         api: __DIR__.'/../routes/api.php', // por si no estaba
+        then: function (): void {
+            // No session/cookie dependency: failures always reach the generic probe.
+            \Illuminate\Support\Facades\Route::get('/ready', \App\Http\Controllers\ReadinessController::class)->name('readiness');
+        },
     )
     ->withCommands([
         FortiaMockAddEmployee::class,
