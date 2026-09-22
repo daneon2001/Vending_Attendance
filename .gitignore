@@ -45,3 +45,9 @@ public/images/generated/
 /tests/e2e/.auth
 /respaldo_asistencias_dev.sql
 /.tmp_*.php
+# Database backups
+*.sql
+*.bak
+*.bacpac
+*.zip
+*.7z
