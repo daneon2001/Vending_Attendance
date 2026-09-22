@@ -397,3 +397,5 @@ Notas CI:
 1. Ejecutar `npm run build` antes de `npm run test:e2e`.
 2. Mantener snapshots versionados para detectar regresiones.
 3. Al cambiar UI esperada, actualizar snapshots con `npm run test:e2e:update`.
+#   V e n d i n g _ A t t e n d a n c e  
+ 
