@@ -17,7 +17,6 @@
 .env.production
 .phpactor.json
 .phpunit.result.cache
-.phpunit.result.cache
 Homestead.json
 Homestead.yaml
 npm-debug.log
@@ -51,3 +50,5 @@ public/images/generated/
 *.bacpac
 *.zip
 *.7z
+/storage/logs/*
+/bootstrap/cache/*.php
